@@ -84,7 +84,10 @@ jobs:
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
             set -e
-            cd ~/chat-multichannel-sales-ia
+            if [ ! -d "chat-multichannel-sales-ia" ]; then
+              git clone https://github.com/cetusmx/chat-multichannel.git chat-multichannel-sales-ia
+            fi
+            cd chat-multichannel-sales-ia
             git fetch origin main
             git reset --hard origin/main
             docker compose down
