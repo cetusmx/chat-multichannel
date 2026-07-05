@@ -55,7 +55,6 @@ const FocusedChat = memo(({ conversationId, clientName }) => {
            if (prev.find(m => m.id === msg.id)) return prev;
            return [...prev, msg];
         });
-      }
     };
     
     const handleMessageUpdated = (msg) => {
