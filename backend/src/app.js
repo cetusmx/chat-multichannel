@@ -96,10 +96,7 @@ setInterval(async () => {
 }, 12 * 60 * 60 * 1000); // Run every 12 hours
 
 // React Router fallback (must be after all API routes)
-app.get('*', (req, res) => {
-  if (req.path.startsWith('/api')) {
-    return res.status(404).json({ error: { message: 'Not found', code: 'NOT_FOUND' } });
-  }
+app.get(/^(?!\/api).*/, (req, res) => {
   res.sendFile(path.join(frontendPath, 'index.html'));
 });
 
