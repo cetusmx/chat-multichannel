@@ -3,8 +3,6 @@ services:
     image: postgres:16
     container_name: salesflow-postgres
     restart: unless-stopped
-    ports:
-      - "5432:5432"
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-salesflow}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-salesflow_dev}
@@ -23,7 +21,7 @@ services:
     restart: unless-stopped
     command: sh -c "npx prisma migrate deploy && node prisma/seed.js && node src/index.js"
     ports:
-      - "4000:4000"
+      - "4005:4000"
     environment:
       NODE_ENV: ${NODE_ENV:-production}
       DATABASE_URL: postgresql://${POSTGRES_USER:-salesflow}:${POSTGRES_PASSWORD:-salesflow_dev}@postgres:5432/${POSTGRES_DB:-salesflow}?connection_limit=5
