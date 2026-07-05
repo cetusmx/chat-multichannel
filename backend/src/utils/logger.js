@@ -2,6 +2,7 @@ const levels = ['debug', 'info', 'warn', 'error'];
 const currentLevel = process.env.LOG_LEVEL || 'info';
 
 function shouldLog(level) {
+  if (currentLevel === 'silent' || currentLevel === 'none') return false;
   return levels.indexOf(level) >= levels.indexOf(currentLevel);
 }
 

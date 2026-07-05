@@ -56,6 +56,7 @@ jobs:
           DATABASE_URL: postgresql://salesflow:salesflow_dev@localhost:5432/salesflow?connection_limit=5
           JWT_SECRET: test-secret
           JWT_REFRESH_SECRET: test-refresh-secret
+          LOG_LEVEL: silent
 
       - name: Install frontend dependencies
         working-directory: ./frontend
