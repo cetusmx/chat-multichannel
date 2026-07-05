@@ -7,3 +7,4 @@ build/
 coverage/
 .tmp/
 nul
+.vps-keys/
