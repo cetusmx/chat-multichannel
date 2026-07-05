@@ -93,7 +93,7 @@ setInterval(async () => {
   } catch (err) {
     console.error('Cleanup job error:', err.message);
   }
-}, 12 * 60 * 60 * 1000); // Run every 12 hours
+}, 12 * 60 * 60 * 1000).unref(); // Run every 12 hours
 
 // React Router fallback (must be after all API routes)
 app.get(/^(?!\/api).*/, (req, res) => {

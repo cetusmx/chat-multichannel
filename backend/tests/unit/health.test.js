@@ -12,9 +12,9 @@ describe('GET /api/health', () => {
   });
 });
 
-describe('GET /', () => {
+describe('GET /api', () => {
   it('should return service info', async () => {
-    const res = await request(app).get('/');
+    const res = await request(app).get('/api');
     expect(res.status).toBe(200);
     expect(res.body.service).toBe('SalesFlow API');
     expect(res.body.version).toBe('0.1.0');
