@@ -43,9 +43,11 @@ jobs:
         env:
           DATABASE_URL: postgresql://salesflow:salesflow_dev@localhost:5432/salesflow?connection_limit=5
 
-      - name: Run Prisma migrations
+      - name: Run Prisma migrations and seed
         working-directory: ./backend
-        run: npx prisma migrate dev --name init --skip-generate
+        run: |
+          npx prisma migrate dev --name init --skip-generate
+          npm run db:seed
         env:
           DATABASE_URL: postgresql://salesflow:salesflow_dev@localhost:5432/salesflow?connection_limit=5
 
