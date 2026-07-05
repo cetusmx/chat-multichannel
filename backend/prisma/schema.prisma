@@ -1,0 +1,223 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum RoleType {
+  ADMIN
+  COORDINATOR
+  VENDOR
+}
+
+enum ConversationStatus {
+  PENDING_ASSIGNMENT
+  ACTIVE
+  CLOSED
+}
+
+enum SenderType {
+  CLIENT
+  VENDOR
+  IA
+  SYSTEM
+}
+
+enum MessageStatus {
+  SENT
+  DELIVERED
+  READ
+  FAILED
+}
+
+enum AttachmentType {
+  IMAGE
+  DOCUMENT
+  AUDIO
+  VIDEO
+}
+
+model Tenant {
+  id        String   @id @default(cuid())
+  name      String
+  domain    String   @unique
+  phone     String?
+  email     String?
+  address   String?
+  status    String   @default("active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  users         User[]
+  branches      Branch[]
+  whatsappConfig WhatsAppConfig?
+  clients       Client[]
+  conversations Conversation[]
+
+  @@map("tenants")
+}
+
+model Branch {
+  id        String   @id @default(cuid())
+  name      String
+  address   String?
+  phone     String?
+  tenantId  String   @map("tenant_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  groups Group[]
+
+  @@index([tenantId])
+  @@map("branches")
+}
+
+model Group {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  branchId    String   @map("branch_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  branch  Branch         @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  vendors GroupVendor[]
+
+  @@index([branchId])
+  @@map("groups")
+}
+
+model User {
+  id             String   @id @default(cuid())
+  name           String
+  email          String   @unique
+  phone          String?
+  passwordHash   String   @map("password_hash")
+  role           RoleType
+  tenantId       String   @map("tenant_id")
+  isActive       Boolean  @default(true) @map("is_active")
+  lastLoginAt    DateTime? @map("last_login_at")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  coordinatorId String? @map("coordinator_id")
+
+  tenant      Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  groups      GroupVendor[]
+  coordinator User?          @relation("UserCoordinator", fields: [coordinatorId], references: [id])
+  assignees   User[]         @relation("UserCoordinator")
+  conversations Conversation[] @relation("VendorConversations")
+
+  @@index([tenantId])
+  @@index([role])
+  @@index([coordinatorId])
+  @@map("users")
+}
+
+model GroupVendor {
+  groupId String @map("group_id")
+  userId  String @map("user_id")
+
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([groupId, userId])
+  @@index([groupId])
+  @@index([userId])
+  @@map("group_vendors")
+}
+
+model WhatsAppConfig {
+  id                String   @id @default(cuid())
+  tenantId          String   @unique @map("tenant_id")
+  phoneNumberId     String?  @map("phone_number_id")
+  businessAccountId String?  @map("business_account_id")
+  accessToken       String?  @map("access_token")
+  verifyToken       String?  @map("verify_token")
+  webhookUrl        String?  @map("webhook_url")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("whatsapp_configs")
+}
+
+model Client {
+  id          String   @id @default(cuid())
+  tenantId    String   @map("tenant_id")
+  phoneNumber String   @map("phone_number")
+  name        String?
+  profilePic  String?  @map("profile_pic")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  conversations Conversation[]
+
+  @@unique([tenantId, phoneNumber])
+  @@index([tenantId])
+  @@map("clients")
+}
+
+model Conversation {
+  id            String             @id @default(cuid())
+  tenantId      String             @map("tenant_id")
+  clientId      String             @map("client_id")
+  vendorId      String?            @map("vendor_id")
+  status        ConversationStatus @default(PENDING_ASSIGNMENT)
+  lastMessageAt DateTime           @default(now()) @map("last_message_at")
+  createdAt     DateTime           @default(now()) @map("created_at")
+  updatedAt     DateTime           @updatedAt @map("updated_at")
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  client   Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  vendor   User?     @relation("VendorConversations", fields: [vendorId], references: [id], onDelete: SetNull)
+  messages Message[]
+
+  @@index([tenantId])
+  @@index([clientId])
+  @@index([vendorId])
+  @@map("conversations")
+}
+
+model Message {
+  id             String        @id @default(cuid())
+  conversationId String        @map("conversation_id")
+  senderType     SenderType    @map("sender_type")
+  senderId       String?       @map("sender_id") // ID del User si es VENDOR o SYSTEM.
+  content        String?       @db.Text
+  waMessageId    String?       @unique @map("wa_message_id")
+  tags           String[]      @default([])
+  isInternal     Boolean       @default(false) @map("is_internal")
+  status         MessageStatus?
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  attachments  Attachment[]
+
+  @@index([conversationId])
+  @@index([senderId])
+  @@index([waMessageId])
+  @@map("messages")
+}
+
+model Attachment {
+  id        String         @id @default(cuid())
+  messageId String         @map("message_id")
+  type      AttachmentType
+  url       String         @db.Text
+  mimeType  String?        @map("mime_type")
+  size      Int?
+  createdAt DateTime       @default(now()) @map("created_at")
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([messageId])
+  @@map("attachments")
+}

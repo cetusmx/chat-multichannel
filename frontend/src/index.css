@@ -1,0 +1,21 @@
+@import "tailwindcss";
+
+@theme {
+  --color-sales-slate-950: #0F172A;
+  --color-sales-slate-900: #1E293B;
+  --color-sales-slate-800: #334155;
+  --color-sales-slate-700: #475569;
+  --color-sales-slate-600: #64748B;
+  --color-sales-slate-400: #94A3B8;
+  --color-sales-slate-300: #CBD5E1;
+  --color-sales-slate-100: #F1F5F9;
+  --color-sales-coral: #FB7185;
+  --color-sales-coral-light: #FDA4AF;
+  --color-sales-orange: #F97316;
+  --color-sales-orange-light: #FB923C;
+}
+
+body {
+  background-color: #0F172A;
+  color: #F1F5F9;
+}

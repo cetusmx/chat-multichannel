@@ -1,0 +1,99 @@
+# generated: 2026-07-04T19:33:21-06:00
+# last_updated: 2026-07-05T13:54:00-06:00
+# project: chat-multichannel-sales-ia
+# project_key: NOKEY
+# tracking_system: file-system
+# story_location: {project-root}/_bmad-output/implementation-artifacts
+
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+#
+# Epic Status Transitions:
+#   - backlog → in-progress: Automatically when first story is created (via create-story)
+#   - in-progress → done: Manually when all stories reach 'done' status
+#
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created in stories folder
+#   - in-progress: Developer actively working on implementation
+#   - review: Ready for code review (via Dev's code-review workflow)
+#   - done: Story completed
+#
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+#
+# Action Item Status:
+#   - open: Committed during a retrospective, not yet addressed
+#   - in-progress: Actively being worked on
+#   - done: Completed
+#
+# WORKFLOW NOTES:
+# ===============
+# - Epic transitions to 'in-progress' automatically when first story is created
+# - Stories can be worked in parallel if team capacity allows
+# - Developer typically creates next story after previous one is 'done' to incorporate learnings
+# - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+# - Retrospective appends its action items to action_items; sprint-status surfaces open ones
+
+generated: 2026-07-04T19:33:21-06:00
+last_updated: 2026-07-05T14:18:07-06:00
+project: chat-multichannel-sales-ia
+project_key: NOKEY
+tracking_system: file-system
+story_location: "{project-root}/_bmad-output/implementation-artifacts"
+
+development_status:
+  epic-1: done
+  1-1-project-setup-and-initial-architecture: done
+  1-2-tenant-provisioning-isolation: done
+  1-3-user-authentication-jwt-auth: done
+  1-4-role-based-access-control-rbac: done
+  1-5-user-management-for-admin: done
+  1-6-user-management-for-coordinator: done
+  1-7-company-profile-branding-configuration: done
+  epic-1-retrospective: optional
+  epic-2: done
+  2-1-whatsapp-api-configuration: done
+  2-2-incoming-message-webhook: done
+  2-3-outgoing-message-delivery: done
+  2-4-media-attachment-handling: done
+  epic-2-retrospective: optional
+  epic-3: in-progress
+  3-1-vendor-chat-interface-and-real-time-sync: done
+  3-2-complete-conversation-history: done
+  3-3-chat-history-search-and-command-palette: done
+  3-4-conversation-tagging: done
+  3-5-coordinator-dual-view: done
+  3-6-coordinator-comments-and-context: done
+  3-7-client-reassignment-and-history-preservation: backlog
+  3-8-malicious-user-blocking: backlog
+  3-9-coordinator-direct-intervention: backlog
+  epic-3-retrospective: optional
+  epic-4: backlog
+  4-1-ai-provider-configuration-adapter-pattern: backlog
+  4-2-rag-knowledge-base-management: backlog
+  4-3-ai-auto-response-to-new-clients: backlog
+  4-4-ai-escalation-and-human-handoff: backlog
+  4-5-vendor-inline-ai-assistance: backlog
+  4-6-coordinator-escalation-alerts: backlog
+  4-7-ai-off-hours-mode: backlog
+  epic-4-retrospective: optional
+  epic-5: backlog
+  5-1-client-assignment-rules-configuration: backlog
+  5-2-automatic-client-assignment-engine: backlog
+  5-3-sla-thresholds-configuration: backlog
+  5-4-real-time-sla-alerts: backlog
+  5-5-vendor-productivity-metrics: backlog
+  5-6-usage-and-activity-reports: backlog
+  epic-5-retrospective: optional
+  epic-6: backlog
+  6-1-react-native-project-scaffold: backlog
+  6-2-push-notifications-system: backlog
+  6-3-mobile-chat-interface: backlog
+  6-4-mobile-ai-assistance: backlog
+  epic-6-retrospective: optional
