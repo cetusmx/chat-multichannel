@@ -167,12 +167,11 @@ Full-stack: Backend API (Express + Prisma + PostgreSQL) + Web App (React + Vite)
 ### Infrastructure & Deployment
 
 | Decisión | Opción | Rationale |
-|----------|--------|-----------|
-| **Orquestación** | Docker Compose | Ya en producción, perfecto para single VPS |
-| **CI/CD** | GitHub Actions | Build + test + deploy automático al VPS |
-| **Error Monitoring** | Sentry | Plan gratuito generoso, captura errores frontend y backend |
-| **Health Checks** | Endpoint /health + UptimeRobot | Ya existe el endpoint, monitoreo gratuito |
-| **Deploy Target** | VPS (77.237.244.27) | Ya en producción, sin cambios |
+| **Topology** | Single Portable Container | Backend y Frontend fusionados en un solo contenedor Node.js (Frontend servido estáticamente por Express). 100% portable. |
+| **CI/CD Flow** | GitHub Actions vía SSH | Pipeline reacciona a push en `main`, entra por SSH al VPS, hace pull del código y ejecuta la construcción (`docker build`) localmente en el VPS. |
+| **Ambientes** | Producción (`main`) | Solo ambiente de producción desplegado desde la rama `main`. |
+| **Orquestación** | Docker / Docker Compose | Maneja el contenedor único de la app y el servicio de PostgreSQL. |
+| **Deploy Target** | VPS (77.237.244.27) | Despliegue automatizado directo al servidor. |
 
 ## Implementation Patterns & Consistency Rules
 

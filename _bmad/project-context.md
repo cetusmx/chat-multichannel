@@ -284,8 +284,7 @@ docs(api): update endpoint documentation
 
 **Docker Stack:**
 ```
-frontend/     → nginx:alpine (puerto 80)
-backend/      → node:20-alpine (puerto 4000)
+app/          → node:20-alpine (Contenedor único: Express sirve el build de React)
 postgres:16   → PostgreSQL (puerto 5432)
 ```
 

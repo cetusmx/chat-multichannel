@@ -43,7 +43,10 @@ app.use('/api/chat', chatRoutes);
 
 app.use('/api-docs', swaggerRoutes);
 
-app.get('/', (_req, res) => {
+const frontendPath = path.join(__dirname, '../public');
+app.use(express.static(frontendPath));
+
+app.get('/api', (_req, res) => {
   res.json({ service: 'SalesFlow API', version: '0.1.0' });
 });
 
@@ -91,5 +94,13 @@ setInterval(async () => {
     console.error('Cleanup job error:', err.message);
   }
 }, 12 * 60 * 60 * 1000); // Run every 12 hours
+
+// React Router fallback (must be after all API routes)
+app.get('*', (req, res) => {
+  if (req.path.startsWith('/api')) {
+    return res.status(404).json({ error: { message: 'Not found', code: 'NOT_FOUND' } });
+  }
+  res.sendFile(path.join(frontendPath, 'index.html'));
+});
 
 module.exports = app;

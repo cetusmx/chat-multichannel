@@ -17,14 +17,14 @@ services:
       timeout: 5s
       retries: 5
 
-  backend:
-    build: ./backend
-    container_name: salesflow-backend
+  app:
+    build: .
+    container_name: salesflow-app
     restart: unless-stopped
     ports:
       - "4000:4000"
     environment:
-      NODE_ENV: ${NODE_ENV:-development}
+      NODE_ENV: ${NODE_ENV:-production}
       DATABASE_URL: postgresql://${POSTGRES_USER:-salesflow}:${POSTGRES_PASSWORD:-salesflow_dev}@postgres:5432/${POSTGRES_DB:-salesflow}?connection_limit=5
       JWT_SECRET: ${JWT_SECRET:-dev-jwt-secret-change-in-production}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-dev-refresh-secret-change-in-production}
@@ -34,15 +34,9 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-
-  frontend:
-    build: ./frontend
-    container_name: salesflow-frontend
-    restart: unless-stopped
-    ports:
-      - "80:80"
-    depends_on:
-      - backend
+    volumes:
+      - app_uploads:/app/backend/uploads
 
 volumes:
   postgres_data:
+  app_uploads:
