@@ -4,12 +4,16 @@ import CompanyProfileSection from '../features/settings/CompanyProfileSection.js
 import BranchListSection from '../features/settings/BranchListSection.jsx';
 import GroupListSection from '../features/settings/GroupListSection.jsx';
 import WhatsAppSettingsSection from '../features/settings/WhatsAppSettingsSection.jsx';
+import AiConfigSection from '../features/settings/AiConfigSection.jsx';
+import KnowledgeBaseSection from '../features/settings/KnowledgeBaseSection.jsx';
 
 const tabs = [
   { id: 'company', label: 'Empresa', roles: ['ADMIN', 'COORDINATOR'] },
   { id: 'branches', label: 'Sucursales', roles: ['ADMIN', 'COORDINATOR'] },
   { id: 'groups', label: 'Grupos', roles: ['ADMIN', 'COORDINATOR'] },
   { id: 'whatsapp', label: 'WhatsApp API', roles: ['ADMIN'] },
+  { id: 'ai', label: 'Inteligencia Artificial', roles: ['ADMIN'] },
+  { id: 'kb', label: 'Base de Conocimiento', roles: ['ADMIN'] },
 ];
 
 export default function Settings() {
@@ -24,6 +28,8 @@ export default function Settings() {
       case 'branches': return <BranchListSection />;
       case 'groups': return <GroupListSection />;
       case 'whatsapp': return <WhatsAppSettingsSection />;
+      case 'ai': return <AiConfigSection />;
+      case 'kb': return <KnowledgeBaseSection />;
       default: return null;
     }
   }

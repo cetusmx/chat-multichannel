@@ -13,6 +13,12 @@ enum RoleType {
   VENDOR
 }
 
+enum DocumentStatus {
+  PROCESSING
+  READY
+  ERROR
+}
+
 enum ConversationStatus {
   PENDING_ASSIGNMENT
   ACTIVE
@@ -22,6 +28,8 @@ enum ConversationStatus {
 enum SenderType {
   CLIENT
   VENDOR
+  COORDINATOR
+  ADMIN
   IA
   SYSTEM
 }
@@ -54,8 +62,11 @@ model Tenant {
   users         User[]
   branches      Branch[]
   whatsappConfig WhatsAppConfig?
+  aiConfig      AiConfig?
   clients       Client[]
   conversations Conversation[]
+  documents     Document[]
+  documentChunks DocumentChunk[]
 
   @@map("tenants")
 }
@@ -155,6 +166,7 @@ model Client {
   profilePic  String?  @map("profile_pic")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
+  isBlocked   Boolean  @default(false) @map("is_blocked")
 
   tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   conversations Conversation[]
@@ -220,4 +232,50 @@ model Attachment {
 
   @@index([messageId])
   @@map("attachments")
+}
+
+model AiConfig {
+  id                String   @id @default(cuid())
+  tenantId          String   @unique @map("tenant_id")
+  provider          String   @default("gemini")
+  apiKey            String   @map("api_key") // Encrypted
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("ai_configs")
+}
+
+model Document {
+  id        String         @id @default(cuid())
+  filename  String
+  size      Int
+  status    DocumentStatus @default(PROCESSING)
+  tenantId  String         @map("tenant_id")
+  createdAt DateTime       @default(now()) @map("created_at")
+  updatedAt DateTime       @updatedAt @map("updated_at")
+
+  tenant Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  chunks DocumentChunk[]
+
+  @@index([tenantId])
+  @@map("documents")
+}
+
+model DocumentChunk {
+  id         String                     @id @default(uuid())
+  text       String                     @db.Text
+  embedding  Unsupported("vector(768)")
+  documentId String                     @map("document_id")
+  tenantId   String                     @map("tenant_id")
+  createdAt  DateTime                   @default(now()) @map("created_at")
+  updatedAt  DateTime                   @updatedAt @map("updated_at")
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([documentId])
+  @@index([tenantId])
+  @@map("document_chunks")
 }

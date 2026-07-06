@@ -71,3 +71,35 @@
 - Meta API file empty body
 - aroundMessageId cursor does not exist
 - Conversation lacks lastMessageAt and createdAt displays Invalid Date
+
+## Deferred from: code review of 3-7-client-reassignment-and-history-preservation.md (2026-07-06)
+- Concurrent reassignments race condition [backend/src/routes/chat.routes.js] — deferred, pre-existing edge case
+
+## Deferred from: code review of 3-8-malicious-user-blocking.md (2026-07-06)
+- Missing audit trail for blocking/unblocking actions
+- Webhook spam from blocked numbers causing DB load without Redis cache
+- Race condition with media downloads during block
+
+
+## Deferred from: code review of 4-1-ai-provider-configuration-adapter-pattern.md (2026-07-06)
+- Shortsighted AI Configuration Schema: The AiConfig model assumes every AI provider requires a single apiKey string.
+- Missing Decryption Error Handling: The decrypt function lacks a try-catch block for malformed ciphertext.
+- Naive Chat History Mapping: GeminiProvider.generateResponse assumes strictly alternating user/model history.
+- Dead Code in Provider Check: The _getTenantApiKey method contains an empty block for provider mismatch.
+- Ignored Database State for Provider Selection: ai.service.js hardcodes the provider to environment variable default rather than DB state.
+
+
+## Deferred from: code review v2 of 4-1-ai-provider-configuration-adapter-pattern.md (2026-07-06)
+- Encryption Key Format Rigidity: The system expects exactly 32 raw string characters for the key.
+- Missing Config Deletion Endpoint: There is no way to wipe an AI configuration.
+- Forced API Key Re-entry on Update: updateAiConfig strictly requires the apiKey, disallowing partial updates.
+- Assumed Last Message Role: generateResponse assumes the last message is always from the user.
+- Redundant Primary Key in AiConfig: The id column is unnecessary since tenantId is @unique and effectively a 1-to-1 PK.
+- Synchronous Validation Blocks Request: Validating the API key against Google blocks the HTTP response synchronously.
+- Interface Method Signature Discrepancies: Method signatures differ slightly from strict spec phrasing due to adapter implementation necessities.
+
+## Deferred from: code review of 4-2-rag-knowledge-base-management.md (2026-07-06)
+- Placebo AI Configuration (hardcoded Gemini) [backend/src/services/ai.service.js:12]
+- UI Stuck in "Procesando" (No polling) [frontend/src/features/settings/KnowledgeBaseSection.jsx]
+- Copy-Paste Error Handling Spaghetti [frontend/src/services/api.js]
+- Squashed Database Migration Deviation [backend/prisma/migrations/20260706181027_enable_pgvector/migration.sql]

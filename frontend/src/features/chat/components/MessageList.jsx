@@ -75,7 +75,7 @@ const SecureMedia = ({ url, type, alt, className }) => {
  * 
  * @component
  */
-export default function MessageList({ messages, onSendMessage, onSendMedia, isUploading, errorMsg, clearError, clientName, hasMore, loadMoreMessages, isLoadingMore }) {
+export default function MessageList({ messages, onSendMessage, onSendMedia, isUploading, errorMsg, clearError, clientName, hasMore, loadMoreMessages, isLoadingMore, headerActions }) {
   const [text, setText] = useState('');
   const [isInternal, setIsInternal] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
@@ -302,8 +302,13 @@ export default function MessageList({ messages, onSendMessage, onSendMedia, isUp
       )}
       
       {/* Chat Header */}
-      <div className="p-4 border-b border-sales-slate-800 bg-sales-slate-900 flex items-center">
+      <div className="p-4 border-b border-sales-slate-800 bg-sales-slate-900 flex items-center justify-between">
         <h2 className="text-lg font-semibold text-sales-slate-100">{clientName || 'Conversación Activa'}</h2>
+        {headerActions && (
+          <div className="flex items-center gap-2">
+            {headerActions}
+          </div>
+        )}
       </div>
 
       {/* Messages */}
@@ -326,26 +331,33 @@ export default function MessageList({ messages, onSendMessage, onSendMedia, isUp
         )}
         
         {useMemo(() => messages.map((msg) => {
-          const isVendor = msg.senderType === 'VENDOR' || msg.senderType === 'SYSTEM';
+          const isMyTeam = ['VENDOR', 'SYSTEM', 'COORDINATOR', 'ADMIN'].includes(msg.senderType);
           const isHighlighted = msg.id === highlightedMessageId;
           return (
             <div 
               key={msg.id} 
-              className={`flex ${isVendor ? 'justify-end' : 'justify-start'} transition-all duration-1000 ${isHighlighted ? 'ring-4 ring-sales-cyan-500 rounded-lg bg-sales-cyan-500/20 p-2' : ''}`}
+              className={`flex ${isMyTeam ? 'justify-end' : 'justify-start'} transition-all duration-1000 ${isHighlighted ? 'ring-4 ring-sales-cyan-500 rounded-lg bg-sales-cyan-500/20 p-2' : ''}`}
               ref={isHighlighted ? highlightedRef : null}
             >
               <div 
                 className={`group max-w-[70%] rounded-lg p-3 shadow-sm ${
-                  isVendor 
+                  isMyTeam 
                     ? msg.isInternal
                       ? 'bg-sales-orange-500/20 text-sales-orange-100 rounded-br-none border-l-4 border-sales-orange-500 backdrop-blur-md'
-                      : 'bg-sales-cyan-600 text-white rounded-br-none' 
+                      : ['COORDINATOR', 'ADMIN'].includes(msg.senderType)
+                        ? 'bg-sales-coral-600/90 text-white rounded-br-none border-r-4 border-sales-coral-400 backdrop-blur-md shadow-md'
+                        : 'bg-sales-cyan-600 text-white rounded-br-none' 
                     : 'bg-sales-slate-800 text-sales-slate-200 rounded-bl-none'
                 }`}
               >
                 {msg.isInternal && (
                   <div className="text-[10px] uppercase font-bold text-sales-orange-400 mb-1 flex items-center gap-1">
                     <span>🔒</span> Comentario Interno
+                  </div>
+                )}
+                {!msg.isInternal && ['COORDINATOR', 'ADMIN'].includes(msg.senderType) && (
+                  <div className="text-[10px] uppercase font-bold text-sales-coral-200 mb-1 flex items-center gap-1">
+                    <span>🛡️</span> Intervención de Coordinador
                   </div>
                 )}
                 {msg.attachments && msg.attachments.length > 0 && (
@@ -443,7 +455,7 @@ export default function MessageList({ messages, onSendMessage, onSendMedia, isUp
             disabled={isUploading}
             accept="image/*,video/*,audio/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
           />
-          {user && (user.role === 'COORDINATOR' || user.role === 'VENDOR') && (
+          {user && ['ADMIN', 'COORDINATOR', 'VENDOR'].includes(user.role) && (
             <button
               type="button"
               disabled={isUploading}

@@ -67,6 +67,10 @@ export async function put(endpoint, data) {
   return request(endpoint, { method: 'PUT', body: JSON.stringify(data) });
 }
 
+export async function patch(endpoint, data) {
+  return request(endpoint, { method: 'PATCH', body: JSON.stringify(data) });
+}
+
 export async function postFormData(endpoint, formData, signal = null) {
   const options = { method: 'POST', body: formData };
   if (signal) options.signal = signal;
@@ -75,4 +79,95 @@ export async function postFormData(endpoint, formData, signal = null) {
 
 export async function del(endpoint) {
   return request(endpoint, { method: 'DELETE' });
+}
+
+/**
+ * Fetches the AI configuration for the current tenant.
+ * @returns {Promise<Object>} The AI configuration object containing isConfigured and provider
+ */
+export async function getAiConfig() {
+  const res = await get('/tenant/ai-config');
+  if (!res.ok) {
+    const text = await res.text();
+    let error = {};
+    if (text) {
+      try {
+        error = text.startsWith('{') ? JSON.parse(text) : { error: text };
+      } catch (e) {
+        error = { error: text };
+      }
+    }
+    throw new Error(error.error || 'Failed to fetch AI config');
+  }
+  return res.json();
+}
+
+/**
+ * Updates the AI configuration for the current tenant.
+ * @param {Object} data - The configuration data
+ * @param {string} data.provider - The AI provider name (e.g. gemini)
+ * @param {string} data.apiKey - The API key for the provider
+ * @returns {Promise<Object>} The updated AI configuration object
+ */
+export async function updateAiConfig(data) {
+  const res = await put('/tenant/ai-config', data);
+  if (!res.ok) {
+    const text = await res.text();
+    let error = {};
+    if (text) {
+      try {
+        error = text.startsWith('{') ? JSON.parse(text) : { error: text };
+      } catch (e) {
+        error = { error: text };
+      }
+    }
+    throw new Error(error.error || 'Failed to update AI config');
+  }
+  return res.json();
+}
+
+/**
+ * Uploads a document to the knowledge base.
+ * @param {File} file - The file to upload (PDF or CSV)
+ * @returns {Promise<Object>} The uploaded document
+ */
+export async function uploadKnowledgeBaseDocument(file) {
+  const formData = new FormData();
+  formData.append('file', file);
+  
+  const res = await postFormData('/tenant/knowledge-base/upload', formData);
+  if (!res.ok) {
+    const text = await res.text();
+    let error = {};
+    if (text) {
+      try {
+        error = text.startsWith('{') ? JSON.parse(text) : { error: text };
+      } catch (e) {
+        error = { error: text };
+      }
+    }
+    throw new Error(error.error || 'Failed to upload document');
+  }
+  return res.json();
+}
+
+/**
+ * Retrieves the knowledge base documents for the tenant.
+ * @returns {Promise<Object>} List of documents
+ */
+export async function getKnowledgeBaseDocuments() {
+  const res = await get('/tenant/knowledge-base');
+  if (!res.ok) {
+    const text = await res.text();
+    let error = {};
+    if (text) {
+      try {
+        error = text.startsWith('{') ? JSON.parse(text) : { error: text };
+      } catch (e) {
+        error = { error: text };
+      }
+    }
+    throw new Error(error.error || 'Failed to fetch knowledge base documents');
+  }
+  return res.json();
 }

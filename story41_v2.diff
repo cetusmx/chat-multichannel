@@ -1,0 +1,524 @@
+diff --git a/backend/prisma/schema.prisma b/backend/prisma/schema.prisma
+index 6dc09bd..2ab6d6e 100644
+--- a/backend/prisma/schema.prisma
++++ b/backend/prisma/schema.prisma
+@@ -22,6 +22,8 @@ enum ConversationStatus {
+ enum SenderType {
+   CLIENT
+   VENDOR
++  COORDINATOR
++  ADMIN
+   IA
+   SYSTEM
+ }
+@@ -54,6 +56,7 @@ model Tenant {
+   users         User[]
+   branches      Branch[]
+   whatsappConfig WhatsAppConfig?
++  aiConfig      AiConfig?
+   clients       Client[]
+   conversations Conversation[]
+ 
+@@ -155,6 +158,7 @@ model Client {
+   profilePic  String?  @map("profile_pic")
+   createdAt   DateTime @default(now()) @map("created_at")
+   updatedAt   DateTime @updatedAt @map("updated_at")
++  isBlocked   Boolean  @default(false) @map("is_blocked")
+ 
+   tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+   conversations Conversation[]
+@@ -221,3 +225,16 @@ model Attachment {
+   @@index([messageId])
+   @@map("attachments")
+ }
++
++model AiConfig {
++  id                String   @id @default(cuid())
++  tenantId          String   @unique @map("tenant_id")
++  provider          String   @default("gemini")
++  apiKey            String   @map("api_key") // Encrypted
++  createdAt         DateTime @default(now()) @map("created_at")
++  updatedAt         DateTime @updatedAt @map("updated_at")
++
++  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
++
++  @@map("ai_configs")
++}
+diff --git a/backend/src/routes/tenant.routes.js b/backend/src/routes/tenant.routes.js
+index 168d98f..1878231 100644
+--- a/backend/src/routes/tenant.routes.js
++++ b/backend/src/routes/tenant.routes.js
+@@ -25,5 +25,22 @@ router.put('/profile', authorize('ADMIN'), async (req, res, next) => {
+     next(err);
+   }
+ });
++router.get('/ai-config', authorize('ADMIN'), async (req, res, next) => {
++  try {
++    const config = await tenantService.getAiConfig(req.user.tenantId);
++    success(res, config);
++  } catch (err) {
++    next(err);
++  }
++});
++
++router.put('/ai-config', authorize('ADMIN'), async (req, res, next) => {
++  try {
++    const config = await tenantService.updateAiConfig(req.user.tenantId, req.body);
++    success(res, config);
++  } catch (err) {
++    next(err);
++  }
++});
+ 
+ module.exports = router;
+diff --git a/backend/src/services/tenant.service.js b/backend/src/services/tenant.service.js
+index cb6aecd..1e3f7e8 100644
+--- a/backend/src/services/tenant.service.js
++++ b/backend/src/services/tenant.service.js
+@@ -1,5 +1,7 @@
+ const prisma = require('../config/database');
+ const ApiError = require('../utils/ApiError');
++const { encrypt } = require('../utils/encryption');
++const { getProvider } = require('../providers');
+ 
+ async function getProfile(tenantId) {
+   const tenant = await prisma.tenant.findUnique({
+@@ -50,4 +52,38 @@ async function updateProfile(tenantId, data) {
+   return updated;
+ }
+ 
+-module.exports = { getProfile, updateProfile };
++async function getAiConfig(tenantId) {
++  const config = await prisma.aiConfig.findUnique({
++    where: { tenantId }
++  });
++  if (!config) {
++    return { isConfigured: false };
++  }
++  return { isConfigured: true, provider: config.provider };
++}
++
++async function updateAiConfig(tenantId, data) {
++  if (!data) throw ApiError.badRequest('Data is required');
++  const { provider = 'gemini', apiKey } = data;
++  if (!apiKey) throw ApiError.badRequest('API Key is required');
++
++  const aiProvider = getProvider(provider);
++  await aiProvider.validateKey(apiKey); // Throws ApiError if invalid
++
++  let encryptedKey;
++  try {
++    encryptedKey = encrypt(apiKey);
++  } catch (error) {
++    throw ApiError.badRequest('Encryption failed: ' + error.message);
++  }
++
++  const updated = await prisma.aiConfig.upsert({
++    where: { tenantId },
++    update: { provider, apiKey: encryptedKey },
++    create: { tenantId, provider, apiKey: encryptedKey }
++  });
++
++  return { isConfigured: true, provider: updated.provider };
++}
++
++module.exports = { getProfile, updateProfile, getAiConfig, updateAiConfig };
+diff --git a/frontend/src/pages/Settings.jsx b/frontend/src/pages/Settings.jsx
+index 7198901..8cd533f 100644
+--- a/frontend/src/pages/Settings.jsx
++++ b/frontend/src/pages/Settings.jsx
+@@ -4,12 +4,14 @@ import CompanyProfileSection from '../features/settings/CompanyProfileSection.js
+ import BranchListSection from '../features/settings/BranchListSection.jsx';
+ import GroupListSection from '../features/settings/GroupListSection.jsx';
+ import WhatsAppSettingsSection from '../features/settings/WhatsAppSettingsSection.jsx';
++import AiConfigSection from '../features/settings/AiConfigSection.jsx';
+ 
+ const tabs = [
+   { id: 'company', label: 'Empresa', roles: ['ADMIN', 'COORDINATOR'] },
+   { id: 'branches', label: 'Sucursales', roles: ['ADMIN', 'COORDINATOR'] },
+   { id: 'groups', label: 'Grupos', roles: ['ADMIN', 'COORDINATOR'] },
+   { id: 'whatsapp', label: 'WhatsApp API', roles: ['ADMIN'] },
++  { id: 'ai', label: 'Inteligencia Artificial', roles: ['ADMIN'] },
+ ];
+ 
+ export default function Settings() {
+@@ -24,6 +26,7 @@ export default function Settings() {
+       case 'branches': return <BranchListSection />;
+       case 'groups': return <GroupListSection />;
+       case 'whatsapp': return <WhatsAppSettingsSection />;
++      case 'ai': return <AiConfigSection />;
+       default: return null;
+     }
+   }
+diff --git a/frontend/src/services/api.js b/frontend/src/services/api.js
+index 8e0f672..5c26d54 100644
+--- a/frontend/src/services/api.js
++++ b/frontend/src/services/api.js
+@@ -67,6 +67,10 @@ export async function put(endpoint, data) {
+   return request(endpoint, { method: 'PUT', body: JSON.stringify(data) });
+ }
+ 
++export async function patch(endpoint, data) {
++  return request(endpoint, { method: 'PATCH', body: JSON.stringify(data) });
++}
++
+ export async function postFormData(endpoint, formData, signal = null) {
+   const options = { method: 'POST', body: formData };
+   if (signal) options.signal = signal;
+@@ -76,3 +80,23 @@ export async function postFormData(endpoint, formData, signal = null) {
+ export async function del(endpoint) {
+   return request(endpoint, { method: 'DELETE' });
+ }
++
++export async function getAiConfig() {
++  const res = await get('/tenant/ai-config');
++  if (!res.ok) {
++    const text = await res.text();
++    const error = text ? (text.startsWith('{') ? JSON.parse(text) : { error: text }) : {};
++    throw new Error(error.error || 'Failed to fetch AI config');
++  }
++  return res.json();
++}
++
++export async function updateAiConfig(data) {
++  const res = await put('/tenant/ai-config', data);
++  if (!res.ok) {
++    const text = await res.text();
++    const error = text ? (text.startsWith('{') ? JSON.parse(text) : { error: text }) : {};
++    throw new Error(error.error || 'Failed to update AI config');
++  }
++  return res.json();
++}
+diff --git a/backend/.env.example b/backend/.env.example
+new file mode 100644
+index 0000000..fbf2657
+--- /dev/null
++++ b/backend/.env.example
+@@ -0,0 +1,4 @@
++DATABASE_URL="postgresql://user:password@localhost:5432/salesflow"
++JWT_SECRET=your-jwt-secret
++JWT_REFRESH_SECRET=your-refresh-secret
++ENCRYPTION_KEY=12345678901234567890123456789012
+diff --git a/backend/src/utils/encryption.js b/backend/src/utils/encryption.js
+new file mode 100644
+index 0000000..0ef3961
+--- /dev/null
++++ b/backend/src/utils/encryption.js
+@@ -0,0 +1,33 @@
++const crypto = require('crypto');
++
++const ALGORITHM = 'aes-256-cbc';
++const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY;
++
++if (!ENCRYPTION_KEY || Buffer.byteLength(ENCRYPTION_KEY) !== 32) {
++  throw new Error('FATAL ERROR: ENCRYPTION_KEY environment variable is missing or not 32 bytes long.');
++}
++
++const IV_LENGTH = 16;
++
++function encrypt(text) {
++  const iv = crypto.randomBytes(IV_LENGTH);
++  const cipher = crypto.createCipheriv(ALGORITHM, Buffer.from(ENCRYPTION_KEY), iv);
++  let encrypted = cipher.update(text);
++  encrypted = Buffer.concat([encrypted, cipher.final()]);
++  return iv.toString('hex') + ':' + encrypted.toString('hex');
++}
++
++function decrypt(text) {
++  const textParts = text.split(':');
++  const iv = Buffer.from(textParts.shift(), 'hex');
++  const encryptedText = Buffer.from(textParts.join(':'), 'hex');
++  const decipher = crypto.createDecipheriv(ALGORITHM, Buffer.from(ENCRYPTION_KEY), iv);
++  let decrypted = decipher.update(encryptedText);
++  decrypted = Buffer.concat([decrypted, decipher.final()]);
++  return decrypted.toString();
++}
++
++module.exports = {
++  encrypt,
++  decrypt
++};
+diff --git a/backend/src/providers/ai.provider.interface.js b/backend/src/providers/ai.provider.interface.js
+new file mode 100644
+index 0000000..ffe7fbe
+--- /dev/null
++++ b/backend/src/providers/ai.provider.interface.js
+@@ -0,0 +1,31 @@
++class AIProvider {
++  /**
++   * Validates if the given API key is valid.
++   * @param {string} apiKey - The provider's API key
++   * @returns {Promise<boolean>} True if valid, throws ApiError if invalid
++   */
++  async validateKey(apiKey) {
++    throw new Error('Not implemented');
++  }
++
++  /**
++   * Generates a response from the AI provider
++   * @param {Object} params
++   * @param {Array} params.messages - Conversation history
++   * @param {Object|string} params.context - Additional context
++   * @param {string} params.tenantId - The tenant ID
++   */
++  async generateResponse({ messages, context, tenantId }) {
++    throw new Error('Not implemented');
++  }
++
++  async streamResponse({ messages, context, tenantId }) {
++    throw new Error('Not implemented');
++  }
++
++  async embed({ text, tenantId }) {
++    throw new Error('Not implemented');
++  }
++}
++
++module.exports = AIProvider;
+diff --git a/backend/src/providers/gemini.provider.js b/backend/src/providers/gemini.provider.js
+new file mode 100644
+index 0000000..93e70f2
+--- /dev/null
++++ b/backend/src/providers/gemini.provider.js
+@@ -0,0 +1,75 @@
++const AIProvider = require('./ai.provider.interface');
++const { GoogleGenerativeAI } = require('@google/generative-ai');
++const ApiError = require('../utils/ApiError');
++const prisma = require('../config/database');
++const { decrypt } = require('../utils/encryption');
++
++class GeminiProvider extends AIProvider {
++  constructor() {
++    super();
++    this.defaultModel = 'gemini-2.5-flash';
++  }
++
++  async _getApiKey(tenantId) {
++    const aiConfig = await prisma.aiConfig.findUnique({ where: { tenantId } });
++    if (!aiConfig) throw new ApiError(404, 'AI configuration not found');
++    return decrypt(aiConfig.apiKey);
++  }
++
++  async validateKey(apiKey) {
++    try {
++      const genAI = new GoogleGenerativeAI(apiKey);
++      const model = genAI.getGenerativeModel({ model: this.defaultModel });
++      // Dummy call to validate key
++      await model.generateContent('ping');
++      return true;
++    } catch (error) {
++      throw new ApiError(400, 'Invalid Gemini API Key: ' + error.message);
++    }
++  }
++
++  async generateResponse({ messages, context, tenantId }) {
++    try {
++      if (!messages || messages.length === 0) {
++        throw new ApiError(400, 'Messages array cannot be empty');
++      }
++
++      const apiKey = await this._getApiKey(tenantId);
++      const genAI = new GoogleGenerativeAI(apiKey);
++      
++      const formattedMessages = messages.map(m => ({
++        role: m.role === 'user' ? 'user' : 'model',
++        parts: [{ text: m.content }]
++      }));
++
++      // System instruction is supported in gemini-1.5-flash and above
++      let modelOptions = { model: this.defaultModel };
++      if (context) {
++        modelOptions.systemInstruction = typeof context === 'string' ? context : JSON.stringify(context);
++      }
++      
++      const configuredModel = genAI.getGenerativeModel(modelOptions);
++      
++      const chat = configuredModel.startChat({
++        history: formattedMessages.slice(0, -1),
++      });
++
++      const lastMessage = formattedMessages[formattedMessages.length - 1];
++      const result = await chat.sendMessage(lastMessage.parts[0].text);
++      return { content: result.response.text() };
++    } catch (error) {
++      if (error instanceof ApiError) throw error;
++      throw new ApiError(502, 'Gemini Provider Error: ' + error.message);
++    }
++  }
++
++  async streamResponse({ messages, context, tenantId }) {
++     throw new ApiError(501, 'Stream not implemented yet');
++  }
++
++  async embed({ text, tenantId }) {
++     throw new ApiError(501, 'Embed not implemented yet');
++  }
++}
++
++module.exports = GeminiProvider;
+diff --git a/backend/src/providers/index.js b/backend/src/providers/index.js
+new file mode 100644
+index 0000000..285536f
+--- /dev/null
++++ b/backend/src/providers/index.js
+@@ -0,0 +1,13 @@
++const GeminiProvider = require('./gemini.provider');
++const ApiError = require('../utils/ApiError');
++
++function getProvider(providerName = process.env.AI_PROVIDER || 'gemini') {
++  switch (providerName.toLowerCase()) {
++    case 'gemini':
++      return new GeminiProvider();
++    default:
++      throw new ApiError(500, `AI Provider '${providerName}' is not supported`);
++  }
++}
++
++module.exports = { getProvider };
+diff --git a/backend/src/services/ai.service.js b/backend/src/services/ai.service.js
+new file mode 100644
+index 0000000..8de9d84
+--- /dev/null
++++ b/backend/src/services/ai.service.js
+@@ -0,0 +1,19 @@
++const { getProvider } = require('../providers');
++const ApiError = require('../utils/ApiError');
++
++/**
++ * AI Service 
++ * Acts as a facade to the AI Provider Adapter.
++ */
++class AIService {
++  
++  async generateResponse(tenantId, messages, context = '') {
++    const providerName = process.env.AI_PROVIDER || 'gemini';
++    const provider = getProvider(providerName);
++
++    return provider.generateResponse({ messages, context, tenantId });
++  }
++
++}
++
++module.exports = new AIService();
+diff --git a/frontend/src/features/settings/AiConfigSection.jsx b/frontend/src/features/settings/AiConfigSection.jsx
+new file mode 100644
+index 0000000..ef35115
+--- /dev/null
++++ b/frontend/src/features/settings/AiConfigSection.jsx
+@@ -0,0 +1,116 @@
++import { useState, useEffect } from 'react';
++import { getAiConfig, updateAiConfig } from '../../services/api.js';
++
++export default function AiConfigSection() {
++  const [provider, setProvider] = useState('gemini');
++  const [apiKey, setApiKey] = useState('');
++  const [isConfigured, setIsConfigured] = useState(false);
++  const [loading, setLoading] = useState(true);
++  const [saving, setSaving] = useState(false);
++  const [error, setError] = useState('');
++  const [success, setSuccess] = useState('');
++
++  useEffect(() => {
++    async function fetchConfig() {
++      try {
++        const data = await getAiConfig();
++        if (data.isConfigured) {
++          setIsConfigured(true);
++          setProvider(data.provider);
++        }
++      } catch (err) {
++        setError(err.message);
++      } finally {
++        setLoading(false);
++      }
++    }
++    fetchConfig();
++  }, []);
++
++  const handleSubmit = async (e) => {
++    e.preventDefault();
++    if (!apiKey || !apiKey.trim()) {
++      setError('API Key is required');
++      return;
++    }
++    setSaving(true);
++    setError('');
++    setSuccess('');
++    try {
++      const result = await updateAiConfig({ provider, apiKey });
++      setIsConfigured(result.isConfigured);
++      setProvider(result.provider);
++      setApiKey(''); // Clear for security
++      setSuccess('AI Configuration saved successfully');
++    } catch (err) {
++      setError(err.message);
++    } finally {
++      setSaving(false);
++    }
++  };
++
++  if (loading) return <div className="text-sales-slate-400">Loading AI configuration...</div>;
++
++  return (
++    <div className="rounded-xl border border-slate-800 bg-slate-900 p-6">
++      <h2 className="mb-4 text-lg font-medium text-sales-slate-100">Configuración de Inteligencia Artificial</h2>
++      
++      <div className="mb-6 rounded-lg bg-slate-800/50 p-4">
++        <p className="text-sm text-sales-slate-300">
++          Estado: {isConfigured ? (
++            <span className="font-semibold text-emerald-400">Configurado ({provider})</span>
++          ) : (
++            <span className="font-semibold text-amber-400">No Configurado</span>
++          )}
++        </p>
++      </div>
++
++      <form onSubmit={handleSubmit} className="space-y-4 max-w-xl">
++        {error && (
++          <div className="rounded-lg bg-red-900/50 p-3 text-sm text-red-400 border border-red-900/50">
++            {error}
++          </div>
++        )}
++        {success && (
++          <div className="rounded-lg bg-emerald-900/50 p-3 text-sm text-emerald-400 border border-emerald-900/50">
++            {success}
++          </div>
++        )}
++
++        <div>
++          <label className="mb-1 block text-sm font-medium text-sales-slate-300">
++            Proveedor de IA
++          </label>
++          <select
++            value={provider}
++            onChange={(e) => setProvider(e.target.value)}
++            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sales-slate-100 focus:border-sales-coral focus:outline-none"
++          >
++            <option value="gemini">Google Gemini</option>
++          </select>
++        </div>
++
++        <div>
++          <label className="mb-1 block text-sm font-medium text-sales-slate-300">
++            API Key {isConfigured && '(Sobrescribirá la actual)'}
++          </label>
++          <input
++            type="password"
++            value={apiKey}
++            onChange={(e) => setApiKey(e.target.value)}
++            placeholder={isConfigured ? '••••••••••••••••••••••••' : 'Ingresa la API Key'}
++            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sales-slate-100 focus:border-sales-coral focus:outline-none"
++          />
++        </div>
++
++        <button
++          type="submit"
++          disabled={saving || !apiKey}
++          className="rounded-lg bg-sales-coral px-4 py-2 font-medium text-white transition-colors hover:bg-sales-coral/90 disabled:opacity-50"
++        >
++          {saving ? 'Validando y Guardando...' : 'Guardar Configuración'}
++        </button>
++      </form>
++    </div>
++  );
++}

@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { get, post, postFormData, del } from '../services/api';
 import io from 'socket.io-client';
 import useAuthStore from './useAuthStore';
+import useUIStore from './useUIStore';
 
 // URL del backend hardcoded por ahora o lo leemos del origin (MVP pragmático)
 const SOCKET_URL = window.location.origin.includes('localhost') ? 'http://localhost:4000/chat' : '/chat';
@@ -150,7 +151,8 @@ const useChatStore = create((set, get) => ({
 
     // Optimistic update
     const tempId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Date.now().toString() + '-' + Math.random().toString(36).substring(2);
-    const tempMsg = { id: tempId, content, senderType: isInternal ? 'SYSTEM' : 'VENDOR', status: 'SENDING', isInternal, createdAt: new Date().toISOString() };
+    const userRole = useAuthStore.getState().user?.role || 'VENDOR';
+    const tempMsg = { id: tempId, content, senderType: userRole, status: 'SENDING', isInternal, createdAt: new Date().toISOString() };
     set((state) => ({ messages: [...state.messages, tempMsg] }));
 
     try {
@@ -330,6 +332,10 @@ const useChatStore = create((set, get) => ({
 
     newSocket.on('connect', () => {
       console.log('Chat socket connected');
+      const { user } = useAuthStore.getState();
+      if (user?.role === 'VENDOR') {
+        newSocket.emit('join:vendor', user.id);
+      }
     });
 
     newSocket.on('disconnect', (reason) => {
@@ -409,6 +415,73 @@ const useChatStore = create((set, get) => ({
       set((state) => ({
         conversations: state.conversations.map(c => c.id === conversation.id ? { ...c, ...conversation } : c)
       }));
+    });
+
+    newSocket.on('conversation_reassigned', (payload) => {
+      set((state) => {
+        const { action, conversationId, conversation } = payload;
+        if (action === 'removed') {
+          newSocket.emit('leave:conversation', conversationId);
+          return {
+            conversations: state.conversations.filter(c => c.id !== conversationId),
+            currentConversationId: state.currentConversationId === conversationId ? null : state.currentConversationId,
+            messages: state.currentConversationId === conversationId ? [] : state.messages
+          };
+        } else if (action === 'added' && conversation) {
+          const exists = state.conversations.find(c => c.id === conversation.id);
+          let nextConversations;
+          if (exists) {
+             nextConversations = state.conversations.map(c => c.id === conversation.id ? { ...c, ...conversation } : c);
+          } else {
+             nextConversations = [conversation, ...state.conversations];
+          }
+          // Sort by lastMessageAt desc
+          nextConversations.sort((a, b) => new Date(b.lastMessageAt || 0) - new Date(a.lastMessageAt || 0));
+          return { conversations: nextConversations };
+        }
+        return state;
+      });
+    });
+
+    newSocket.on('client_blocked', (updatedClient) => {
+      set((state) => {
+        // Also remove any closed conversations from the store if the client is blocked
+        const nextConversations = state.conversations.filter(c => {
+           if (c.client?.id === updatedClient.id && updatedClient.isBlocked) {
+             return false;
+           }
+           return true;
+        });
+
+        // Also clean up from useUIStore
+        if (updatedClient.isBlocked) {
+           const uiState = useUIStore.getState();
+           const focusedChatsToClose = state.conversations
+             .filter(c => c.client?.id === updatedClient.id)
+             .map(c => c.id);
+             
+           focusedChatsToClose.forEach(id => {
+             if (uiState.focusedChatIds.includes(id)) {
+               uiState.toggleFocusedChat(id);
+             }
+           });
+        }
+
+        const activeConv = state.conversations.find(c => c.id === state.currentConversationId);
+        let nextCurrentConversationId = state.currentConversationId;
+        let nextMessages = state.messages;
+
+        if (updatedClient.isBlocked && activeConv && activeConv.client?.id === updatedClient.id) {
+           nextCurrentConversationId = null;
+           nextMessages = [];
+        }
+
+        return {
+          conversations: nextConversations,
+          currentConversationId: nextCurrentConversationId,
+          messages: nextMessages
+        };
+      });
     });
 
     set({ socket: newSocket });

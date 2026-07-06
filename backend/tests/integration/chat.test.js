@@ -265,3 +265,52 @@ describe('GET /api/chat/search', () => {
     });
   });
 });
+
+describe('PATCH /api/chat/:conversationId/assign', () => {
+  it('should allow COORDINATOR to reassign a conversation to a new vendor', async () => {
+    const coordinatorToken = jwt.sign(
+      { id: 'test-coordinator', tenantId: testTenantId, role: 'COORDINATOR' },
+      JWT_SECRET,
+      { expiresIn: '1h' }
+    );
+
+    const vendor2 = await prisma.user.create({
+      data: {
+        email: `vendor2_${Date.now()}@example.com`,
+        name: 'Vendor 2',
+        passwordHash: 'hash',
+        role: 'VENDOR',
+        tenantId: testTenantId,
+      }
+    });
+
+    const res = await request(app)
+      .patch(`/api/chat/${testConversationId}/assign`)
+      .set('Authorization', `Bearer ${coordinatorToken}`)
+      .send({ vendorId: vendor2.id });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.vendorId).toBe(vendor2.id);
+
+    const updatedConv = await prisma.conversation.findUnique({ where: { id: testConversationId } });
+    expect(updatedConv.vendorId).toBe(vendor2.id);
+
+    await prisma.user.delete({ where: { id: vendor2.id } });
+  });
+
+  it('should prevent VENDOR from reassigning a conversation', async () => {
+    const vendorToken = jwt.sign(
+      { id: testVendorId, tenantId: testTenantId, role: 'VENDOR' },
+      JWT_SECRET,
+      { expiresIn: '1h' }
+    );
+
+    const res = await request(app)
+      .patch(`/api/chat/${testConversationId}/assign`)
+      .set('Authorization', `Bearer ${vendorToken}`)
+      .send({ vendorId: testVendorId });
+
+    expect(res.status).toBe(403);
+  });
+});
+

@@ -41,7 +41,7 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-07-04T19:33:21-06:00
-last_updated: 2026-07-05T14:18:07-06:00
+last_updated: 2026-07-06T12:35:00-06:00
 project: chat-multichannel-sales-ia
 project_key: NOKEY
 tracking_system: file-system
@@ -63,20 +63,20 @@ development_status:
   2-3-outgoing-message-delivery: done
   2-4-media-attachment-handling: done
   epic-2-retrospective: optional
-  epic-3: in-progress
+  epic-3: done
   3-1-vendor-chat-interface-and-real-time-sync: done
   3-2-complete-conversation-history: done
   3-3-chat-history-search-and-command-palette: done
   3-4-conversation-tagging: done
   3-5-coordinator-dual-view: done
   3-6-coordinator-comments-and-context: done
-  3-7-client-reassignment-and-history-preservation: backlog
-  3-8-malicious-user-blocking: backlog
-  3-9-coordinator-direct-intervention: backlog
+  3-7-client-reassignment-and-history-preservation: done
+  3-8-malicious-user-blocking: done
+  3-9-coordinator-direct-intervention: done
   epic-3-retrospective: optional
-  epic-4: backlog
-  4-1-ai-provider-configuration-adapter-pattern: backlog
-  4-2-rag-knowledge-base-management: backlog
+  epic-4: in-progress
+  4-1-ai-provider-configuration-adapter-pattern: done
+  4-2-rag-knowledge-base-management: done
   4-3-ai-auto-response-to-new-clients: backlog
   4-4-ai-escalation-and-human-handoff: backlog
   4-5-vendor-inline-ai-assistance: backlog

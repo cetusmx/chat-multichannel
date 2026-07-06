@@ -29,6 +29,22 @@ function setupSocket(server) {
     socket.on('leave:tenant_coordinators', (tenantId) => {
       socket.leave(`tenant_${tenantId}_coordinators`);
     });
+
+    socket.on('join:vendor', (vendorId) => {
+      try {
+        const token = socket.handshake.auth?.token;
+        if (!token) return;
+        const decoded = require('jsonwebtoken').verify(token, process.env.JWT_SECRET || 'fallback_secret');
+        if (decoded.id !== vendorId && decoded.role !== 'ADMIN') return;
+      } catch (e) {
+        return;
+      }
+      socket.join(`vendor_${vendorId}`);
+    });
+
+    socket.on('leave:vendor', (vendorId) => {
+      socket.leave(`vendor_${vendorId}`);
+    });
   });
 
   alerts.on('connection', (socket) => {

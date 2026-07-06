@@ -75,7 +75,7 @@ router.post('/:conversationId/messages', authenticate, authorize('ADMIN', 'COORD
       throw error;
     }
 
-    if (isInternal && !['COORDINATOR', 'VENDOR'].includes(req.user.role)) {
+    if (isInternal && !['ADMIN', 'COORDINATOR', 'VENDOR'].includes(req.user.role)) {
        return res.status(403).json({ error: 'No autorizado para comentarios internos' });
     }
 
@@ -89,7 +89,7 @@ router.post('/:conversationId/messages', authenticate, authorize('ADMIN', 'COORD
       message = await prisma.message.create({
         data: {
           conversationId,
-          senderType: req.user.role === 'VENDOR' ? 'VENDOR' : 'SYSTEM', // It's internal. We can use VENDOR or SYSTEM. Or we can just use VENDOR if coordinator uses it? The schema has SYSTEM, VENDOR, CLIENT, IA.
+          senderType: req.user.role,
           senderId: req.user.id,
           content,
           status: 'SENT',
@@ -106,7 +106,7 @@ router.post('/:conversationId/messages', authenticate, authorize('ADMIN', 'COORD
         console.error('[CHAT_ROUTE] No se pudo emitir mensaje interno por socket:', err.message);
       }
     } else {
-      message = await whatsappService.sendMessage(conversationId, content, req.user.id);
+      message = await whatsappService.sendMessage(conversationId, content, req.user.id, req.user.role);
     }
     
     res.status(201).json({ data: message });
@@ -145,7 +145,7 @@ router.post('/:conversationId/media', authenticate, authorize('ADMIN', 'COORDINA
       return res.status(400).json({ error: 'El archivo es requerido' });
     }
 
-    if (isInternal && !['COORDINATOR', 'VENDOR'].includes(req.user.role)) {
+    if (isInternal && !['ADMIN', 'COORDINATOR', 'VENDOR'].includes(req.user.role)) {
       return res.status(403).json({ error: 'No autorizado para comentarios internos' });
     }
 
@@ -179,7 +179,7 @@ router.post('/:conversationId/media', authenticate, authorize('ADMIN', 'COORDINA
       result = await prisma.message.create({
         data: {
           conversationId,
-          senderType: req.user.role === 'VENDOR' ? 'VENDOR' : 'SYSTEM',
+          senderType: req.user.role,
           senderId: req.user.id,
           content: caption ? `[${mediaType.toUpperCase()} interno] ${caption.trim()}` : `[${mediaType.toUpperCase()} interno]`,
           status: 'SENT',
@@ -215,7 +215,7 @@ router.post('/:conversationId/media', authenticate, authorize('ADMIN', 'COORDINA
         console.error('Failed to unlink temp file:', e);
       }
     } else {
-      result = await whatsappService.sendMedia(req.params.conversationId, req.file, caption, req.user.id);
+      result = await whatsappService.sendMedia(req.params.conversationId, req.file, caption, req.user.id, req.user.role);
       
       try {
         if (fs.existsSync(req.file.path)) {
@@ -490,6 +490,76 @@ router.get('/:conversationId/messages', authenticate, authorize('ADMIN', 'COORDI
         nextCursor
       }
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.patch('/:conversationId/assign', authenticate, authorize('ADMIN', 'COORDINATOR'), async (req, res, next) => {
+  try {
+    const { conversationId } = req.params;
+    const { vendorId } = req.body;
+
+    const conversation = await prisma.conversation.findUnique({
+      where: { id: conversationId },
+      include: { client: true, messages: { orderBy: { createdAt: 'desc' }, take: 1 } }
+    });
+
+    if (!conversation || conversation.tenantId !== req.user.tenantId) {
+      return res.status(404).json({ error: 'Conversación no encontrada' });
+    }
+
+    const oldVendorId = conversation.vendorId;
+    const normalizedVendorId = vendorId ? vendorId : null;
+
+    if (normalizedVendorId === oldVendorId) {
+      return res.json({ data: conversation });
+    }
+
+    if (normalizedVendorId) {
+      const vendor = await prisma.user.findFirst({
+        where: { id: normalizedVendorId, tenantId: req.user.tenantId }
+      });
+      if (!vendor) {
+        return res.status(400).json({ error: 'Asesor inválido o de otro tenant' });
+      }
+    }
+
+    const updatedConversation = await prisma.conversation.update({
+      where: { id: conversationId },
+      data: {
+        vendorId: normalizedVendorId,
+        status: normalizedVendorId ? 'ACTIVE' : 'PENDING_ASSIGNMENT'
+      },
+      include: { client: true, messages: { orderBy: { createdAt: 'desc' }, take: 1 } }
+    });
+
+    try {
+      const io = getIo();
+      
+      // Notificar al antiguo vendor para que remueva la conversacion
+      if (oldVendorId) {
+        io.of('/chat').to(`vendor_${oldVendorId}`).emit('conversation_reassigned', {
+          action: 'removed',
+          conversationId
+        });
+      }
+
+      // Notificar al nuevo vendor para que agregue la conversacion
+      if (vendorId) {
+        io.of('/chat').to(`vendor_${vendorId}`).emit('conversation_reassigned', {
+          action: 'added',
+          conversation: updatedConversation
+        });
+      }
+
+      // Notificar a los coordinadores
+      io.of('/chat').to(`tenant_${req.user.tenantId}_coordinators`).emit('conversation_updated', updatedConversation);
+    } catch (socketErr) {
+      console.error('Failed to emit conversation_reassigned', socketErr);
+    }
+
+    res.json({ data: updatedConversation });
   } catch (error) {
     next(error);
   }

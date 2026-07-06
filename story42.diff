@@ -1,0 +1,1203 @@
+diff --git a/backend/package.json b/backend/package.json
+index 6446fd2..e31016d 100644
+--- a/backend/package.json
++++ b/backend/package.json
+@@ -18,10 +18,12 @@
+     "db:generate": "npx prisma generate"
+   },
+   "dependencies": {
++    "@google/generative-ai": "^0.24.1",
+     "@prisma/client": "^6.5.0",
+     "axios": "^1.18.1",
+     "bcryptjs": "^3.0.3",
+     "cors": "^2.8.5",
++    "csv-parser": "^3.2.1",
+     "express": "^5.2.1",
+     "form-data": "^4.0.6",
+     "helmet": "^8.1.0",
+@@ -29,6 +31,7 @@
+     "mime-types": "^3.0.2",
+     "morgan": "^1.10.0",
+     "multer": "^2.2.0",
++    "pdf-parse": "^2.4.5",
+     "socket.io": "^4.8.1",
+     "swagger-jsdoc": "^6.2.8",
+     "swagger-ui-express": "^5.0.1"
+diff --git a/backend/prisma/migrations/20260706181027_enable_pgvector/migration.sql b/backend/prisma/migrations/20260706181027_enable_pgvector/migration.sql
+new file mode 100644
+index 0000000..128a1f3
+--- /dev/null
++++ b/backend/prisma/migrations/20260706181027_enable_pgvector/migration.sql
+@@ -0,0 +1,206 @@
++-- CreateExtension
++CREATE EXTENSION IF NOT EXISTS vector;
++
++-- CreateEnum
++CREATE TYPE "DocumentStatus" AS ENUM ('PROCESSING', 'READY', 'ERROR');
++
++-- CreateEnum
++CREATE TYPE "ConversationStatus" AS ENUM ('PENDING_ASSIGNMENT', 'ACTIVE', 'CLOSED');
++
++-- CreateEnum
++CREATE TYPE "SenderType" AS ENUM ('CLIENT', 'VENDOR', 'COORDINATOR', 'ADMIN', 'IA', 'SYSTEM');
++
++-- CreateEnum
++CREATE TYPE "MessageStatus" AS ENUM ('SENT', 'DELIVERED', 'READ', 'FAILED');
++
++-- CreateEnum
++CREATE TYPE "AttachmentType" AS ENUM ('IMAGE', 'DOCUMENT', 'AUDIO', 'VIDEO');
++
++-- CreateTable
++CREATE TABLE "whatsapp_configs" (
++    "id" TEXT NOT NULL,
++    "tenant_id" TEXT NOT NULL,
++    "phone_number_id" TEXT,
++    "business_account_id" TEXT,
++    "access_token" TEXT,
++    "verify_token" TEXT,
++    "webhook_url" TEXT,
++    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
++    "updated_at" TIMESTAMP(3) NOT NULL,
++
++    CONSTRAINT "whatsapp_configs_pkey" PRIMARY KEY ("id")
++);
++
++-- CreateTable
++CREATE TABLE "clients" (
++    "id" TEXT NOT NULL,
++    "tenant_id" TEXT NOT NULL,
++    "phone_number" TEXT NOT NULL,
++    "name" TEXT,
++    "profile_pic" TEXT,
++    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
++    "updated_at" TIMESTAMP(3) NOT NULL,
++    "is_blocked" BOOLEAN NOT NULL DEFAULT false,
++
++    CONSTRAINT "clients_pkey" PRIMARY KEY ("id")
++);
++
++-- CreateTable
++CREATE TABLE "conversations" (
++    "id" TEXT NOT NULL,
++    "tenant_id" TEXT NOT NULL,
++    "client_id" TEXT NOT NULL,
++    "vendor_id" TEXT,
++    "status" "ConversationStatus" NOT NULL DEFAULT 'PENDING_ASSIGNMENT',
++    "last_message_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
++    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
++    "updated_at" TIMESTAMP(3) NOT NULL,
++
++    CONSTRAINT "conversations_pkey" PRIMARY KEY ("id")
++);
++
++-- CreateTable
++CREATE TABLE "messages" (
++    "id" TEXT NOT NULL,
++    "conversation_id" TEXT NOT NULL,
++    "sender_type" "SenderType" NOT NULL,
++    "sender_id" TEXT,
++    "content" TEXT,
++    "wa_message_id" TEXT,
++    "tags" TEXT[] DEFAULT ARRAY[]::TEXT[],
++    "is_internal" BOOLEAN NOT NULL DEFAULT false,
++    "status" "MessageStatus",
++    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
++    "updated_at" TIMESTAMP(3) NOT NULL,
++
++    CONSTRAINT "messages_pkey" PRIMARY KEY ("id")
++);
++
++-- CreateTable
++CREATE TABLE "attachments" (
++    "id" TEXT NOT NULL,
++    "message_id" TEXT NOT NULL,
++    "type" "AttachmentType" NOT NULL,
++    "url" TEXT NOT NULL,
++    "mime_type" TEXT,
++    "size" INTEGER,
++    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
++
++    CONSTRAINT "attachments_pkey" PRIMARY KEY ("id")
++);
++
++-- CreateTable
++CREATE TABLE "ai_configs" (
++    "id" TEXT NOT NULL,
++    "tenant_id" TEXT NOT NULL,
++    "provider" TEXT NOT NULL DEFAULT 'gemini',
++    "api_key" TEXT NOT NULL,
++    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
++    "updated_at" TIMESTAMP(3) NOT NULL,
++
++    CONSTRAINT "ai_configs_pkey" PRIMARY KEY ("id")
++);
++
++-- CreateTable
++CREATE TABLE "documents" (
++    "id" TEXT NOT NULL,
++    "filename" TEXT NOT NULL,
++    "size" INTEGER NOT NULL,
++    "status" "DocumentStatus" NOT NULL DEFAULT 'PROCESSING',
++    "tenant_id" TEXT NOT NULL,
++    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
++    "updated_at" TIMESTAMP(3) NOT NULL,
++
++    CONSTRAINT "documents_pkey" PRIMARY KEY ("id")
++);
++
++-- CreateTable
++CREATE TABLE "document_chunks" (
++    "id" TEXT NOT NULL,
++    "text" TEXT NOT NULL,
++    "embedding" vector(768) NOT NULL,
++    "document_id" TEXT NOT NULL,
++    "tenant_id" TEXT NOT NULL,
++    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
++    "updated_at" TIMESTAMP(3) NOT NULL,
++
++    CONSTRAINT "document_chunks_pkey" PRIMARY KEY ("id")
++);
++
++-- CreateIndex
++CREATE UNIQUE INDEX "whatsapp_configs_tenant_id_key" ON "whatsapp_configs"("tenant_id");
++
++-- CreateIndex
++CREATE INDEX "clients_tenant_id_idx" ON "clients"("tenant_id");
++
++-- CreateIndex
++CREATE UNIQUE INDEX "clients_tenant_id_phone_number_key" ON "clients"("tenant_id", "phone_number");
++
++-- CreateIndex
++CREATE INDEX "conversations_tenant_id_idx" ON "conversations"("tenant_id");
++
++-- CreateIndex
++CREATE INDEX "conversations_client_id_idx" ON "conversations"("client_id");
++
++-- CreateIndex
++CREATE INDEX "conversations_vendor_id_idx" ON "conversations"("vendor_id");
++
++-- CreateIndex
++CREATE UNIQUE INDEX "messages_wa_message_id_key" ON "messages"("wa_message_id");
++
++-- CreateIndex
++CREATE INDEX "messages_conversation_id_idx" ON "messages"("conversation_id");
++
++-- CreateIndex
++CREATE INDEX "messages_sender_id_idx" ON "messages"("sender_id");
++
++-- CreateIndex
++CREATE INDEX "messages_wa_message_id_idx" ON "messages"("wa_message_id");
++
++-- CreateIndex
++CREATE INDEX "attachments_message_id_idx" ON "attachments"("message_id");
++
++-- CreateIndex
++CREATE UNIQUE INDEX "ai_configs_tenant_id_key" ON "ai_configs"("tenant_id");
++
++-- CreateIndex
++CREATE INDEX "documents_tenant_id_idx" ON "documents"("tenant_id");
++
++-- CreateIndex
++CREATE INDEX "document_chunks_document_id_idx" ON "document_chunks"("document_id");
++
++-- CreateIndex
++CREATE INDEX "document_chunks_tenant_id_idx" ON "document_chunks"("tenant_id");
++
++-- AddForeignKey
++ALTER TABLE "whatsapp_configs" ADD CONSTRAINT "whatsapp_configs_tenant_id_fkey" FOREIGN KEY ("tenant_id") REFERENCES "tenants"("id") ON DELETE CASCADE ON UPDATE CASCADE;
++
++-- AddForeignKey
++ALTER TABLE "clients" ADD CONSTRAINT "clients_tenant_id_fkey" FOREIGN KEY ("tenant_id") REFERENCES "tenants"("id") ON DELETE CASCADE ON UPDATE CASCADE;
++
++-- AddForeignKey
++ALTER TABLE "conversations" ADD CONSTRAINT "conversations_tenant_id_fkey" FOREIGN KEY ("tenant_id") REFERENCES "tenants"("id") ON DELETE CASCADE ON UPDATE CASCADE;
++
++-- AddForeignKey
++ALTER TABLE "conversations" ADD CONSTRAINT "conversations_client_id_fkey" FOREIGN KEY ("client_id") REFERENCES "clients"("id") ON DELETE CASCADE ON UPDATE CASCADE;
++
++-- AddForeignKey
++ALTER TABLE "conversations" ADD CONSTRAINT "conversations_vendor_id_fkey" FOREIGN KEY ("vendor_id") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE;
++
++-- AddForeignKey
++ALTER TABLE "messages" ADD CONSTRAINT "messages_conversation_id_fkey" FOREIGN KEY ("conversation_id") REFERENCES "conversations"("id") ON DELETE CASCADE ON UPDATE CASCADE;
++
++-- AddForeignKey
++ALTER TABLE "attachments" ADD CONSTRAINT "attachments_message_id_fkey" FOREIGN KEY ("message_id") REFERENCES "messages"("id") ON DELETE CASCADE ON UPDATE CASCADE;
++
++-- AddForeignKey
++ALTER TABLE "ai_configs" ADD CONSTRAINT "ai_configs_tenant_id_fkey" FOREIGN KEY ("tenant_id") REFERENCES "tenants"("id") ON DELETE CASCADE ON UPDATE CASCADE;
++
++-- AddForeignKey
++ALTER TABLE "documents" ADD CONSTRAINT "documents_tenant_id_fkey" FOREIGN KEY ("tenant_id") REFERENCES "tenants"("id") ON DELETE CASCADE ON UPDATE CASCADE;
++
++-- AddForeignKey
++ALTER TABLE "document_chunks" ADD CONSTRAINT "document_chunks_document_id_fkey" FOREIGN KEY ("document_id") REFERENCES "documents"("id") ON DELETE CASCADE ON UPDATE CASCADE;
++
++-- AddForeignKey
++ALTER TABLE "document_chunks" ADD CONSTRAINT "document_chunks_tenant_id_fkey" FOREIGN KEY ("tenant_id") REFERENCES "tenants"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+diff --git a/backend/prisma/schema.prisma b/backend/prisma/schema.prisma
+index 6dc09bd..bec16a3 100644
+--- a/backend/prisma/schema.prisma
++++ b/backend/prisma/schema.prisma
+@@ -13,6 +13,12 @@ enum RoleType {
+   VENDOR
+ }
+ 
++enum DocumentStatus {
++  PROCESSING
++  READY
++  ERROR
++}
++
+ enum ConversationStatus {
+   PENDING_ASSIGNMENT
+   ACTIVE
+@@ -22,6 +28,8 @@ enum ConversationStatus {
+ enum SenderType {
+   CLIENT
+   VENDOR
++  COORDINATOR
++  ADMIN
+   IA
+   SYSTEM
+ }
+@@ -54,8 +62,11 @@ model Tenant {
+   users         User[]
+   branches      Branch[]
+   whatsappConfig WhatsAppConfig?
++  aiConfig      AiConfig?
+   clients       Client[]
+   conversations Conversation[]
++  documents     Document[]
++  documentChunks DocumentChunk[]
+ 
+   @@map("tenants")
+ }
+@@ -155,6 +166,7 @@ model Client {
+   profilePic  String?  @map("profile_pic")
+   createdAt   DateTime @default(now()) @map("created_at")
+   updatedAt   DateTime @updatedAt @map("updated_at")
++  isBlocked   Boolean  @default(false) @map("is_blocked")
+ 
+   tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+   conversations Conversation[]
+@@ -221,3 +233,49 @@ model Attachment {
+   @@index([messageId])
+   @@map("attachments")
+ }
++
++model AiConfig {
++  id                String   @id @default(cuid())
++  tenantId          String   @unique @map("tenant_id")
++  provider          String   @default("gemini")
++  apiKey            String   @map("api_key") // Encrypted
++  createdAt         DateTime @default(now()) @map("created_at")
++  updatedAt         DateTime @updatedAt @map("updated_at")
++
++  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
++
++  @@map("ai_configs")
++}
++
++model Document {
++  id        String         @id @default(cuid())
++  filename  String
++  size      Int
++  status    DocumentStatus @default(PROCESSING)
++  tenantId  String         @map("tenant_id")
++  createdAt DateTime       @default(now()) @map("created_at")
++  updatedAt DateTime       @updatedAt @map("updated_at")
++
++  tenant Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
++  chunks DocumentChunk[]
++
++  @@index([tenantId])
++  @@map("documents")
++}
++
++model DocumentChunk {
++  id         String                     @id @default(cuid())
++  text       String                     @db.Text
++  embedding  Unsupported("vector(768)")
++  documentId String                     @map("document_id")
++  tenantId   String                     @map("tenant_id")
++  createdAt  DateTime                   @default(now()) @map("created_at")
++  updatedAt  DateTime                   @updatedAt @map("updated_at")
++
++  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
++  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
++
++  @@index([documentId])
++  @@index([tenantId])
++  @@map("document_chunks")
++}
+diff --git a/backend/src/middleware/upload.middleware.js b/backend/src/middleware/upload.middleware.js
+new file mode 100644
+index 0000000..c9b9a41
+--- /dev/null
++++ b/backend/src/middleware/upload.middleware.js
+@@ -0,0 +1,26 @@
++const multer = require('multer');
++
++// Configure multer to use memory storage
++const storage = multer.memoryStorage();
++
++// Validate file type (only PDF and CSV)
++const fileFilter = (req, file, cb) => {
++  const allowedMimeTypes = ['application/pdf', 'text/csv'];
++  
++  if (allowedMimeTypes.includes(file.mimetype)) {
++    cb(null, true);
++  } else {
++    cb(new Error('Invalid file type. Only PDF and CSV are allowed.'), false);
++  }
++};
++
++// Create upload instance with 5MB limit
++const upload = multer({
++  storage,
++  limits: {
++    fileSize: 5 * 1024 * 1024, // 5MB
++  },
++  fileFilter,
++});
++
++module.exports = upload;
+diff --git a/backend/src/routes/tenant.routes.js b/backend/src/routes/tenant.routes.js
+index 168d98f..d19f6fd 100644
+--- a/backend/src/routes/tenant.routes.js
++++ b/backend/src/routes/tenant.routes.js
+@@ -3,6 +3,8 @@ const authenticate = require('../middleware/auth');
+ const authorize = require('../middleware/rbac');
+ const tenantService = require('../services/tenant.service');
+ const { success } = require('../utils/response');
++const upload = require('../middleware/upload.middleware');
++const knowledgeBaseService = require('../services/knowledgeBase.service');
+ 
+ const router = Router();
+ 
+@@ -25,5 +27,115 @@ router.put('/profile', authorize('ADMIN'), async (req, res, next) => {
+     next(err);
+   }
+ });
++/**
++ * @swagger
++ * /tenant/ai-config:
++ *   get:
++ *     summary: Retrieve AI configuration status
++ *     tags: [Tenant]
++ *     security:
++ *       - bearerAuth: []
++ *     responses:
++ *       200:
++ *         description: OK
++ */
++router.get('/ai-config', authorize('ADMIN'), async (req, res, next) => {
++  try {
++    const config = await tenantService.getAiConfig(req.user.tenantId);
++    success(res, config);
++  } catch (err) {
++    next(err);
++  }
++});
++
++/**
++ * @swagger
++ * /tenant/ai-config:
++ *   put:
++ *     summary: Update AI configuration
++ *     tags: [Tenant]
++ *     security:
++ *       - bearerAuth: []
++ *     requestBody:
++ *       required: true
++ *       content:
++ *         application/json:
++ *           schema:
++ *             type: object
++ *             properties:
++ *               provider:
++ *                 type: string
++ *               apiKey:
++ *                 type: string
++ *     responses:
++ *       200:
++ *         description: OK
++ */
++router.put('/ai-config', authorize('ADMIN'), async (req, res, next) => {
++  try {
++    const config = await tenantService.updateAiConfig(req.user.tenantId, req.body);
++    success(res, config);
++  } catch (err) {
++    next(err);
++  }
++});
++
++/**
++ * @swagger
++ * /tenant/knowledge-base:
++ *   get:
++ *     summary: Retrieve knowledge base documents
++ *     tags: [Tenant, KnowledgeBase]
++ *     security:
++ *       - bearerAuth: []
++ *     responses:
++ *       200:
++ *         description: OK
++ */
++router.get('/knowledge-base', authorize('ADMIN'), async (req, res, next) => {
++  try {
++    const documents = await knowledgeBaseService.getDocuments(req.user.tenantId);
++    success(res, documents);
++  } catch (err) {
++    next(err);
++  }
++});
++
++/**
++ * @swagger
++ * /tenant/knowledge-base/upload:
++ *   post:
++ *     summary: Upload a document to the knowledge base
++ *     tags: [Tenant, KnowledgeBase]
++ *     security:
++ *       - bearerAuth: []
++ *     requestBody:
++ *       required: true
++ *       content:
++ *         multipart/form-data:
++ *           schema:
++ *             type: object
++ *             properties:
++ *               file:
++ *                 type: string
++ *                 format: binary
++ *     responses:
++ *       202:
++ *         description: Accepted for processing
++ */
++router.post(
++  '/knowledge-base/upload',
++  authorize('ADMIN'),
++  upload.single('file'),
++  async (req, res, next) => {
++    try {
++      const document = await knowledgeBaseService.uploadDocument(req.user.tenantId, req.file);
++      // Return 202 Accepted because processing happens asynchronously
++      success(res, document, 202);
++    } catch (err) {
++      next(err);
++    }
++  }
++);
+ 
+ module.exports = router;
+diff --git a/backend/src/services/ai.service.js b/backend/src/services/ai.service.js
+new file mode 100644
+index 0000000..67d5eee
+--- /dev/null
++++ b/backend/src/services/ai.service.js
+@@ -0,0 +1,34 @@
++const { getProvider } = require('../providers');
++const ApiError = require('../utils/ApiError');
++
++/**
++ * AI Service 
++ * Acts as a facade to the AI Provider Adapter.
++ */
++class AIService {
++  
++  async generateResponse(tenantId, messages, context = '') {
++    try {
++      const providerName = process.env.AI_PROVIDER || 'gemini';
++      const provider = getProvider(providerName);
++      return await provider.generateResponse({ messages, context, tenantId });
++    } catch (error) {
++      if (error instanceof ApiError) throw error;
++      throw ApiError.internal('AI Service Error: ' + error.message);
++    }
++  }
++
++  async embed(tenantId, text) {
++    try {
++      const providerName = process.env.AI_PROVIDER || 'gemini';
++      const provider = getProvider(providerName);
++      return await provider.embed({ text, tenantId });
++    } catch (error) {
++      if (error instanceof ApiError) throw error;
++      throw ApiError.internal('AI Service Embed Error: ' + error.message);
++    }
++  }
++
++}
++
++module.exports = new AIService();
+diff --git a/backend/src/services/knowledgeBase.service.js b/backend/src/services/knowledgeBase.service.js
+new file mode 100644
+index 0000000..f77154b
+--- /dev/null
++++ b/backend/src/services/knowledgeBase.service.js
+@@ -0,0 +1,87 @@
++const prisma = require('../config/database');
++const ApiError = require('../utils/ApiError');
++const aiService = require('./ai.service');
++const { extractAndChunkDocument } = require('../utils/chunking');
++
++class KnowledgeBaseService {
++  
++  async uploadDocument(tenantId, file) {
++    if (!file) throw new ApiError(400, 'No file uploaded');
++
++    const { originalname, size, buffer, mimetype } = file;
++
++    // 1. Create a Document record in PROCESSING state
++    const document = await prisma.document.create({
++      data: {
++        tenantId,
++        filename: originalname,
++        size,
++        status: 'PROCESSING'
++      }
++    });
++
++    // 2. Process chunks asynchronously to avoid timeout
++    // In a real production app we'd use a queue (e.g. BullMQ), but we'll do it in background here
++    this._processDocumentInBackground(tenantId, document.id, buffer, mimetype).catch(err => {
++      console.error(`Error processing document ${document.id}:`, err);
++    });
++
++    return document;
++  }
++
++  async _processDocumentInBackground(tenantId, documentId, buffer, mimetype) {
++    try {
++      // 1. Extract and chunk text
++      const chunks = await extractAndChunkDocument(buffer, mimetype);
++      
++      if (!chunks || chunks.length === 0) {
++        throw new Error('No text could be extracted from the document');
++      }
++
++      // 2. Embed and Save in transaction
++      // Since generating embeddings takes time and can fail, we process them in batches or sequentially.
++      // We will embed them first, then save them all in a transaction.
++      const chunkData = [];
++      for (const text of chunks) {
++        // Embed each chunk via aiService
++        const embedding = await aiService.embed(tenantId, text);
++        chunkData.push({ text, embedding });
++      }
++
++      // Save chunks within transaction and update status
++      await prisma.$transaction(async (tx) => {
++        for (const data of chunkData) {
++          // Format embedding array as string '[0.1, 0.2, ...]' for pgvector
++          const embeddingStr = JSON.stringify(data.embedding);
++          
++          await tx.$executeRaw`
++            INSERT INTO "document_chunks" ("id", "text", "embedding", "document_id", "tenant_id", "created_at", "updated_at")
++            VALUES (gen_random_uuid(), ${data.text}, ${embeddingStr}::vector, ${documentId}, ${tenantId}, NOW(), NOW())
++          `;
++        }
++
++        await tx.document.update({
++          where: { id: documentId },
++          data: { status: 'READY' }
++        });
++      });
++
++    } catch (error) {
++      console.error(`Document processing failed for ${documentId}:`, error);
++      await prisma.document.update({
++        where: { id: documentId },
++        data: { status: 'ERROR' }
++      });
++    }
++  }
++
++  async getDocuments(tenantId) {
++    return await prisma.document.findMany({
++      where: { tenantId },
++      orderBy: { createdAt: 'desc' }
++    });
++  }
++
++}
++
++module.exports = new KnowledgeBaseService();
+diff --git a/backend/src/utils/chunking.js b/backend/src/utils/chunking.js
+new file mode 100644
+index 0000000..7fa29e1
+--- /dev/null
++++ b/backend/src/utils/chunking.js
+@@ -0,0 +1,95 @@
++const pdfParse = require('pdf-parse');
++const csvParser = require('csv-parser');
++const { Readable } = require('stream');
++
++/**
++ * Extracts text from a PDF buffer and chunks it.
++ * Chunking strategy: split by double newline, or 1000 chars with 200 overlap.
++ */
++async function processPdfBuffer(buffer) {
++  const data = await pdfParse(buffer);
++  const text = data.text;
++  
++  const chunks = [];
++  // First, try splitting by double newline to preserve paragraph structure
++  const paragraphs = text.split(/\n\n+/);
++  
++  for (const para of paragraphs) {
++    const trimmed = para.trim();
++    if (!trimmed) continue;
++    
++    // If paragraph is larger than 1000 chars, chunk it with overlap
++    if (trimmed.length > 1000) {
++      const MAX_LENGTH = 1000;
++      const OVERLAP = 200;
++      
++      let startIndex = 0;
++      while (startIndex < trimmed.length) {
++        let endIndex = startIndex + MAX_LENGTH;
++        if (endIndex > trimmed.length) {
++          endIndex = trimmed.length;
++        }
++        
++        chunks.push(trimmed.substring(startIndex, endIndex));
++        
++        startIndex += (MAX_LENGTH - OVERLAP);
++      }
++    } else {
++      chunks.push(trimmed);
++    }
++  }
++  
++  return chunks;
++}
++
++/**
++ * Extracts data from a CSV buffer and chunks it.
++ * Chunking strategy: Each row becomes a chunk in format "key1: value1, key2: value2"
++ */
++function processCsvBuffer(buffer) {
++  return new Promise((resolve, reject) => {
++    const results = [];
++    
++    // Create a readable stream from the buffer
++    const stream = Readable.from(buffer.toString('utf-8'));
++    
++    stream
++      .pipe(csvParser())
++      .on('data', (data) => {
++        // Map row to a string
++        const rowString = Object.entries(data)
++          .map(([key, value]) => `${key}: ${value}`)
++          .join(', ');
++        
++        if (rowString) {
++          results.push(rowString);
++        }
++      })
++      .on('end', () => {
++        resolve(results);
++      })
++      .on('error', (error) => {
++        reject(error);
++      });
++  });
++}
++
++/**
++ * Process an uploaded file buffer based on mimetype.
++ * Returns an array of text chunks.
++ */
++async function extractAndChunkDocument(buffer, mimetype) {
++  if (mimetype === 'application/pdf') {
++    return await processPdfBuffer(buffer);
++  } else if (mimetype === 'text/csv' || mimetype === 'application/csv') {
++    return await processCsvBuffer(buffer);
++  } else {
++    throw new Error('Unsupported file type');
++  }
++}
++
++module.exports = {
++  extractAndChunkDocument,
++  processPdfBuffer,
++  processCsvBuffer
++};
+diff --git a/backend/tests/integration/knowledgeBase.test.js b/backend/tests/integration/knowledgeBase.test.js
+new file mode 100644
+index 0000000..195ef4c
+--- /dev/null
++++ b/backend/tests/integration/knowledgeBase.test.js
+@@ -0,0 +1,106 @@
++const request = require('supertest');
++const app = require('../../src/app');
++const prisma = require('../../src/config/database');
++const jwt = require('jsonwebtoken');
++const fs = require('fs');
++const path = require('path');
++
++// Mock aiService so we don't actually call Gemini API during tests
++jest.mock('../../src/services/ai.service', () => ({
++  embed: jest.fn().mockResolvedValue(new Array(768).fill(0.1))
++}));
++
++describe('Knowledge Base Integration Tests', () => {
++  let tenantId;
++  let adminToken;
++  let adminId;
++
++  beforeAll(async () => {
++    // 1. Create Tenant
++    const tenant = await prisma.tenant.create({
++      data: {
++        name: 'Test Tenant KB',
++        domain: 'testkb.com',
++      }
++    });
++    tenantId = tenant.id;
++
++    // 2. Create Admin User
++    const admin = await prisma.user.create({
++      data: {
++        name: 'Admin Test',
++        email: 'adminkb@test.com',
++        passwordHash: 'hashed',
++        role: 'ADMIN',
++        tenantId: tenantId
++      }
++    });
++    adminId = admin.id;
++
++    // 3. Generate token
++    adminToken = jwt.sign(
++      { id: admin.id, role: admin.role, tenantId },
++      process.env.JWT_SECRET || 'dev-jwt-secret-change-in-production'
++    );
++  });
++
++  afterAll(async () => {
++    await prisma.document.deleteMany({ where: { tenantId } });
++    await prisma.user.delete({ where: { id: adminId } });
++    await prisma.tenant.delete({ where: { id: tenantId } });
++  });
++
++  describe('POST /api/tenant/knowledge-base/upload', () => {
++    it('should upload a CSV file and process it asynchronously', async () => {
++      const csvBuffer = Buffer.from("question,answer\nWhat is the refund policy?,30 days\nHow to contact?,Call 555-1234");
++      
++      const res = await request(app)
++        .post('/api/tenant/knowledge-base/upload')
++        .set('Authorization', `Bearer ${adminToken}`)
++        .attach('file', csvBuffer, 'faq.csv');
++
++      expect(res.status).toBe(202);
++      expect(res.body.data).toBeDefined();
++      expect(res.body.data.filename).toBe('faq.csv');
++      expect(res.body.data.status).toBe('PROCESSING');
++      
++      const docId = res.body.data.id;
++
++      // Wait a bit for the async processing to finish
++      await new Promise((resolve) => setTimeout(resolve, 1500));
++
++      const updatedDoc = await prisma.document.findUnique({ where: { id: docId }});
++      expect(updatedDoc.status).toBe('READY');
++
++      const chunks = await prisma.documentChunk.findMany({ where: { documentId: docId }});
++      expect(chunks.length).toBeGreaterThan(0);
++      expect(chunks[0].text).toContain('question:');
++    });
++
++    it('should reject invalid file types', async () => {
++      const txtBuffer = Buffer.from("just some text");
++      
++      const res = await request(app)
++        .post('/api/tenant/knowledge-base/upload')
++        .set('Authorization', `Bearer ${adminToken}`)
++        .attach('file', txtBuffer, 'notes.txt');
++
++      expect(res.status).toBe(500); // Because it goes through global error handler as an Error
++      // Actually multer filter error might be 500 or 400 depending on handler
++      expect(res.body.error.message).toMatch(/Invalid file type/);
++    });
++  });
++
++  describe('GET /api/tenant/knowledge-base', () => {
++    it('should return a list of documents for the tenant', async () => {
++      const res = await request(app)
++        .get('/api/tenant/knowledge-base')
++        .set('Authorization', `Bearer ${adminToken}`);
++
++      expect(res.status).toBe(200);
++      expect(res.body.data).toBeDefined();
++      expect(Array.isArray(res.body.data)).toBe(true);
++      expect(res.body.data.length).toBeGreaterThanOrEqual(1);
++    });
++  });
++});
+diff --git a/backend/tests/unit/chunking.test.js b/backend/tests/unit/chunking.test.js
+new file mode 100644
+index 0000000..1b0ee35
+--- /dev/null
++++ b/backend/tests/unit/chunking.test.js
+@@ -0,0 +1,24 @@
++const { processCsvBuffer } = require('../../src/utils/chunking');
++
++describe('Chunking Utilities', () => {
++  describe('processCsvBuffer', () => {
++    it('should correctly map CSV rows to text chunks', async () => {
++      const csvContent = "name,age,city\nJohn,30,New York\nAlice,25,London";
++      const buffer = Buffer.from(csvContent, 'utf-8');
++      
++      const chunks = await processCsvBuffer(buffer);
++      
++      expect(chunks).toHaveLength(2);
++      expect(chunks[0]).toBe('name: John, age: 30, city: New York');
++      expect(chunks[1]).toBe('name: Alice, age: 25, city: London');
++    });
++
++    it('should handle empty CSV files gracefully', async () => {
++      const buffer = Buffer.from('name,age,city\n', 'utf-8');
++      
++      const chunks = await processCsvBuffer(buffer);
++      
++      expect(chunks).toHaveLength(0);
++    });
++  });
++});
+diff --git a/docker-compose.yml b/docker-compose.yml
+index acff5ea..2b639e5 100644
+--- a/docker-compose.yml
++++ b/docker-compose.yml
+@@ -1,6 +1,6 @@
+ services:
+   postgres:
+-    image: postgres:16
++    image: pgvector/pgvector:pg16
+     container_name: salesflow-postgres
+     restart: unless-stopped
+     environment:
+@@ -9,6 +9,8 @@ services:
+       POSTGRES_DB: ${POSTGRES_DB:-salesflow}
+     volumes:
+       - postgres_data:/var/lib/postgresql/data
++    ports:
++      - "5432:5432"
+     healthcheck:
+       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-salesflow} -d ${POSTGRES_DB:-salesflow}"]
+       interval: 5s
+diff --git a/frontend/src/features/settings/KnowledgeBaseSection.jsx b/frontend/src/features/settings/KnowledgeBaseSection.jsx
+new file mode 100644
+index 0000000..1c3a433
+--- /dev/null
++++ b/frontend/src/features/settings/KnowledgeBaseSection.jsx
+@@ -0,0 +1,166 @@
++import { useState, useEffect } from 'react';
++import { uploadKnowledgeBaseDocument, getKnowledgeBaseDocuments } from '../../services/api';
++
++export default function KnowledgeBaseSection() {
++  const [documents, setDocuments] = useState([]);
++  const [loading, setLoading] = useState(true);
++  const [uploading, setUploading] = useState(false);
++  const [error, setError] = useState('');
++  const [file, setFile] = useState(null);
++  
++  useEffect(() => {
++    fetchDocuments();
++  }, []);
++  
++  const fetchDocuments = async () => {
++    try {
++      setLoading(true);
++      const res = await getKnowledgeBaseDocuments();
++      setDocuments(res.data);
++    } catch (err) {
++      setError(err.message);
++    } finally {
++      setLoading(false);
++    }
++  };
++  
++  const handleFileChange = (e) => {
++    const selected = e.target.files[0];
++    if (selected && (selected.type === 'application/pdf' || selected.type === 'text/csv' || selected.name.endsWith('.csv'))) {
++      setFile(selected);
++      setError('');
++    } else {
++      setFile(null);
++      setError('Por favor, selecciona un archivo PDF o CSV.');
++    }
++  };
++  
++  const handleUpload = async (e) => {
++    e.preventDefault();
++    if (!file) return;
++    
++    try {
++      setUploading(true);
++      setError('');
++      
++      await uploadKnowledgeBaseDocument(file);
++      
++      setFile(null);
++      // Reset input
++      const fileInput = document.getElementById('kb-file-upload');
++      if (fileInput) fileInput.value = '';
++      
++      // Fetch documents again to show the new one
++      await fetchDocuments();
++      
++    } catch (err) {
++      setError(err.message);
++    } finally {
++      setUploading(false);
++    }
++  };
++  
++  const formatSize = (bytes) => {
++    if (bytes === 0) return '0 Bytes';
++    const k = 1024;
++    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
++    const i = Math.floor(Math.log(bytes) / Math.log(k));
++    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
++  };
++
++  const getStatusBadge = (status) => {
++    switch (status) {
++      case 'READY':
++        return <span className="px-2 py-1 text-xs rounded-full bg-emerald-500/20 text-emerald-400">Listo</span>;
++      case 'ERROR':
++        return <span className="px-2 py-1 text-xs rounded-full bg-red-500/20 text-red-400">Error</span>;
++      case 'PROCESSING':
++      default:
++        return <span className="px-2 py-1 text-xs rounded-full bg-yellow-500/20 text-yellow-400">Procesando</span>;
++    }
++  };
++  
++  return (
++    <div className="space-y-6">
++      <div className="rounded-lg border border-slate-800 bg-sales-slate-900 p-6">
++        <h2 className="mb-4 text-lg font-medium text-sales-slate-100">Base de Conocimiento (RAG)</h2>
++        <p className="mb-6 text-sm text-sales-slate-400">
++          Sube documentos PDF o CSV para entrenar a la inteligencia artificial con información específica de tu empresa.
++        </p>
++
++        {error && (
++          <div className="mb-4 rounded bg-red-500/10 p-3 text-sm text-red-400">
++            {error}
++          </div>
++        )}
++
++        <form onSubmit={handleUpload} className="flex items-end gap-4 mb-8">
++          <div className="flex-1">
++            <label htmlFor="kb-file-upload" className="block text-sm font-medium text-sales-slate-300 mb-1">
++              Seleccionar Documento (Max 5MB)
++            </label>
++            <input
++              id="kb-file-upload"
++              type="file"
++              accept=".pdf,.csv,application/pdf,text/csv"
++              onChange={handleFileChange}
++              className="block w-full text-sm text-sales-slate-300
++                file:mr-4 file:py-2 file:px-4
++                file:rounded file:border-0
++                file:text-sm file:font-medium
++                file:bg-sales-blue-500/20 file:text-sales-blue-400
++                hover:file:bg-sales-blue-500/30
++                cursor-pointer"
++            />
++          </div>
++          <button
++            type="submit"
++            disabled={!file || uploading}
++            className="rounded bg-sales-coral px-4 py-2 font-medium text-white transition-colors hover:bg-sales-coral/90 disabled:opacity-50"
++          >
++            {uploading ? 'Subiendo...' : 'Subir Documento'}
++          </button>
++        </form>
++
++        <div className="overflow-x-auto">
++          <table className="w-full text-left text-sm text-sales-slate-300">
++            <thead className="bg-slate-800/50 text-xs uppercase text-sales-slate-400">
++              <tr>
++                <th className="px-4 py-3">Archivo</th>
++                <th className="px-4 py-3">Tamaño</th>
++                <th className="px-4 py-3">Estado</th>
++                <th className="px-4 py-3">Fecha</th>
++              </tr>
++            </thead>
++            <tbody className="divide-y divide-slate-800">
++              {loading ? (
++                <tr>
++                  <td colSpan="4" className="px-4 py-6 text-center text-sales-slate-500">
++                    Cargando documentos...
++                  </td>
++                </tr>
++              ) : documents.length === 0 ? (
++                <tr>
++                  <td colSpan="4" className="px-4 py-6 text-center text-sales-slate-500">
++                    No hay documentos subidos a la base de conocimiento.
++                  </td>
++                </tr>
++              ) : (
++                documents.map((doc) => (
++                  <tr key={doc.id} className="hover:bg-slate-800/30 transition-colors">
++                    <td className="px-4 py-3 font-medium text-sales-slate-200">
++                      {doc.filename}
++                    </td>
++                    <td className="px-4 py-3">{formatSize(doc.size)}</td>
++                    <td className="px-4 py-3">{getStatusBadge(doc.status)}</td>
++                    <td className="px-4 py-3">{new Date(doc.createdAt).toLocaleDateString()}</td>
++                  </tr>
++                ))
++              )}
++            </tbody>
++          </table>
++        </div>
++      </div>
++    </div>
++  );
++}
+diff --git a/frontend/src/pages/Settings.jsx b/frontend/src/pages/Settings.jsx
+index 7198901..a3ae71c 100644
+--- a/frontend/src/pages/Settings.jsx
++++ b/frontend/src/pages/Settings.jsx
+@@ -4,12 +4,16 @@ import CompanyProfileSection from '../features/settings/CompanyProfileSection.js
+ import BranchListSection from '../features/settings/BranchListSection.jsx';
+ import GroupListSection from '../features/settings/GroupListSection.jsx';
+ import WhatsAppSettingsSection from '../features/settings/WhatsAppSettingsSection.jsx';
++import AiConfigSection from '../features/settings/AiConfigSection.jsx';
++import KnowledgeBaseSection from '../features/settings/KnowledgeBaseSection.jsx';
+ 
+ const tabs = [
+   { id: 'company', label: 'Empresa', roles: ['ADMIN', 'COORDINATOR'] },
+   { id: 'branches', label: 'Sucursales', roles: ['ADMIN', 'COORDINATOR'] },
+   { id: 'groups', label: 'Grupos', roles: ['ADMIN', 'COORDINATOR'] },
+   { id: 'whatsapp', label: 'WhatsApp API', roles: ['ADMIN'] },
++  { id: 'ai', label: 'Inteligencia Artificial', roles: ['ADMIN'] },
++  { id: 'kb', label: 'Base de Conocimiento', roles: ['ADMIN'] },
+ ];
+ 
+ export default function Settings() {
+@@ -24,6 +28,8 @@ export default function Settings() {
+       case 'branches': return <BranchListSection />;
+       case 'groups': return <GroupListSection />;
+       case 'whatsapp': return <WhatsAppSettingsSection />;
++      case 'ai': return <AiConfigSection />;
++      case 'kb': return <KnowledgeBaseSection />;
+       default: return null;
+     }
+   }
+diff --git a/frontend/src/services/api.js b/frontend/src/services/api.js
+index 8e0f672..0508a62 100644
+--- a/frontend/src/services/api.js
++++ b/frontend/src/services/api.js
+@@ -67,6 +67,10 @@ export async function put(endpoint, data) {
+   return request(endpoint, { method: 'PUT', body: JSON.stringify(data) });
+ }
+ 
++export async function patch(endpoint, data) {
++  return request(endpoint, { method: 'PATCH', body: JSON.stringify(data) });
++}
++
+ export async function postFormData(endpoint, formData, signal = null) {
+   const options = { method: 'POST', body: formData };
+   if (signal) options.signal = signal;
+@@ -76,3 +80,94 @@ export async function postFormData(endpoint, formData, signal = null) {
+ export async function del(endpoint) {
+   return request(endpoint, { method: 'DELETE' });
+ }
++
++/**
++ * Fetches the AI configuration for the current tenant.
++ * @returns {Promise<Object>} The AI configuration object containing isConfigured and provider
++ */
++export async function getAiConfig() {
++  const res = await get('/tenant/ai-config');
++  if (!res.ok) {
++    const text = await res.text();
++    let error = {};
++    if (text) {
++      try {
++        error = text.startsWith('{') ? JSON.parse(text) : { error: text };
++      } catch (e) {
++        error = { error: text };
++      }
++    }
++    throw new Error(error.error || 'Failed to fetch AI config');
++  }
++  return res.json();
++}
++
++/**
++ * Updates the AI configuration for the current tenant.
++ * @param {Object} data - The configuration data
++ * @param {string} data.provider - The AI provider name (e.g. gemini)
++ * @param {string} data.apiKey - The API key for the provider
++ * @returns {Promise<Object>} The updated AI configuration object
++ */
++export async function updateAiConfig(data) {
++  const res = await put('/tenant/ai-config', data);
++  if (!res.ok) {
++    const text = await res.text();
++    let error = {};
++    if (text) {
++      try {
++        error = text.startsWith('{') ? JSON.parse(text) : { error: text };
++      } catch (e) {
++        error = { error: text };
++      }
++    }
++    throw new Error(error.error || 'Failed to update AI config');
++  }
++  return res.json();
++}
++
++/**
++ * Uploads a document to the knowledge base.
++ * @param {File} file - The file to upload (PDF or CSV)
++ * @returns {Promise<Object>} The uploaded document
++ */
++export async function uploadKnowledgeBaseDocument(file) {
++  const formData = new FormData();
++  formData.append('file', file);
++  
++  const res = await postFormData('/tenant/knowledge-base/upload', formData);
++  if (!res.ok) {
++    const text = await res.text();
++    let error = {};
++    if (text) {
++      try {
++        error = text.startsWith('{') ? JSON.parse(text) : { error: text };
++      } catch (e) {
++        error = { error: text };
++      }
++    }
++    throw new Error(error.error || 'Failed to upload document');
++  }
++  return res.json();
++}
++
++/**
++ * Retrieves the knowledge base documents for the tenant.
++ * @returns {Promise<Object>} List of documents
++ */
++export async function getKnowledgeBaseDocuments() {
++  const res = await get('/tenant/knowledge-base');
++  if (!res.ok) {
++    const text = await res.text();
++    let error = {};
++    if (text) {
++      try {
++        error = text.startsWith('{') ? JSON.parse(text) : { error: text };
++      } catch (e) {
++        error = { error: text };
++      }
++    }
++    throw new Error(error.error || 'Failed to fetch knowledge base documents');
++  }
++  return res.json();
++}

@@ -124,6 +124,11 @@ const whatsappService = {
                 where: { tenantId_phoneNumber: { tenantId, phoneNumber: clientPhone } }
               });
               
+              if (client && client.isBlocked) {
+                console.log(`[WHATSAPP_SERVICE] Client ${clientPhone} is blocked. Ignoring message.`);
+                continue;
+              }
+              
               const finalClient = client ? 
                 await prisma.client.update({
                   where: { id: client.id },
@@ -275,13 +280,14 @@ const whatsappService = {
    * @param {string} content Texto
    * @param {string} senderId ID del usuario
    */
-  async sendMessage(conversationId, content, senderId = null) {
+  async sendMessage(conversationId, content, senderId = null, senderType = 'VENDOR') {
     try {
       const conversation = await prisma.conversation.findUnique({
         where: { id: conversationId },
         include: { client: true }
       });
       if (!conversation) throw new Error('Conversación no encontrada');
+      if (conversation.client.isBlocked) throw new Error('Client is blocked');
       
       const config = await this.getConfig(conversation.tenantId);
       if (!config || !config.accessToken || !config.phoneNumberId) {
@@ -314,7 +320,7 @@ const whatsappService = {
       const message = await prisma.message.create({
         data: {
           conversationId,
-          senderType: senderId ? 'VENDOR' : 'SYSTEM',
+          senderType: senderId ? senderType : 'SYSTEM',
           senderId,
           content,
           waMessageId: metaData.messages?.[0]?.id,
@@ -343,7 +349,7 @@ const whatsappService = {
   /**
    * Envía media al cliente vía Meta Graph API, opcionalmente con un texto (caption).
    */
-  async sendMedia(conversationId, file, caption = null, senderId = null) {
+  async sendMedia(conversationId, file, caption = null, senderId = null, senderType = 'VENDOR') {
     const fs = require('fs');
     const fsp = require('fs/promises');
     let fileStream = null;
@@ -357,6 +363,7 @@ const whatsappService = {
         include: { client: true }
       });
       if (!conversation) throw new Error('Conversación no encontrada');
+      if (conversation.client.isBlocked) throw new Error('Client is blocked');
       
       const config = await this.getConfig(conversation.tenantId);
       if (!config || !config.accessToken || !config.phoneNumberId) {
@@ -435,7 +442,7 @@ const whatsappService = {
       const msgRecord = await prisma.message.create({
         data: {
           conversationId,
-          senderType: 'VENDOR',
+          senderType: senderId ? senderType : 'SYSTEM',
           senderId,
           content: caption ? `[${mediaType.toUpperCase()} enviado] ${caption.trim()}` : `[${mediaType.toUpperCase()} enviado]`,
           waMessageId: metaData.messages?.[0]?.id,
