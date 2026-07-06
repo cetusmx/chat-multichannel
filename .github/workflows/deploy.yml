@@ -50,6 +50,7 @@ jobs:
           npm run db:seed
         env:
           DATABASE_URL: postgresql://salesflow:salesflow_dev@localhost:5432/salesflow?connection_limit=5
+          ENCRYPTION_KEY: 12345678901234567890123456789012
 
       - name: Run backend tests
         working-directory: ./backend
