@@ -66,11 +66,11 @@ class AIService {
       }
 
       if (!contextString) {
-        const fallbackSystem = `You are a helpful sales assistant. However, I currently do not have access to the knowledge base. Please kindly inform the user that a human representative will assist them shortly.`;
+        const fallbackSystem = `You are a helpful sales assistant. However, I currently do not have access to the knowledge base. You MUST include the exact string [[ESCALATE]] anywhere in your reply.`;
         return await this.generateResponse(tenantId, formattedHistory, fallbackSystem);
       }
 
-      const systemInstruction = `You are a helpful sales assistant for this company. Use ONLY the following context to answer the user's questions. If the context doesn't have the answer, say you don't know.\n\nContext:\n${contextString}`;
+      const systemInstruction = `You are a helpful sales assistant for this company. Use ONLY the following context to answer the user's questions. If the user explicitly asks to speak to a human, or if you cannot confidently answer their question based on the provided context, you MUST include the exact string [[ESCALATE]] anywhere in your reply.\n\nContext:\n${contextString}`;
 
       return await this.generateResponse(tenantId, formattedHistory, systemInstruction);
     } catch (error) {

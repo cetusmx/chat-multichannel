@@ -275,9 +275,18 @@ const whatsappService = {
                     if (currentConv && currentConv.status !== 'PENDING_ASSIGNMENT') return;
 
                     const aiService = require('./ai.service');
-                    const responseText = await aiService.generateAutoResponse(tenantId, conversation.id, text);
+                    let responseText = await aiService.generateAutoResponse(tenantId, conversation.id, text);
                     
                     if (!responseText || responseText.trim() === '') return;
+
+                    let requiresEscalation = false;
+                    if (/\[\[ESCALATE\]\]/i.test(responseText)) {
+                      requiresEscalation = true;
+                      responseText = responseText.replace(/\[\[ESCALATE\]\]/gi, '').trim();
+                      if (responseText === '') {
+                        responseText = 'Entiendo. Un representante se pondrá en contacto contigo en breve para ayudarte.';
+                      }
+                    }
 
                     const finalConv = await prisma.conversation.findUnique({
                       where: { id: conversation.id }
@@ -285,6 +294,21 @@ const whatsappService = {
                     
                     if (finalConv && finalConv.status === 'PENDING_ASSIGNMENT') {
                       await this.sendMessage(conversation.id, responseText, null, 'IA');
+
+                      if (requiresEscalation) {
+                        const updatedConv = await prisma.conversation.update({
+                          where: { id: conversation.id },
+                          data: { aiPendingEscalation: true }
+                        });
+                        
+                        try {
+                          const { getIo } = require('../socket');
+                          const io = getIo();
+                          io.of('/chat').to(`conversation:${conversation.id}`).to(`tenant_${tenantId}_coordinators`).emit('conversation_escalated', updatedConv);
+                        } catch (err) {
+                          console.error('[WHATSAPP_SERVICE] Error emitting escalation event:', err.message);
+                        }
+                      }
                     }
                   }
                 } catch (aiErr) {

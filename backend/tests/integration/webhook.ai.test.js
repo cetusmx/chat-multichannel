@@ -43,6 +43,10 @@ describe('Webhook AI Auto-Response', () => {
     await prisma.$disconnect();
   });
 
+  afterEach(() => {
+    jest.clearAllMocks();
+  });
+
   it('should trigger AI auto-response for unassigned conversation', async () => {
     aiService.generateAutoResponse.mockResolvedValue('Hello from AI');
 
@@ -83,22 +87,25 @@ describe('Webhook AI Auto-Response', () => {
     // Wait for async execution using polling
     let messages = [];
     let conversation;
-    for (let i = 0; i < 20; i++) {
-      await new Promise(resolve => setTimeout(resolve, 50));
-      conversation = await prisma.conversation.findFirst({
-        where: { tenantId: tenant.id }
-      });
-      if (conversation) {
-        messages = await prisma.message.findMany({
-          where: { conversationId: conversation.id },
-          orderBy: { createdAt: 'asc' }
+    try {
+      for (let i = 0; i < 20; i++) {
+        await new Promise(resolve => setTimeout(resolve, 50));
+        conversation = await prisma.conversation.findFirst({
+          where: { tenantId: tenant.id }
         });
-        if (messages.length === 2) break;
+        if (conversation) {
+          messages = await prisma.message.findMany({
+            where: { conversationId: conversation.id },
+            orderBy: { createdAt: 'asc' }
+          });
+          if (messages.length === 2) break;
+        }
       }
+    } finally {
+      global.fetch = originalFetch;
     }
-    
-    global.fetch = originalFetch;
 
+    expect(conversation).toBeDefined();
     expect(aiService.generateAutoResponse).toHaveBeenCalledWith(tenant.id, expect.any(String), 'I need help');
 
     expect(messages.length).toBe(2);
@@ -106,6 +113,70 @@ describe('Webhook AI Auto-Response', () => {
     expect(messages[0].content).toBe('I need help');
     expect(messages[1].senderType).toBe('IA');
     expect(messages[1].content).toBe('Hello from AI');
+  });
+
+  it('should intercept [[ESCALATE]] token, sanitize message, and update aiPendingEscalation', async () => {
+    aiService.generateAutoResponse.mockResolvedValue('Here is the info. [[ESCALATE]]');
+
+    const payload = {
+      object: 'whatsapp_business_account',
+      entry: [{
+        changes: [{
+          value: {
+            messages: [{
+              from: '5215555555556',
+              id: 'wamid.456',
+              type: 'text',
+              text: { body: 'I want to talk to a human' }
+            }],
+            contacts: [{
+              profile: { name: 'Escalate User' }
+            }]
+          }
+        }]
+      }]
+    };
+
+    const originalFetch = global.fetch;
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: jest.fn().mockResolvedValue({
+        messages: [{ id: 'wamid.ai.456' }]
+      })
+    });
+
+    let messages = [];
+    let conversation;
+
+    const res = await request(app)
+      .post(`/api/whatsapp/webhook/${tenant.id}`)
+      .send(payload);
+
+    expect(res.status).toBe(200);
+
+    try {
+      for (let i = 0; i < 20; i++) {
+        await new Promise(resolve => setTimeout(resolve, 50));
+        conversation = await prisma.conversation.findFirst({
+          where: { tenantId: tenant.id, client: { phoneNumber: '5215555555556' } }
+        });
+        if (conversation) {
+          messages = await prisma.message.findMany({
+            where: { conversationId: conversation.id },
+            orderBy: { createdAt: 'asc' }
+          });
+          if (messages.length === 2 && conversation.aiPendingEscalation) break;
+        }
+      }
+    } finally {
+      global.fetch = originalFetch;
+    }
+
+    expect(conversation).toBeDefined();
+    expect(conversation.aiPendingEscalation).toBe(true);
+    expect(messages.length).toBe(2);
+    expect(messages[1].senderType).toBe('IA');
+    expect(messages[1].content).toBe('Here is the info.');
   });
 
   afterAll(async () => {
