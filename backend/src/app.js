@@ -15,6 +15,7 @@ const branchRoutes = require('./routes/branch.routes');
 const whatsappRoutes = require('./routes/whatsapp.routes');
 const chatRoutes = require('./routes/chat.routes');
 const clientRoutes = require('./routes/client.routes');
+const conversationRoutes = require('./routes/conversation.routes');
 
 const app = express();
 
@@ -49,6 +50,7 @@ app.use('/api/branches', branchRoutes);
 app.use('/api/whatsapp', whatsappRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/clients', clientRoutes);
+app.use('/api/conversations', conversationRoutes);
 
 app.use('/api-docs', swaggerRoutes);
 

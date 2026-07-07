@@ -59,12 +59,12 @@ export async function get(endpoint, options = {}) {
   return request(endpoint, options);
 }
 
-export async function post(endpoint, data) {
-  return request(endpoint, { method: 'POST', body: JSON.stringify(data) });
+export async function post(endpoint, data, options = {}) {
+  return request(endpoint, { method: 'POST', body: JSON.stringify(data), ...options });
 }
 
-export async function put(endpoint, data) {
-  return request(endpoint, { method: 'PUT', body: JSON.stringify(data) });
+export async function put(endpoint, data, options = {}) {
+  return request(endpoint, { method: 'PUT', body: JSON.stringify(data), ...options });
 }
 
 export async function patch(endpoint, data) {

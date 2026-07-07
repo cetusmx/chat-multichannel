@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, useMemo } from 'react';
 import useAuthStore from '../../../stores/useAuthStore';
 import useChatStore from '../../../stores/useChatStore';
+import { post } from '../../../services/api';
 
 const formatBytes = (bytes, decimals = 1) => {
   if (!+bytes) return '0 Bytes';
@@ -75,9 +76,14 @@ const SecureMedia = ({ url, type, alt, className }) => {
  * 
  * @component
  */
-export default function MessageList({ messages, onSendMessage, onSendMedia, isUploading, errorMsg, clearError, clientName, hasMore, loadMoreMessages, isLoadingMore, headerActions }) {
+export default function MessageList({ conversationId, messages, onSendMessage, onSendMedia, isUploading, errorMsg, clearError, clientName, hasMore, loadMoreMessages, isLoadingMore, headerActions }) {
   const [text, setText] = useState('');
   const [isInternal, setIsInternal] = useState(false);
+  const [aiPopoverOpen, setAiPopoverOpen] = useState(false);
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [aiDraft, setAiDraft] = useState('');
+  const [aiError, setAiError] = useState(null);
+  const [isDrafting, setIsDrafting] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [selectedFile, setSelectedFile] = useState(null);
   const [localError, setLocalError] = useState(null);
@@ -90,9 +96,49 @@ export default function MessageList({ messages, onSendMessage, onSendMedia, isUp
   const scrollContainerRef = useRef(null);
   const observerTargetRef = useRef(null);
   const highlightedRef = useRef(null);
+  const aiPopoverRef = useRef(null);
+  const aiTriggerRef = useRef(null);
   
   const previousScrollHeight = useRef(null);
   const scrollPositionRestored = useRef(true);
+  const chatInputRef = useRef(null);
+
+  const isMountedRef = useRef(true);
+
+  // Cleanup abort controller on unmount
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+      if (abortControllerRef.current) abortControllerRef.current.abort();
+    };
+  }, []);
+
+  const closeAiPopover = () => {
+    setAiPopoverOpen(false);
+    setAiDraft('');
+    setAiPrompt('');
+    setAiError(null);
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    setIsDrafting(false);
+  };
+
+  // Click-away listener for AI Popover
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (
+        aiPopoverRef.current && !aiPopoverRef.current.contains(event.target) &&
+        aiTriggerRef.current && !aiTriggerRef.current.contains(event.target)
+      ) {
+        closeAiPopover();
+      }
+    };
+    if (aiPopoverOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [aiPopoverOpen]);
 
   const { highlightedMessageId, setHighlightedMessageId, addTag, removeTag } = useChatStore();
   const [addingTagTo, setAddingTagTo] = useState(null);
@@ -141,6 +187,20 @@ export default function MessageList({ messages, onSendMessage, onSendMedia, isUp
     }
   }, [messages, highlightedMessageId]);
 
+  // Reset state when switching conversations
+  useEffect(() => {
+    if (abortControllerRef.current) abortControllerRef.current.abort();
+    setIsDrafting(false);
+    setText('');
+    setAiPopoverOpen(false);
+    setAiPrompt('');
+    setAiDraft('');
+    setAiError(null);
+    setSelectedFile(null);
+    setLocalError(null);
+    setIsInternal(false);
+  }, [conversationId]);
+
   // Scroll to highlighted message
   useEffect(() => {
     if (highlightedMessageId && highlightedRef.current) {
@@ -187,6 +247,8 @@ export default function MessageList({ messages, onSendMessage, onSendMedia, isUp
 
   const handleSend = async (e) => {
     e.preventDefault();
+    if (isDrafting || isUploading) return;
+
     if (selectedFile) {
       if (onSendMedia) {
         try {
@@ -211,6 +273,58 @@ export default function MessageList({ messages, onSendMessage, onSendMedia, isUp
       } catch (error) {
         // Handle error if thrown
       }
+    }
+  };
+
+  const handleGenerateAi = async (e) => {
+    e?.preventDefault();
+    if (!aiPrompt.trim() || !conversationId) return;
+    
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+
+    setIsDrafting(true);
+    setAiError(null);
+    const currentController = new AbortController();
+    abortControllerRef.current = currentController;
+    try {
+      const res = await post(`/conversations/${conversationId}/ai-assist`, { prompt: aiPrompt.trim() }, { signal: currentController.signal });
+      if (!res.ok) {
+        const textRes = await res.text();
+        let errorMsg = 'Error del servidor';
+        try {
+          const parsed = JSON.parse(textRes);
+          errorMsg = parsed.error || errorMsg;
+        } catch {
+          errorMsg = textRes || errorMsg;
+        }
+        throw new Error(errorMsg);
+      }
+      const data = await res.json();
+      if (currentController.signal.aborted) return;
+      const draft = data?.draft || data?.data?.draft;
+      if (draft) {
+        setAiDraft(draft);
+      } else {
+        setAiError('La IA no devolvió ninguna sugerencia.');
+      }
+    } catch (error) {
+      if (error.name !== 'AbortError' && isMountedRef.current) {
+        setAiDraft(''); // Ensure draft is empty on error
+        setAiError(error.message || 'Error al generar sugerencia con IA.');
+      }
+    } finally {
+      if (isMountedRef.current && abortControllerRef.current === currentController) {
+        setIsDrafting(false);
+      }
+    }
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === '/' && text === '') {
+      e.preventDefault();
+      setAiPopoverOpen(true);
     }
   };
 
@@ -435,12 +549,104 @@ export default function MessageList({ messages, onSendMessage, onSendMedia, isUp
         </div>
       )}
 
+      {/* AI Popover */}
+      {aiPopoverOpen && (
+        <div ref={aiPopoverRef} className="absolute bottom-full left-4 right-4 mb-2 bg-sales-slate-800 border border-sales-cyan-700 rounded-lg shadow-xl z-50 overflow-hidden flex flex-col">
+          <div className="bg-sales-cyan-900/40 border-b border-sales-cyan-700 p-2 flex justify-between items-center text-xs text-sales-cyan-100">
+            <div className="flex items-center gap-2">
+              <span className="animate-pulse">✨</span>
+              <span className="font-medium">Asistente IA</span>
+            </div>
+            <button type="button" onClick={closeAiPopover} className="text-sales-cyan-400 hover:text-white font-bold">&times; Cerrar</button>
+          </div>
+          <div className="p-3">
+            {aiError ? (
+              <div 
+                className="flex flex-col gap-2"
+                tabIndex={0} 
+                onKeyDown={e => {
+                  if (e.key === 'Escape') {
+                    closeAiPopover();
+                    setTimeout(() => chatInputRef.current?.focus(), 0);
+                  }
+                }}
+              >
+                <div className="text-red-400 text-sm">{aiError}</div>
+                <div className="flex justify-end gap-2">
+                  <button type="button" onClick={closeAiPopover} className="px-3 py-1.5 bg-sales-slate-700 hover:bg-sales-slate-600 text-white rounded text-sm font-medium">Cancelar</button>
+                  <button type="button" onClick={(e) => { setAiError(null); handleGenerateAi(e); }} className="px-3 py-1.5 bg-sales-cyan-600 hover:bg-sales-cyan-500 text-white rounded text-sm font-medium">Reintentar</button>
+                </div>
+              </div>
+            ) : !aiDraft ? (
+              <form onSubmit={handleGenerateAi} className="flex gap-2">
+                <input 
+                  type="text"
+                  autoFocus
+                  className="flex-1 bg-sales-slate-900 border border-sales-cyan-500 rounded px-3 py-1.5 text-sm text-sales-slate-200 focus:outline-none"
+                  placeholder="Ej: Saluda y ofrece ayuda con sus pagos..."
+                  value={aiPrompt}
+                  onChange={e => setAiPrompt(e.target.value)}
+                  disabled={isDrafting}
+                  onKeyDown={e => {
+                    if (e.key === 'Escape') {
+                      closeAiPopover();
+                      setTimeout(() => chatInputRef.current?.focus(), 0);
+                    }
+                  }}
+                />
+                <button type="submit" disabled={!aiPrompt.trim() || isDrafting} className="bg-sales-cyan-600 hover:bg-sales-cyan-500 disabled:opacity-50 text-white px-3 py-1.5 rounded font-medium text-sm">
+                  {isDrafting ? '⏳...' : 'Generar'}
+                </button>
+              </form>
+            ) : (
+              <div className="flex flex-col gap-3">
+                <textarea 
+                  className="w-full bg-sales-slate-900 border border-sales-cyan-500 rounded p-2 text-sm text-sales-slate-200 focus:outline-none"
+                  rows="5"
+                  value={aiDraft}
+                  onChange={e => setAiDraft(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Escape') {
+                      closeAiPopover();
+                      setTimeout(() => chatInputRef.current?.focus(), 0);
+                    }
+                  }}
+                />
+                <div className="flex justify-end gap-2">
+                  <button type="button" onClick={() => setAiDraft('')} className="px-3 py-1.5 bg-sales-slate-700 hover:bg-sales-slate-600 text-white rounded text-sm font-medium">Reintentar</button>
+                  <button type="button" onClick={() => { setText(text ? text + ' ' + aiDraft : aiDraft); closeAiPopover(); setTimeout(() => chatInputRef.current?.focus(), 0); }} className="px-3 py-1.5 bg-sales-cyan-600 hover:bg-sales-cyan-500 text-white rounded text-sm font-medium">Usar Borrador</button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Input Form */}
       <div className="p-4 border-t border-sales-slate-800 bg-sales-slate-900">
         <form onSubmit={handleSend} className="flex gap-2">
           <button
             type="button"
+            ref={aiTriggerRef}
             disabled={isUploading}
+            onClick={() => {
+              if (aiPopoverOpen) {
+                closeAiPopover();
+              } else {
+                setAiDraft('');
+                setAiPrompt('');
+                setAiError(null);
+                setAiPopoverOpen(true);
+              }
+            }}
+            className="p-2 text-sales-cyan-400 hover:text-sales-cyan-300 disabled:opacity-50 transition-colors"
+            title="Asistencia IA (/)"
+          >
+            ✨
+          </button>
+          <button
+            type="button"
+            disabled={isUploading || isDrafting}
             onClick={() => fileInputRef.current?.click()}
             className="p-2 text-sales-slate-400 hover:text-sales-cyan-400 disabled:opacity-50 transition-colors"
             title="Adjuntar archivo"
@@ -452,7 +658,7 @@ export default function MessageList({ messages, onSendMessage, onSendMedia, isUp
             ref={fileInputRef} 
             className="hidden" 
             onChange={handleFileUpload}
-            disabled={isUploading}
+            disabled={isUploading || isDrafting}
             accept="image/*,video/*,audio/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
           />
           {user && ['ADMIN', 'COORDINATOR', 'VENDOR'].includes(user.role) && (
@@ -472,16 +678,18 @@ export default function MessageList({ messages, onSendMessage, onSendMedia, isUp
           )}
           <input 
             type="text"
-            className="flex-1 bg-sales-slate-800 border border-sales-slate-700 rounded-lg px-4 py-2 text-sales-slate-200 focus:outline-none focus:border-sales-cyan-400"
-            placeholder={isUploading ? "Enviando..." : (selectedFile ? "Añadir un comentario..." : (isInternal ? "Escribe un comentario interno..." : "Escribe un mensaje al cliente..."))}
+            ref={chatInputRef}
+            className={`flex-1 bg-sales-slate-800 border border-sales-slate-700 rounded-lg px-4 py-2 text-sales-slate-200 focus:outline-none focus:border-sales-cyan-400 transition-all`}
+            placeholder={isUploading ? "Enviando..." : (selectedFile ? "Añadir un comentario..." : (isInternal ? "Escribe un comentario interno..." : "Escribe un mensaje al cliente... (Usa / para IA)"))}
             value={text}
             onChange={(e) => setText(e.target.value)}
-            disabled={isUploading}
+            onKeyDown={handleKeyDown}
+            disabled={isUploading || isDrafting}
           />
           <button 
             type="submit" 
-            disabled={(!text.trim() && !selectedFile) || isUploading}
-            className="bg-sales-cyan-500 hover:bg-sales-cyan-600 disabled:opacity-50 text-white px-6 py-2 rounded-lg font-medium transition-colors"
+            disabled={(!text.trim() && !selectedFile) || isUploading || isDrafting}
+            className={`bg-sales-cyan-500 hover:bg-sales-cyan-600 disabled:opacity-50 text-white px-6 py-2 rounded-lg font-medium transition-colors min-w-[100px]`}
           >
             Enviar
           </button>

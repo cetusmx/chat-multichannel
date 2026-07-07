@@ -314,3 +314,97 @@ describe('PATCH /api/chat/:conversationId/assign', () => {
   });
 });
 
+describe('POST /api/conversations/:conversationId/ai-assist', () => {
+  afterEach(() => {
+    jest.clearAllMocks();
+    jest.restoreAllMocks();
+  });
+
+  it('should allow assigned VENDOR to request an AI draft', async () => {
+    const vendorToken = jwt.sign(
+      { id: testVendorId, tenantId: testTenantId, role: 'VENDOR' },
+      JWT_SECRET,
+      { expiresIn: '1h' }
+    );
+
+    const vendorConv = await prisma.conversation.create({
+      data: {
+        clientId: testClientId,
+        tenantId: testTenantId,
+        vendorId: testVendorId,
+        status: 'ACTIVE',
+      }
+    });
+
+    const aiService = require('../../src/services/ai.service');
+    jest.spyOn(aiService, 'generateInlineSuggestion').mockResolvedValue('Suggested vendor reply');
+
+    try {
+      const res = await request(app)
+        .post(`/api/conversations/${vendorConv.id}/ai-assist`)
+        .set('Authorization', `Bearer ${vendorToken}`)
+        .send({ prompt: 'help me say hi' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.draft).toBe('Suggested vendor reply');
+      expect(aiService.generateInlineSuggestion).toHaveBeenCalledWith(testTenantId, vendorConv.id, 'help me say hi');
+    } finally {
+      await prisma.conversation.delete({ where: { id: vendorConv.id } });
+    }
+  });
+
+  it('should return 400 if prompt is missing', async () => {
+    const res = await request(app)
+      .post(`/api/conversations/${testConversationId}/ai-assist`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({}); // missing prompt
+
+    expect(res.status).toBe(400);
+  });
+
+  it('should return 404 if conversation does not exist', async () => {
+    const res = await request(app)
+      .post('/api/conversations/non-existent-conv/ai-assist')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ prompt: 'say hi' });
+
+    expect(res.status).toBe(404);
+  });
+
+  it('should allow COORDINATOR to request an AI draft', async () => {
+    const coordinatorToken = jwt.sign(
+      { id: testVendorId, tenantId: testTenantId, role: 'COORDINATOR' },
+      JWT_SECRET,
+      { expiresIn: '1h' }
+    );
+
+    const aiService = require('../../src/services/ai.service');
+    jest.spyOn(aiService, 'generateInlineSuggestion').mockResolvedValue('Suggested coordinator reply');
+
+    const res = await request(app)
+      .post(`/api/conversations/${testConversationId}/ai-assist`)
+      .set('Authorization', `Bearer ${coordinatorToken}`)
+      .send({ prompt: 'help me say hi' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.draft).toBe('Suggested coordinator reply');
+  });
+
+  it('should prevent unassigned VENDOR from requesting an AI draft', async () => {
+    const vendorToken = jwt.sign(
+      { id: testVendorId, tenantId: testTenantId, role: 'VENDOR' },
+      JWT_SECRET,
+      { expiresIn: '1h' }
+    );
+
+    // testConversationId is unassigned to this vendor
+    const res = await request(app)
+      .post(`/api/conversations/${testConversationId}/ai-assist`)
+      .set('Authorization', `Bearer ${vendorToken}`)
+      .send({ prompt: 'help me say hi' });
+
+    expect(res.status).toBe(403);
+  });
+});
+
+

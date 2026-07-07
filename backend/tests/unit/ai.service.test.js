@@ -35,7 +35,7 @@ describe('AIService', () => {
       ];
       knowledgeBaseService.searchSimilarChunks.mockResolvedValue(mockChunks);
 
-      aiService.generateResponse.mockResolvedValue('Hello there! We sell widgets.');
+      aiService.generateResponse.mockResolvedValue({ content: 'Hello there! We sell widgets.' });
 
       const result = await aiService.generateAutoResponse('tenant1', 'conv1', 'hello');
 
@@ -52,7 +52,39 @@ describe('AIService', () => {
         expect.any(Array), // Formatted history
         expect.stringContaining('Company info: we sell widgets.') // Context
       );
-      expect(result).toBe('Hello there! We sell widgets.');
+      expect(result).toEqual({ content: 'Hello there! We sell widgets.' });
+    });
+  });
+  describe('generateInlineSuggestion', () => {
+    it('should generate an inline suggestion using history and RAG chunks steered by userPrompt', async () => {
+      const mockHistory = [
+        { senderType: 'CLIENT', content: 'hello' }
+      ];
+      prisma.message.findMany.mockResolvedValue(mockHistory);
+
+      const mockChunks = [
+        { text: 'Company info: we sell widgets.' }
+      ];
+      knowledgeBaseService.searchSimilarChunks.mockResolvedValue(mockChunks);
+
+      aiService.generateResponse.mockResolvedValue({ content: 'Suggested reply: We sell widgets.' });
+
+      const result = await aiService.generateInlineSuggestion('tenant1', 'conv1', 'summarize our products');
+
+      expect(prisma.message.findMany).toHaveBeenCalledWith(expect.objectContaining({
+        where: { 
+          conversationId: 'conv1',
+          senderType: { in: ['CLIENT', 'IA', 'VENDOR'] },
+          content: { not: '' }
+        }
+      }));
+      expect(knowledgeBaseService.searchSimilarChunks).toHaveBeenCalledWith('tenant1', 'summarize our products: hello', 3);
+      expect(aiService.generateResponse).toHaveBeenCalledWith(
+        'tenant1',
+        expect.any(Array), // Formatted history
+        expect.stringMatching(/Company info: we sell widgets/)
+      );
+      expect(result).toBe('Suggested reply: We sell widgets.');
     });
   });
 });

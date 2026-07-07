@@ -247,6 +247,7 @@ const FocusedChat = memo(({ conversationId, clientName, conversation }) => {
   return (
     <div className="flex flex-col relative flex-1 h-full min-w-[320px] max-w-full bg-sales-slate-900/50 border-r border-sales-slate-800 last:border-r-0">
        <MessageList 
+         conversationId={conversation?.id}
          messages={messages}
          onSendMessage={handleSendMessage}
          onSendMedia={handleSendMedia}

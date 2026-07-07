@@ -107,3 +107,31 @@
 - Integration test heavily relies on hardcoded setTimeout [webhook.ai.test.js:10] — deferred, pre-existing
 - Global fetch mutated in test without restoration [webhook.ai.test.js:20] — deferred, pre-existing
 - Cowboy Circular Dependency Workaround [knowledgeBase.service.js] — deferred, requires architectural refactor
+
+## Deferred from: code review of 4-5-vendor-inline-ai-assistance.md (2026-07-06)
+- Prompt Injection Vulnerability — deferred, pre-existing limitation
+- Code Duplication — deferred, low priority
+- Prompt Length Exceeds Limits — deferred, pre-existing limitation
+- UX Edge Case Violation (Blocks Normal Typing for slash commands) — deferred, works as specified
+
+## Deferred from: re-review of 4-5-vendor-inline-ai-assistance.md (2026-07-07)
+- UX-Breaking Slash Interception - deferred, works as specified
+- Unbounded History Size Risk - deferred, pre-existing issue
+- Unprotected Endpoint (Denial of Wallet) - deferred, pre-existing issue
+- Hardcoded Strings and Inaccessibility - deferred, low priority
+- Unchecked Prompt Size - deferred, pre-existing issue
+
+## Deferred from: code review of 4-5-vendor-inline-ai-assistance.md (2026-07-07)
+- Swallowed RAG errors [`backend/src/services/ai.service.js`] — deferred, pre-existing / degraded state intended
+- Conversation history limit ignores token limits [`backend/src/services/ai.service.js`] — deferred, pre-existing
+- generateInlineSuggestion blindly concatenates userPrompt [`backend/src/services/ai.service.js`] — deferred, out of scope for MVP
+- Hardcoded UI Spanish Labels [`frontend/src/features/chat/components/MessageList.jsx`] — deferred, i18n out of scope
+
+## Deferred from: code review pass 2 of 4-5-vendor-inline-ai-assistance.md (2026-07-07)
+- Clicking "Usar Borrador" forcefully overwrites entire text state [`frontend/src/features/chat/components/MessageList.jsx`] — deferred, standard behavior
+- Coordinator role authorization doesn't verify branch permissions [`backend/src/routes/conversation.routes.js`] — deferred, pre-existing limitation
+- Mapping both IA and VENDOR to the model role [`backend/src/services/ai.service.js`] — deferred, pre-existing in adapter
+
+## Deferred from: code review pass 3 of 4-5-vendor-inline-ai-assistance.md (2026-07-07)
+- Missing Swagger Response Schemas (`backend/src/routes/conversation.routes.js`) - deferred, out of scope for MVP
+- Options argument contains method or body keys (`frontend/src/services/api.js`) - deferred, out of scope

@@ -1,12 +1,42 @@
 const { getProvider } = require('../providers');
 const ApiError = require('../utils/ApiError');
-
+const prisma = require('../config/database');
 /**
  * AI Service 
  * Acts as a facade to the AI Provider Adapter.
  */
 class AIService {
   
+  _formatProviderHistory(history) {
+    let formatted = history.map(msg => {
+      let content = msg.content ? String(msg.content) : '[Archivo adjunto]';
+      if (msg.senderType !== 'CLIENT' && msg.senderType !== 'VENDOR') {
+        content = `[${msg.senderType}] ${content}`;
+      }
+      return {
+        role: msg.senderType === 'CLIENT' ? 'user' : 'model',
+        content
+      };
+    }).reverse();
+
+    formatted = formatted.reduce((acc, curr) => {
+      if (acc.length > 0 && acc[acc.length - 1].role === curr.role) {
+        acc[acc.length - 1].content += '\n' + curr.content;
+      } else {
+        acc.push(curr);
+      }
+      return acc;
+    }, []);
+
+    if (formatted.length === 0) {
+      formatted.push({ role: 'user', content: '[Inicio de conversación]' });
+    } else if (formatted[0].role !== 'user') {
+      formatted.unshift({ role: 'user', content: '[Inicio de conversación]' });
+    }
+    
+    return formatted;
+  }
+
   async generateResponse(tenantId, messages, context = '') {
     try {
       const providerName = process.env.AI_PROVIDER || 'gemini';
@@ -33,8 +63,7 @@ class AIService {
     if (!tenantId || !conversationId || !incomingText) {
       throw new ApiError(400, 'Missing required parameters for auto-response');
     }
-    const prisma = require('../config/database');
-    const knowledgeBaseService = require('./knowledgeBase.service');
+
 
     try {
       // Fetch history
@@ -49,17 +78,15 @@ class AIService {
       });
       
       // Map history to provider format (in chronological order)
-      const formattedHistory = history.reverse().map(msg => ({
-        role: msg.senderType === 'CLIENT' ? 'user' : 'model',
-        content: msg.content
-      }));
+      const formattedHistory = this._formatProviderHistory(history);
 
       // Query RAG chunks
       let contextString = '';
       try {
+        const knowledgeBaseService = require('./knowledgeBase.service');
         const chunks = await knowledgeBaseService.searchSimilarChunks(tenantId, incomingText, 3);
         if (chunks && chunks.length > 0) {
-          contextString = chunks.map(c => c.text).join('\n\n');
+          contextString = chunks.filter(c => c && c.text).map(c => c.text).join('\n\n');
         }
       } catch (err) {
         console.warn('RAG search failed, continuing without context:', err.message);
@@ -75,6 +102,70 @@ class AIService {
       return await this.generateResponse(tenantId, formattedHistory, systemInstruction);
     } catch (error) {
       console.error('[AI_SERVICE] Error generating auto-response:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Generates a suggested draft reply for the vendor based on user prompt and conversation history.
+   * Uses RAG context if applicable.
+   * 
+   * @param {string} tenantId - The tenant's ID
+   * @param {string} conversationId - The conversation ID to pull history for
+   * @param {string} userPrompt - The instruction from the vendor (e.g., 'Say hello')
+   * @returns {Promise<string>} The generated draft text
+   * @throws {ApiError} If parameters are missing
+   */
+  async generateInlineSuggestion(tenantId, conversationId, userPrompt) {
+    if (!tenantId || !conversationId || !userPrompt) {
+      throw new ApiError(400, 'Missing required parameters for inline suggestion');
+    }
+
+
+    try {
+      const history = await prisma.message.findMany({
+        where: { 
+          conversationId,
+          senderType: { in: ['CLIENT', 'IA', 'VENDOR'] },
+          content: { not: '' }
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 10
+      });
+      
+      const formattedHistory = this._formatProviderHistory(history);
+
+      let contextString = '';
+      try {
+        const knowledgeBaseService = require('./knowledgeBase.service');
+        const lastClientMessage = history.find(m => m.senderType === 'CLIENT');
+        const limitedClientContent = lastClientMessage && lastClientMessage.content ? lastClientMessage.content.substring(0, 1000) : '';
+        const searchQuery = lastClientMessage ? `${userPrompt}: ${limitedClientContent}` : userPrompt;
+        const chunks = await knowledgeBaseService.searchSimilarChunks(tenantId, searchQuery, 3);
+        if (chunks && chunks.length > 0) {
+          contextString = chunks.filter(c => c && c.text).map(c => c.text).join('\n\n');
+        }
+      } catch (err) {
+        console.warn('RAG search failed for inline suggestion, continuing without context:', err.message);
+      }
+
+      const systemInstruction = `You are an AI assistant helping a human sales representative (Vendor) draft a reply to a client. 
+Use the following context from our knowledge base (if any) and the conversation history to draft an accurate and helpful response.
+Do NOT include [[ESCALATE]] in this context. You must follow the exact instruction provided by the Vendor Prompt.
+Draft ONLY the text that the vendor should send to the client. Do not include quotes or commentary.
+
+Context:
+${contextString}`;
+
+      if (formattedHistory.length > 0 && formattedHistory[formattedHistory.length - 1].role === 'user') {
+        formattedHistory.push({ role: 'model', content: '[Esperando asistencia IA...]' });
+      }
+      formattedHistory.push({ role: 'user', content: `Vendor Prompt: ${userPrompt}` });
+
+      const response = await this.generateResponse(tenantId, formattedHistory, systemInstruction);
+      return response.content;
+    } catch (error) {
+      console.error('[AI_SERVICE] Error generating inline suggestion:', error.message);
       throw error;
     }
   }
