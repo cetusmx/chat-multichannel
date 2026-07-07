@@ -1,0 +1,117 @@
+---
+baseline_commit: NO_VCS
+---
+
+# Story 4.3: AI Auto-Response to New Clients
+
+Status: done
+Assignee: Amelia
+
+<!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
+
+## Story
+
+As a Client,
+I want to get immediate answers when I send my first message,
+So that I don't have to wait for a human.
+
+## Acceptance Criteria
+
+1. **Given** an unassigned conversation,
+2. **When** a message arrives,
+3. **Then** the AI queries the RAG database and replies in < 5 seconds.
+
+## Tasks / Subtasks
+
+- [x] Task 1: RAG Query Implementation (AC: 3)
+  - [x] Add `searchSimilarChunks(tenantId, query, limit = 3)` in `backend/src/services/knowledgeBase.service.js` using `pgvector` cosine similarity (`<=>`).
+- [x] Task 2: AI Auto-Response Orchestration (AC: 3)
+  - [x] Add `generateAutoResponse(tenantId, conversationId, incomingText)` in `backend/src/services/ai.service.js`.
+  - [x] Within this method, fetch the last N messages of the conversation for chat history.
+  - [x] Within this method, embed the incoming message and query the RAG database via `knowledgeBase.service.js`.
+  - [x] Generate the final response using `generateResponse`, passing the history and the retrieved RAG chunks in the system instruction, and return the generated text.
+- [x] Task 3: Webhook Integration & Message Sending (AC: 1, 2)
+  - [x] Update `backend/src/services/whatsapp.service.js`'s `sendMessage` method to properly respect the `senderType` parameter even when `senderId` is null (e.g., `senderType: senderId ? senderType : (senderType || 'SYSTEM')`).
+  - [x] Update `backend/src/services/whatsapp.service.js` to detect when a conversation is `PENDING_ASSIGNMENT`.
+  - [x] Implement a basic concurrent message lock or check (e.g., verify the last message in DB is still `CLIENT` or use a memory lock) to prevent duplicate AI responses on rapid multiple messages.
+  - [x] Asynchronously call `ai.service.generateAutoResponse()`.
+  - [x] Send the returned response back to the client using `this.sendMessage(conversation.id, responseText, null, 'IA')`. Note: `sendMessage` already handles DB persistence and Socket.IO emission. Do not duplicate these actions.
+- [x] Task 4: Automated Testing (DoD Compliance)
+  - [x] Write unit tests for `searchSimilarChunks`.
+  - [x] Write integration test mocking the AI response and verifying the message is correctly formed and sent.
+
+## Dev Notes
+
+**1. Architectural Separation (SRP) [CRITICAL]**
+- Do NOT clutter `whatsapp.service.js` with RAG or history-fetching logic. `whatsapp.service.js` must simply import `ai.service.js`, call `generateAutoResponse(...)`, and handle the sending of the result. `ai.service.js` is responsible for fetching history, querying chunks, and talking to Gemini.
+
+**2. RAG Vector Search [CRITICAL]**
+- You must use `prisma.$queryRaw` to perform the vector similarity search in `knowledgeBase.service.js`.
+- Example SQL: 
+  ```sql
+  SELECT text, 1 - (embedding <=> ${embeddingStr}::vector) as similarity
+  FROM document_chunks
+  WHERE tenant_id = ${tenantId}
+  ORDER BY embedding <=> ${embeddingStr}::vector
+  LIMIT ${limit};
+  ```
+- Format the query embedding as a string representation of an array before passing it to `$queryRaw`.
+
+**3. System Instruction & History Context**
+- The AI needs conversation history to provide coherent answers. Fetch the last N messages from `prisma.message` for `conversation.id` and map them into the format expected by the AI provider (`role: 'user' | 'model'`).
+- The `aiService.generateResponse` passes the `context` argument as the `systemInstruction` to Gemini. Formulate a robust persona instruction, e.g.:
+  ```javascript
+  const systemInstruction = `You are a helpful sales assistant for this company. Use ONLY the following context to answer the user's questions. If the context doesn't have the answer, say you don't know.\n\nContext:\n${contextString}`;
+  ```
+
+**4. Database Schema Enum [CRITICAL]**
+- The `SenderType` enum in `schema.prisma` is `IA`. You must use `senderType: 'IA'` when calling `sendMessage`. Ensure you modify `sendMessage`'s hardcoded `SYSTEM` fallback as instructed in Task 3 so it actually saves as `IA`.
+
+**5. Avoid Duplicate DB & Socket Operations [CRITICAL]**
+- Do NOT manually use `prisma.message.create` or `getIo().emit` for the AI response in the webhook handler. Calling `this.sendMessage(...)` handles the Meta API call, saves the record to the DB, AND emits the socket event. Manual insertions will result in duplicated messages in the chat history.
+
+**6. Error Handling & Silent Fallback**
+- Execute the AI response logic asynchronously. Do not `await` the entire AI process in the main webhook flow. Instead, run it as an unawaited Promise or using `setImmediate`, so the webhook returns `200 OK` to Meta immediately.
+- Attach a `.catch(err => ...)` to handle API errors. If Gemini goes down, log the error but **do nothing else**. The conversation must remain in `PENDING_ASSIGNMENT` so a human can manually claim it. Do NOT crash the Node process.
+
+### Project Structure Notes
+- Node backend (CJS modules).
+- Validation must occur using established patterns (`ApiError(status, message)`).
+
+### References
+- [Prisma pgvector Documentation](https://www.prisma.io/docs/orm/prisma-schema/data-model/models#postgresql-pgvector)
+- Database schema: `backend/prisma/schema.prisma`
+- Existing message sending behavior: `backend/src/services/whatsapp.service.js`
+
+## Dev Agent Record
+
+### Agent Model Used
+MODEL_PLACEHOLDER_M16
+
+### Debug Log References
+
+### Completion Notes List
+
+### File List
+
+### Change Log
+
+### Review Findings
+
+**Blind Hunter:**
+- Missing debounce in auto-response (setImmediate triggers concurrent LLM calls).
+- Poor context handling on RAG failure (prompts LLM with empty Context).
+- Fragile concurrency check (relies on findFirst with identical timestamps).
+- Possible Postgres Cast Syntax issue `::vector`.
+- Hardcoded 'IA' Sender Type.
+- Missing Input Validation in `generateAutoResponse`.
+
+**Edge Case Hunter:**
+- Conversation status might change during async AI generation (AI interrupts human).
+- AI service might return empty or null response.
+- Incoming text might be undefined for non-text messages.
+- senderType evaluates to undefined when falsy in `sendMessage`.
+
+**Acceptance Auditor:**
+- Incorrect Fallback Logic for `senderType` in `sendMessage`.
+- Missing Error Handling (try/catch) in `ai.service.js` async operations.

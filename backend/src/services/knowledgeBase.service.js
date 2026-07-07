@@ -83,6 +83,25 @@ class KnowledgeBaseService {
     });
   }
 
+  async searchSimilarChunks(tenantId, query, limit = 3) {
+    if (!query) throw new ApiError(400, 'Search query cannot be empty');
+    
+    // Embed the query
+    const embedding = await aiService.embed(tenantId, query);
+    const embeddingStr = JSON.stringify(embedding);
+
+    // Run similarity search
+    const results = await prisma.$queryRaw`
+      SELECT text, 1 - (embedding <=> CAST(${embeddingStr} AS vector)) as similarity
+      FROM document_chunks
+      WHERE tenant_id = ${tenantId}
+      ORDER BY embedding <=> CAST(${embeddingStr} AS vector)
+      LIMIT ${limit};
+    `;
+
+    return results;
+  }
+
 }
 
 module.exports = new KnowledgeBaseService();

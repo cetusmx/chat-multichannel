@@ -256,6 +256,45 @@ const whatsappService = {
             } catch (err) {
               console.error('[WHATSAPP_SERVICE] No se pudo emitir por socket:', err.message);
             }
+
+            // AI Auto-Response Orchestration
+            if (conversation.status === 'PENDING_ASSIGNMENT' && !mediaData && text && text.trim() !== '') {
+              setImmediate(async () => {
+                try {
+                  const lastMsg = await prisma.message.findFirst({
+                    where: { conversationId: conversation.id },
+                    orderBy: { createdAt: 'desc' }
+                  });
+                  if (lastMsg && lastMsg.id === msgRecord.id) {
+                    const currentConv = await prisma.conversation.findUnique({
+                      where: { id: conversation.id }
+                    });
+                    if (currentConv && currentConv.status !== 'PENDING_ASSIGNMENT') return;
+
+                    const aiService = require('./ai.service');
+                    const responseText = await aiService.generateAutoResponse(tenantId, conversation.id, text);
+                    
+                    if (!responseText || responseText.trim() === '') return;
+
+                    const checkMsg = await prisma.message.findFirst({
+                      where: { conversationId: conversation.id },
+                      orderBy: { createdAt: 'desc' }
+                    });
+                    
+                    const finalConv = await prisma.conversation.findUnique({
+                      where: { id: conversation.id }
+                    });
+
+                    if (checkMsg && checkMsg.id === msgRecord.id && finalConv && finalConv.status === 'PENDING_ASSIGNMENT') {
+                      await this.sendMessage(conversation.id, responseText, null, 'IA');
+                    }
+                  }
+                } catch (aiErr) {
+                  console.error('[WHATSAPP_SERVICE] AI auto-response failed:', aiErr.message);
+                }
+              });
+            }
+
             } catch (innerErr) {
               console.error('[WHATSAPP_SERVICE] Error processing specific message:', innerErr);
             } finally {
@@ -320,7 +359,7 @@ const whatsappService = {
       const message = await prisma.message.create({
         data: {
           conversationId,
-          senderType: senderId ? senderType : 'SYSTEM',
+          senderType: senderId ? senderType : (senderType !== 'VENDOR' ? senderType : 'SYSTEM'),
           senderId,
           content,
           waMessageId: metaData.messages?.[0]?.id,
