@@ -45,15 +45,19 @@ class AIService {
       });
       
       // Map history to provider format (in chronological order)
-      const formattedHistory = history.reverse().map(msg => ({
-        role: msg.senderType === 'CLIENT' ? 'user' : 'model',
-        content: msg.content || ''
-      }));
+      const formattedHistory = history
+        .filter(msg => msg.senderType === 'CLIENT' || msg.senderType === 'IA' || msg.senderType === 'VENDOR')
+        .reverse()
+        .map(msg => ({
+          role: msg.senderType === 'CLIENT' ? 'user' : 'model',
+          content: msg.content || ' '
+        }));
 
       // Query RAG chunks
       let contextString = '';
       try {
-        const chunks = await knowledgeBaseService.searchSimilarChunks(tenantId, incomingText, 3);
+        const embedding = await this.embed(tenantId, incomingText);
+        const chunks = await knowledgeBaseService.searchSimilarChunks(tenantId, embedding, 3);
         if (chunks && chunks.length > 0) {
           contextString = chunks.map(c => c.text).join('\n\n');
         }
@@ -61,9 +65,11 @@ class AIService {
         console.warn('RAG search failed, continuing without context:', err.message);
       }
 
-      const systemInstruction = contextString
-        ? `You are a helpful sales assistant for this company. Use ONLY the following context to answer the user's questions. If the context doesn't have the answer, say you don't know.\n\nContext:\n${contextString}`
-        : `You are a helpful sales assistant. However, I currently do not have access to the knowledge base. Please kindly inform the user that a human representative will assist them shortly.`;
+      if (!contextString) {
+        return `You are a helpful sales assistant. However, I currently do not have access to the knowledge base. Please kindly inform the user that a human representative will assist them shortly.`;
+      }
+
+      const systemInstruction = `You are a helpful sales assistant for this company. Use ONLY the following context to answer the user's questions. If the context doesn't have the answer, say you don't know.\n\nContext:\n${contextString}`;
 
       return await this.generateResponse(tenantId, formattedHistory, systemInstruction);
     } catch (error) {

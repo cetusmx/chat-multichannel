@@ -1,6 +1,5 @@
 const prisma = require('../config/database');
 const ApiError = require('../utils/ApiError');
-const aiService = require('./ai.service');
 const { extractAndChunkDocument } = require('../utils/chunking');
 
 class KnowledgeBaseService {
@@ -38,9 +37,8 @@ class KnowledgeBaseService {
         throw new Error('No text could be extracted from the document');
       }
 
-      // 2. Embed and Save in transaction
-      // Since generating embeddings takes time and can fail, we process them in batches or sequentially.
-      // We will embed them first, then save them all in a transaction.
+      // Embed and Save in transaction
+      const aiService = require('./ai.service');
       const chunkData = [];
       for (const text of chunks) {
         // Embed each chunk via aiService
@@ -83,23 +81,27 @@ class KnowledgeBaseService {
     });
   }
 
-  async searchSimilarChunks(tenantId, query, limit = 3) {
-    if (!query) throw new ApiError(400, 'Search query cannot be empty');
+  async searchSimilarChunks(tenantId, embedding, limit = 3) {
+    if (!embedding) throw new ApiError(400, 'Search embedding cannot be empty');
     
-    // Embed the query
-    const embedding = await aiService.embed(tenantId, query);
-    const embeddingStr = JSON.stringify(embedding);
+    try {
+      const embeddingStr = JSON.stringify(embedding);
+      const parsedLimit = Math.max(1, parseInt(limit, 10) || 3);
 
-    // Run similarity search
-    const results = await prisma.$queryRaw`
-      SELECT text, 1 - (embedding <=> CAST(${embeddingStr} AS vector)) as similarity
-      FROM document_chunks
-      WHERE tenant_id = ${tenantId}
-      ORDER BY embedding <=> CAST(${embeddingStr} AS vector)
-      LIMIT ${limit};
-    `;
+      // Run similarity search
+      const results = await prisma.$queryRaw`
+        SELECT text, 1 - (embedding <=> ${embeddingStr}::vector) as similarity
+        FROM document_chunks
+        WHERE tenant_id = ${tenantId}
+        ORDER BY embedding <=> ${embeddingStr}::vector
+        LIMIT ${parsedLimit};
+      `;
 
-    return results;
+      return results;
+    } catch (error) {
+      console.error('[KNOWLEDGE_BASE] Search error:', error);
+      throw new ApiError(500, 'Failed to perform similarity search');
+    }
   }
 
 }

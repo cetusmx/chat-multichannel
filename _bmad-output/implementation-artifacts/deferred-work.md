@@ -103,3 +103,6 @@
 - UI Stuck in "Procesando" (No polling) [frontend/src/features/settings/KnowledgeBaseSection.jsx]
 - Copy-Paste Error Handling Spaghetti [frontend/src/services/api.js]
 - Squashed Database Migration Deviation [backend/prisma/migrations/20260706181027_enable_pgvector/migration.sql]
+## Deferred from: code review of 4-3-ai-auto-response-to-new-clients.md (2026-07-06)
+- Integration test heavily relies on hardcoded setTimeout [webhook.ai.test.js:10] — deferred, pre-existing
+- Global fetch mutated in test without restoration [webhook.ai.test.js:20] — deferred, pre-existing

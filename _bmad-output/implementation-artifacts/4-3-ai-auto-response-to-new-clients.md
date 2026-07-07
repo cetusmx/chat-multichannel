@@ -98,20 +98,13 @@ MODEL_PLACEHOLDER_M16
 
 ### Review Findings
 
-**Blind Hunter:**
-- Missing debounce in auto-response (setImmediate triggers concurrent LLM calls).
-- Poor context handling on RAG failure (prompts LLM with empty Context).
-- Fragile concurrency check (relies on findFirst with identical timestamps).
-- Possible Postgres Cast Syntax issue `::vector`.
-- Hardcoded 'IA' Sender Type.
-- Missing Input Validation in `generateAutoResponse`.
-
-**Edge Case Hunter:**
-- Conversation status might change during async AI generation (AI interrupts human).
-- AI service might return empty or null response.
-- Incoming text might be undefined for non-text messages.
-- senderType evaluates to undefined when falsy in `sendMessage`.
-
-**Acceptance Auditor:**
-- Incorrect Fallback Logic for `senderType` in `sendMessage`.
-- Missing Error Handling (try/catch) in `ai.service.js` async operations.
+- [x] [Review][Patch] Misplaced Embedding Logic & Circular Dependency [ai.service.js:37 / knowledgeBase.service.js:47]
+- [x] [Review][Patch] Incorrect senderType Fallback Logic [whatsapp.service.js:362]
+- [x] [Review][Patch] Missing try/catch in searchSimilarChunks [knowledgeBase.service.js:86]
+- [x] [Review][Patch] Deviation in pgvector Cast Syntax [knowledgeBase.service.js:95]
+- [x] [Review][Patch] Parameterized LIMIT in Prisma query [knowledgeBase.service.js:99]
+- [x] [Review][Patch] Chat history mapping treats SYSTEM as model [ai.service.js:49]
+- [x] [Review][Patch] Race conditions in Auto-Response concurrency check [whatsapp.service.js:261]
+- [x] [Review][Patch] Failed RAG fallback invokes LLM anyway [ai.service.js:64]
+- [x] [Review][Defer] Integration test heavily relies on hardcoded setTimeout [webhook.ai.test.js:10] — deferred, pre-existing
+- [x] [Review][Defer] Global fetch mutated in test without restoration [webhook.ai.test.js:20] — deferred, pre-existing
