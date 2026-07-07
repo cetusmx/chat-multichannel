@@ -4,6 +4,7 @@ const { getIo } = require('../socket');
 const prisma = new PrismaClient();
 
 const incomingLocks = new Map();
+const activeAiGenerations = new Set();
 
 /**
  * Servicio para integración con WhatsApp Business API.
@@ -260,6 +261,8 @@ const whatsappService = {
             // AI Auto-Response Orchestration
             if (conversation.status === 'PENDING_ASSIGNMENT' && !mediaData && text && text.trim() !== '') {
               setImmediate(async () => {
+                if (activeAiGenerations.has(conversation.id)) return;
+                activeAiGenerations.add(conversation.id);
                 try {
                   const lastMsg = await prisma.message.findFirst({
                     where: { conversationId: conversation.id },
@@ -276,30 +279,18 @@ const whatsappService = {
                     
                     if (!responseText || responseText.trim() === '') return;
 
-                    // Execute final check and send within a transaction to avoid micro-race
-                    await prisma.$transaction(async (tx) => {
-                      const finalConv = await tx.conversation.findUnique({
-                        where: { id: conversation.id }
-                      });
-                      
-                      const lastMsgNow = await tx.message.findFirst({
-                        where: { conversationId: conversation.id },
-                        orderBy: { createdAt: 'desc' }
-                      });
-
-                      if (finalConv && finalConv.status === 'PENDING_ASSIGNMENT' && lastMsgNow && lastMsgNow.id === msgRecord.id) {
-                        // Optimistically update conversation to ensure no one else claims it while we send
-                        // Actually, we just send. sendMessage is external so we can't fully transactionalize it,
-                        // but wrapping the DB read reduces the race window.
-                      } else {
-                        throw new Error('ABORT_SEND');
-                      }
+                    const finalConv = await prisma.conversation.findUnique({
+                      where: { id: conversation.id }
                     });
-
-                    await this.sendMessage(conversation.id, responseText, null, 'IA');
+                    
+                    if (finalConv && finalConv.status === 'PENDING_ASSIGNMENT') {
+                      await this.sendMessage(conversation.id, responseText, null, 'IA');
+                    }
                   }
                 } catch (aiErr) {
                   console.error('[WHATSAPP_SERVICE] AI auto-response failed:', aiErr.message);
+                } finally {
+                  activeAiGenerations.delete(conversation.id);
                 }
               });
             }
@@ -368,7 +359,7 @@ const whatsappService = {
       const message = await prisma.message.create({
         data: {
           conversationId,
-          senderType: senderId ? senderType : (senderType || 'SYSTEM'),
+          senderType: senderType || 'SYSTEM',
           senderId,
           content,
           waMessageId: metaData.messages?.[0]?.id,

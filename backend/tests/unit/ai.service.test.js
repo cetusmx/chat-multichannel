@@ -37,15 +37,16 @@ describe('AIService', () => {
 
       aiService.generateResponse.mockResolvedValue('Hello there! We sell widgets.');
 
-      jest.spyOn(aiService, 'embed').mockResolvedValue([0.1, 0.2]);
-
       const result = await aiService.generateAutoResponse('tenant1', 'conv1', 'hello');
 
       expect(prisma.message.findMany).toHaveBeenCalledWith(expect.objectContaining({
-        where: { conversationId: 'conv1' }
+        where: { 
+          conversationId: 'conv1',
+          senderType: { in: ['CLIENT', 'IA', 'VENDOR'] },
+          content: { not: '' }
+        }
       }));
-      expect(aiService.embed).toHaveBeenCalledWith('tenant1', 'hello');
-      expect(knowledgeBaseService.searchSimilarChunks).toHaveBeenCalledWith('tenant1', [0.1, 0.2], 3);
+      expect(knowledgeBaseService.searchSimilarChunks).toHaveBeenCalledWith('tenant1', 'hello', 3);
       expect(aiService.generateResponse).toHaveBeenCalledWith(
         'tenant1',
         expect.any(Array), // Formatted history

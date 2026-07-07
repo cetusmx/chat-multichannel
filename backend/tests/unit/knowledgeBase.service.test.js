@@ -8,18 +8,24 @@ jest.mock('../../src/config/database', () => ({
   $queryRaw: jest.fn()
 }));
 
+jest.mock('../../src/services/ai.service', () => ({
+  embed: jest.fn()
+}));
+
 describe('KnowledgeBaseService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
   describe('searchSimilarChunks', () => {
-    it('should throw ApiError if embedding is empty', async () => {
+    it('should throw ApiError if query is empty', async () => {
       await expect(knowledgeBaseService.searchSimilarChunks('tenant1', null)).rejects.toThrow(ApiError);
     });
 
     it('should query database with pgvector', async () => {
       const mockEmbedding = [0.1, 0.2, 0.3];
+      const aiService = require('../../src/services/ai.service');
+      aiService.embed.mockResolvedValue(mockEmbedding);
       
       const mockDbResponse = [
         { text: 'chunk 1', similarity: 0.9 },
@@ -27,9 +33,10 @@ describe('KnowledgeBaseService', () => {
       ];
       prisma.$queryRaw.mockResolvedValue(mockDbResponse);
 
-      const result = await knowledgeBaseService.searchSimilarChunks('tenant1', mockEmbedding, 2);
+      const result = await knowledgeBaseService.searchSimilarChunks('tenant1', 'hello', 2);
 
       expect(prisma.$queryRaw).toHaveBeenCalled();
+      expect(aiService.embed).toHaveBeenCalledWith('tenant1', 'hello');
       
       // Verify result
       expect(result).toEqual(mockDbResponse);

@@ -66,6 +66,7 @@ describe('Webhook AI Auto-Response', () => {
     };
 
     // Need to mock fetch for sendMessage
+    const originalFetch = global.fetch;
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
       json: jest.fn().mockResolvedValue({
@@ -79,19 +80,26 @@ describe('Webhook AI Auto-Response', () => {
 
     expect(res.status).toBe(200);
 
-    // Wait for async execution
-    await new Promise(resolve => setTimeout(resolve, 500));
+    // Wait for async execution using polling
+    let messages = [];
+    let conversation;
+    for (let i = 0; i < 20; i++) {
+      await new Promise(resolve => setTimeout(resolve, 50));
+      conversation = await prisma.conversation.findFirst({
+        where: { tenantId: tenant.id }
+      });
+      if (conversation) {
+        messages = await prisma.message.findMany({
+          where: { conversationId: conversation.id },
+          orderBy: { createdAt: 'asc' }
+        });
+        if (messages.length === 2) break;
+      }
+    }
+    
+    global.fetch = originalFetch;
 
     expect(aiService.generateAutoResponse).toHaveBeenCalledWith(tenant.id, expect.any(String), 'I need help');
-
-    const conversation = await prisma.conversation.findFirst({
-      where: { tenantId: tenant.id }
-    });
-    
-    const messages = await prisma.message.findMany({
-      where: { conversationId: conversation.id },
-      orderBy: { createdAt: 'asc' }
-    });
 
     expect(messages.length).toBe(2);
     expect(messages[0].senderType).toBe('CLIENT');

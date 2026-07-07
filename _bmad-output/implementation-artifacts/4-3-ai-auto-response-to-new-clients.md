@@ -108,3 +108,13 @@ MODEL_PLACEHOLDER_M16
 - [x] [Review][Patch] Failed RAG fallback invokes LLM anyway [ai.service.js:64]
 - [x] [Review][Defer] Integration test heavily relies on hardcoded setTimeout [webhook.ai.test.js:10] — deferred, pre-existing
 - [x] [Review][Defer] Global fetch mutated in test without restoration [webhook.ai.test.js:20] — deferred, pre-existing
+
+### Review Findings (v2)
+
+- [x] [Review][Patch] RAG Fallback Exposes System Prompt to User [ai.service.js:64]
+- [x] [Review][Patch] Ineffective Concurrency Lock / Log Pollution [whatsapp.service.js:276]
+- [x] [Review][Patch] Memory-Level History Filtering Truncates Context [ai.service.js:42]
+- [x] [Review][Patch] Inadequate Embedding Vector Validation [knowledgeBase.service.js:85]
+- [x] [Review][Patch] Toxic Global State Mutation in Tests / Hardcoded setTimeout [webhook.ai.test.js]
+- [x] [Review][Patch] Signature Mismatch for searchSimilarChunks [knowledgeBase.service.js:84]
+- [x] [Review][Defer] Cowboy Circular Dependency Workaround [knowledgeBase.service.js] — deferred, requires architectural refactor

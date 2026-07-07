@@ -106,3 +106,4 @@
 ## Deferred from: code review of 4-3-ai-auto-response-to-new-clients.md (2026-07-06)
 - Integration test heavily relies on hardcoded setTimeout [webhook.ai.test.js:10] — deferred, pre-existing
 - Global fetch mutated in test without restoration [webhook.ai.test.js:20] — deferred, pre-existing
+- Cowboy Circular Dependency Workaround [knowledgeBase.service.js] — deferred, requires architectural refactor

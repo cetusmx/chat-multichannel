@@ -81,10 +81,17 @@ class KnowledgeBaseService {
     });
   }
 
-  async searchSimilarChunks(tenantId, embedding, limit = 3) {
-    if (!embedding) throw new ApiError(400, 'Search embedding cannot be empty');
+  async searchSimilarChunks(tenantId, query, limit = 3) {
+    if (!query || typeof query !== 'string' || query.trim() === '') throw new ApiError(400, 'Search query cannot be empty');
     
     try {
+      const aiService = require('./ai.service');
+      const embedding = await aiService.embed(tenantId, query);
+      
+      if (!embedding || !Array.isArray(embedding) || embedding.length === 0) {
+        throw new ApiError(500, 'Failed to generate embedding for search query');
+      }
+
       const embeddingStr = JSON.stringify(embedding);
       const parsedLimit = Math.max(1, parseInt(limit, 10) || 3);
 
