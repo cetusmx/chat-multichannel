@@ -88,7 +88,7 @@ describe('useChatStore - Socket functionality', () => {
       useChatStore.getState().initializeSocket();
       const mockSocket = io();
       
-      const escalatedHandler = mockSocket.on.mock.calls.find(call => call[0] === 'chat:escalated')[1];
+      const escalatedHandler = mockSocket.on.mock.calls.find(call => call[0] === 'chat:escalated')?.[1];
       
       escalatedHandler({ payload: { conversationId: 'conv1', tenantId: 'tenant1' } });
       
@@ -107,7 +107,7 @@ describe('useChatStore - Socket functionality', () => {
       useChatStore.getState().initializeSocket();
       const mockSocket = io();
       
-      const reassignedHandler = mockSocket.on.mock.calls.find(call => call[0] === 'conversation_reassigned')[1];
+      const reassignedHandler = mockSocket.on.mock.calls.find(call => call[0] === 'conversation_reassigned')?.[1];
       
       reassignedHandler({
         action: 'added',
@@ -128,7 +128,7 @@ describe('useChatStore - Socket functionality', () => {
 
       useChatStore.getState().initializeSocket();
       const mockSocket = io();
-      const assignedHandler = mockSocket.on.mock.calls.find(call => call[0] === 'chat:assigned')[1];
+      const assignedHandler = mockSocket.on.mock.calls.find(call => call[0] === 'chat:assigned')?.[1];
       
       assignedHandler({ payload: { conversationId: 'conv1', status: 'ACTIVE' } });
       expect(useChatStore.getState().conversations.find(c => c.id === 'conv1').status).toBe('ACTIVE');
@@ -141,7 +141,7 @@ describe('useChatStore - Socket functionality', () => {
 
       useChatStore.getState().initializeSocket();
       const mockSocket = io();
-      const resolvedHandler = mockSocket.on.mock.calls.find(call => call[0] === 'chat:resolved')[1];
+      const resolvedHandler = mockSocket.on.mock.calls.find(call => call[0] === 'chat:resolved')?.[1];
       
       resolvedHandler({ payload: { conversationId: 'conv1', status: 'CLOSED' } });
       expect(useChatStore.getState().conversations.find(c => c.id === 'conv1').status).toBe('CLOSED');

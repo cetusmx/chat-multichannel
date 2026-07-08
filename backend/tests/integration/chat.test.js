@@ -478,8 +478,9 @@ describe('Escalation Flow in whatsapp.service.js', () => {
         await new Promise(r => setTimeout(r, 100));
       }
 
-      expect(updatedConv.status).toBe('ESCALATED');
-      expect(updatedConv.aiPendingEscalation).toBe(true);
+      expect(updatedConv).toBeDefined();
+      expect(updatedConv?.status).toBe('ESCALATED');
+      expect(updatedConv?.aiPendingEscalation).toBe(true);
 
       // Verify socket event
       expect(mockEmit).toHaveBeenCalledWith('chat:escalated', expect.objectContaining({

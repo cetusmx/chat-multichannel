@@ -32,7 +32,7 @@ export default function ChatList({ conversations, currentConversationId, current
                 <span className="truncate">{conv.client?.name || conv.client?.phoneNumber}</span>
                 {conv.status === 'ESCALATED' && (
                   <span 
-                    className="flex-shrink-0 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider shadow-sm shadow-red-500/20"
+                    className="flex-shrink-0 px-1.5 py-0.5 rounded bg-red-500 text-white shadow-sm shadow-red-500/20 text-[10px] font-bold uppercase tracking-wider"
                     aria-label="Chat escalado"
                     title="Este chat requiere atención de un coordinador"
                   >
