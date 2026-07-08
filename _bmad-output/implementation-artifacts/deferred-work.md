@@ -140,3 +140,7 @@
 - Unnecessary tenant query `prisma.tenant.findUnique` inside message handling logic [backend/src/services/whatsapp.service.js]
 - Empty catch blocks in `afterEach` hook for database cleanup [backend/tests/integration/chat.test.js]
 - Race condition relying on `setTimeout(r, 100)` delays before making assertions [backend/tests/integration/chat.test.js]
+
+## Deferred from: code review pass 3 of 4-7-ai-off-hours-mode.md (2026-07-07)
+- `options` parameter explicitly passed as null causes `TypeError` during object destructuring (default params only protect against undefined) [backend/src/services/ai.service.js]
+- Strict regex validation for hours accepts impossible times like 25:99 [backend/src/utils/date.js]
