@@ -74,14 +74,14 @@ development_status:
   3-8-malicious-user-blocking: done
   3-9-coordinator-direct-intervention: done
   epic-3-retrospective: optional
-  epic-4: in-progress
+  epic-4: done
   4-1-ai-provider-configuration-adapter-pattern: done
   4-2-rag-knowledge-base-management: done
   4-3-ai-auto-response-to-new-clients: done
   4-4-ai-escalation-and-human-handoff: done
   4-5-vendor-inline-ai-assistance: done
   4-6-coordinator-escalation-alerts: done
-  4-7-ai-off-hours-mode: backlog
+  4-7-ai-off-hours-mode: done
   epic-4-retrospective: optional
   epic-5: backlog
   5-1-client-assignment-rules-configuration: backlog

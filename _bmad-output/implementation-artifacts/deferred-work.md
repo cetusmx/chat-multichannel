@@ -135,3 +135,8 @@
 ## Deferred from: code review pass 3 of 4-5-vendor-inline-ai-assistance.md (2026-07-07)
 - Missing Swagger Response Schemas (`backend/src/routes/conversation.routes.js`) - deferred, out of scope for MVP
 - Options argument contains method or body keys (`frontend/src/services/api.js`) - deferred, out of scope
+
+## Deferred from: code review of 4-7-ai-off-hours-mode.md (2026-07-07)
+- Unnecessary tenant query `prisma.tenant.findUnique` inside message handling logic [backend/src/services/whatsapp.service.js]
+- Empty catch blocks in `afterEach` hook for database cleanup [backend/tests/integration/chat.test.js]
+- Race condition relying on `setTimeout(r, 100)` delays before making assertions [backend/tests/integration/chat.test.js]

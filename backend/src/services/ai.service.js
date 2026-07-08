@@ -59,11 +59,12 @@ class AIService {
     }
   }
 
-  async generateAutoResponse(tenantId, conversationId, incomingText) {
+  async generateAutoResponse(tenantId, conversationId, incomingText, options = {}) {
     if (!tenantId || !conversationId || !incomingText) {
       throw new ApiError(400, 'Missing required parameters for auto-response');
     }
 
+    const { isOffHours = false } = options;
 
     try {
       // Fetch history
@@ -92,14 +93,19 @@ class AIService {
         console.warn('RAG search failed, continuing without context:', err.message);
       }
 
+      let baseSystemInstruction = '';
       if (!contextString) {
-        const fallbackSystem = `You are a helpful sales assistant. However, I currently do not have access to the knowledge base. You MUST include the exact string [[ESCALATE]] anywhere in your reply.`;
-        return await this.generateResponse(tenantId, formattedHistory, fallbackSystem);
+        baseSystemInstruction = `You are a helpful sales assistant. However, I currently do not have access to the knowledge base. You MUST include the exact string [[ESCALATE]] anywhere in your reply.`;
+      } else {
+        baseSystemInstruction = `You are a helpful sales assistant for this company. Use ONLY the following context to answer the user's questions. If the user explicitly asks to speak to a human, or if you cannot confidently answer their question based on the provided context, you MUST include the exact string [[ESCALATE]] anywhere in your reply.\n\nContext:\n${contextString}`;
       }
 
-      const systemInstruction = `You are a helpful sales assistant for this company. Use ONLY the following context to answer the user's questions. If the user explicitly asks to speak to a human, or if you cannot confidently answer their question based on the provided context, you MUST include the exact string [[ESCALATE]] anywhere in your reply.\n\nContext:\n${contextString}`;
+      if (isOffHours) {
+        const contextMsg = contextString ? ' answer their question if possible using context,' : ' answer their question if possible,';
+        baseSystemInstruction += `\n\nIt is currently outside business hours. You must self-identify as an AI, inform the user that a human agent will contact them the next morning,${contextMsg} and include [[ESCALATE]] so a human agent is assigned.`;
+      }
 
-      return await this.generateResponse(tenantId, formattedHistory, systemInstruction);
+      return await this.generateResponse(tenantId, formattedHistory, baseSystemInstruction);
     } catch (error) {
       console.error('[AI_SERVICE] Error generating auto-response:', error.message);
       throw error;

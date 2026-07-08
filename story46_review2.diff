@@ -1,0 +1,441 @@
+diff --git a/_bmad-output/implementation-artifacts/4-6-coordinator-escalation-alerts.md b/_bmad-output/implementation-artifacts/4-6-coordinator-escalation-alerts.md
+new file mode 100644
+index 0000000..58a204d
+--- /dev/null
++++ b/_bmad-output/implementation-artifacts/4-6-coordinator-escalation-alerts.md
+@@ -0,0 +1,84 @@
++---
++baseline_commit: 9b0884a
++---
++# Story 4.6: Coordinator Escalation Alerts
++
++Status: done
++
++<!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
++
++## Story
++
++As a Coordinator,
++I want to be alerted when the AI escalates a chat,
++So that I can ensure it gets handled immediately.
++
++## Acceptance Criteria
++
++1. **Given** an AI handoff event is triggered (e.g., due to complex queries or explicit human request),
++2. **When** the backend updates the conversation status to `ESCALATED` and emits the `chat:escalated` event,
++3. **Then** the Coordinator dashboard (`DualView.jsx` and `ConversationList.jsx`) shows a high-priority alert badge with an appropriate aria-label.
++4. **And** if a coordinator reloads the page, the badge remains visible because the `ESCALATED` status is persisted in the database and included in the initial fetch.
++5. **And** when the conversation is assigned to a vendor or intervened by a coordinator, the badge is immediately removed.
++
++## Tasks / Subtasks
++
++- [x] Task 1: Backend Alert Event & Persistence (Backend)
++  - [x] Update `backend/src/services/ai.service.js` (and any relevant DB operations) to persist the conversation status as `ESCALATED`.
++  - [x] Ensure the REST API for fetching conversations includes the `ESCALATED` status so the UI can hydrate properly on reload.
++  - [x] Emit a Socket.IO event when escalation occurs. Event format must strictly follow architecture pattern and namespace: `io.of('/chat').to('coordinators').emit('chat:escalated', { type: 'ESCALATION_ALERT', payload: { conversationId, tenantId, reason: string }, timestamp: new Date().toISOString(), correlationId: uuid() })`
++- [x] Task 2: Frontend Alert UI (Frontend)
++  - [x] In `frontend/src/features/chat/components/DualView.jsx` and the underlying `ConversationList`, listen for `chat:escalated`.
++  - [x] Render a visually distinct, high-priority alert badge (e.g., using Tailwind `bg-red-500 text-white`) on the conversation item. Ensure it has an `aria-label="Chat escalado"` for accessibility.
++- [x] Task 3: State Management (Frontend)
++  - [x] Update `frontend/src/stores/useChatStore.js` to track `escalated` status per conversation.
++  - [x] Ensure the alert badge clears when the conversation status changes by explicitly listening for `chat:assigned` or `chat:resolved` events.
++- [x] Task 4: Testing & Validation
++  - [x] Add unit/integration tests in `backend/tests/integration/chat.test.js` to ensure the status updates and socket events fire.
++  - [x] Add component tests (using React Testing Library if available) for `DualView.jsx` or store tests for `useChatStore` to verify the state transitions.
++  - [x] Use `jest.restoreAllMocks()` in `finally` blocks and `jest.clearAllMocks()` in `afterEach` to prevent state leakage (critical lesson from 4.4/4.5).
++
++## Dev Notes
++
++- **AI Service Integration:** Ensure the backend properly emits the necessary socket event when the escalation triggers (see `backend/src/socket.js` for `getIo()`).
++- **Data Persistence:** The badge must survive page reloads. The backend MUST update the conversation's `status` to `ESCALATED` in the DB so `apiFetch('/conversations')` can rehydrate the state for newly connected coordinators.
++- **Architecture Standard (Socket.IO):** You MUST use the standard payload wrapper: `{ type, payload, timestamp, correlationId }`. Do NOT send naked objects.
++- **Testing Standard (State Leakage):** When mocking `aiService` or `socket.io`, ensure cleanup to prevent test state leakage and race conditions.
++
++### Project Structure Notes
++
++- Check/Update `backend/src/services/ai.service.js` or `chat.routes.js` to emit the socket event during escalation on the `/chat` namespace.
++- Update `frontend/src/features/chat/components/DualView.jsx` or similar coordinator views to render the badge.
++- Update `frontend/src/stores/useChatStore.js` to handle the real-time event.
++
++### Previous Story Intelligence
++
++- **From Story 4.5:** Be careful with React state updates on unmounted components (use `isMountedRef` or `AbortController`). Always clean up socket listeners in `useEffect` to prevent duplicate events or memory leaks. 
++- **From Story 4.4:** Ensure that the state leakages in integration tests are handled properly by restoring mocks (`jest.restoreAllMocks()`) and tearing down the database properly.
++
++### References
++
++- [Source: _bmad-output/planning-artifacts/epics.md#Epic-4-AI-Agent--RAG]
++- [Source: _bmad/project-context.md]
++- [Source: _bmad-output/planning-artifacts/architecture.md]
++
++## Dev Agent Record
++
++### Agent Model Used
++
++### Debug Log References
++
++### Completion Notes List
++
++### Review Findings
++
++- [x] [Review][Decision] Socket Room Target Mismatch — Emitted to `tenant_${tenantId}_coordinators` instead of `coordinators` as stated in the spec. (Multi-tenancy vs strict spec compliance). (Dismissed: Keeping multi-tenant isolation)
++- [x] [Review][Patch] Missing listeners for `chat:assigned` and `chat:resolved` in `useChatStore.js` [frontend/src/stores/useChatStore.js]
++- [x] [Review][Patch] Removed existing socket emission to conversation room (`conversation_escalated`) [backend/src/services/whatsapp.service.js]
++- [x] [Review][Patch] `require('crypto')` placed inside an `if` block instead of top-level [backend/src/services/whatsapp.service.js]
++- [x] [Review][Patch] Fragile hardcoded `setTimeout` in integration tests [backend/tests/integration/chat.test.js]
++- [x] [Review][Patch] Incomplete database cleanup in test teardown [backend/tests/integration/chat.test.js]
++- [x] [Review][Patch] Conflicting `flex` and `truncate` classes on the same element [frontend/src/features/chat/components/ChatList.jsx]
++- [x] [Review][Patch] Undefined `testTenantId` variable [backend/tests/integration/chat.test.js]
++- [x] [Review][Patch] Uncaught TypeError if event payload is missing [frontend/src/stores/useChatStore.js]
++- [x] [Review][Patch] Misplaced mock cleanup in tests [backend/tests/integration/chat.test.js]
+diff --git a/_bmad-output/implementation-artifacts/sprint-status.yaml b/_bmad-output/implementation-artifacts/sprint-status.yaml
+index ad82ec3..140d17d 100644
+--- a/_bmad-output/implementation-artifacts/sprint-status.yaml
++++ b/_bmad-output/implementation-artifacts/sprint-status.yaml
+@@ -41,7 +41,7 @@
+ # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
+ 
+ generated: 2026-07-04T19:33:21-06:00
+-last_updated: 2026-07-06T19:30:24-06:00
++last_updated: 2026-07-07T12:53:00-06:00
+ project: chat-multichannel-sales-ia
+ project_key: NOKEY
+ tracking_system: file-system
+@@ -80,7 +80,7 @@ development_status:
+   4-3-ai-auto-response-to-new-clients: done
+   4-4-ai-escalation-and-human-handoff: done
+   4-5-vendor-inline-ai-assistance: done
+-  4-6-coordinator-escalation-alerts: backlog
++  4-6-coordinator-escalation-alerts: done
+   4-7-ai-off-hours-mode: backlog
+   epic-4-retrospective: optional
+   epic-5: backlog
+diff --git a/backend/prisma/migrations/20260707235929_add_escalated_status/migration.sql b/backend/prisma/migrations/20260707235929_add_escalated_status/migration.sql
+new file mode 100644
+index 0000000..73a1531
+--- /dev/null
++++ b/backend/prisma/migrations/20260707235929_add_escalated_status/migration.sql
+@@ -0,0 +1,2 @@
++-- AlterEnum
++ALTER TYPE "ConversationStatus" ADD VALUE 'ESCALATED';
+diff --git a/backend/prisma/schema.prisma b/backend/prisma/schema.prisma
+index 0dc7a1c..689ec30 100644
+--- a/backend/prisma/schema.prisma
++++ b/backend/prisma/schema.prisma
+@@ -23,6 +23,7 @@ enum ConversationStatus {
+   PENDING_ASSIGNMENT
+   ACTIVE
+   CLOSED
++  ESCALATED
+ }
+ 
+ enum SenderType {
+diff --git a/backend/src/services/whatsapp.service.js b/backend/src/services/whatsapp.service.js
+index b2be7fc..04f3663 100644
+--- a/backend/src/services/whatsapp.service.js
++++ b/backend/src/services/whatsapp.service.js
+@@ -1,6 +1,7 @@
+ const { PrismaClient } = require('@prisma/client');
+ const env = require('../config/env');
+ const { getIo } = require('../socket');
++const crypto = require('crypto');
+ const prisma = new PrismaClient();
+ 
+ const incomingLocks = new Map();
+@@ -298,13 +299,31 @@ const whatsappService = {
+                       if (requiresEscalation) {
+                         const updatedConv = await prisma.conversation.update({
+                           where: { id: conversation.id },
+-                          data: { aiPendingEscalation: true }
++                          data: { 
++                            aiPendingEscalation: true,
++                            status: 'ESCALATED' 
++                          }
+                         });
+                         
+                         try {
+                           const { getIo } = require('../socket');
+                           const io = getIo();
+-                          io.of('/chat').to(`conversation:${conversation.id}`).to(`tenant_${tenantId}_coordinators`).emit('conversation_escalated', updatedConv);
++                          io.of('/chat')
++                            .to(`tenant_${tenantId}_coordinators`)
++                            .emit('chat:escalated', { 
++                              type: 'ESCALATION_ALERT', 
++                              payload: { 
++                                conversationId: conversation.id, 
++                                tenantId,
++                                reason: 'AI handoff requested'
++                              }, 
++                              timestamp: new Date().toISOString(), 
++                              correlationId: crypto.randomUUID() 
++                            });
++                          
++                          io.of('/chat')
++                            .to(`conversation:${conversation.id}`)
++                            .emit('conversation_escalated', updatedConv);
+                         } catch (err) {
+                           console.error('[WHATSAPP_SERVICE] Error emitting escalation event:', err.message);
+                         }
+diff --git a/backend/tests/integration/chat.test.js b/backend/tests/integration/chat.test.js
+index b66a954..1f308de 100644
+--- a/backend/tests/integration/chat.test.js
++++ b/backend/tests/integration/chat.test.js
+@@ -407,4 +407,91 @@ describe('POST /api/conversations/:conversationId/ai-assist', () => {
+   });
+ });
+ 
++describe('Escalation Flow in whatsapp.service.js', () => {
++  afterEach(() => {
++    jest.clearAllMocks();
++  });
+ 
++  it('should update status to ESCALATED and emit chat:escalated socket event on [[ESCALATE]]', async () => {
++    const whatsappService = require('../../src/services/whatsapp.service');
++    const aiService = require('../../src/services/ai.service');
++    const socket = require('../../src/socket');
++    
++    const uniqueClient = await prisma.client.create({
++      data: {
++        phoneNumber: '9998887776',
++        name: 'Escalation Test Client',
++        tenantId: testTenantId,
++      }
++    });
++
++    // Create an unassigned conversation
++    const testConv = await prisma.conversation.create({
++      data: {
++        clientId: uniqueClient.id,
++        tenantId: testTenantId,
++        status: 'PENDING_ASSIGNMENT',
++      }
++    });
++
++    jest.spyOn(aiService, 'generateAutoResponse').mockResolvedValue('I cannot help with that. [[ESCALATE]]');
++    jest.spyOn(whatsappService, 'sendMessage').mockResolvedValue({});
++    
++    // Mock socket
++    const mockTo = jest.fn().mockReturnThis();
++    const mockEmit = jest.fn();
++    jest.spyOn(socket, 'getIo').mockReturnValue({
++      of: jest.fn().mockReturnValue({
++        to: mockTo,
++        emit: mockEmit
++      })
++    });
++
++    try {
++      // Simulate incoming message
++      await whatsappService.handleIncomingMessage({
++        object: 'whatsapp_business_account',
++        entry: [{
++          changes: [{
++            value: {
++              messages: [{
++                from: '9998887776',
++                id: 'wa-test-msg-123',
++                type: 'text',
++                text: { body: 'I need human help' },
++                timestamp: Math.floor(Date.now() / 1000).toString()
++              }],
++              contacts: [{ profile: { name: 'Test' } }]
++            }
++          }]
++        }]
++      }, testTenantId);
++
++      // Poll until the status is updated
++      let updatedConv;
++      for (let i = 0; i < 20; i++) {
++        updatedConv = await prisma.conversation.findUnique({ where: { id: testConv.id } });
++        if (updatedConv.status === 'ESCALATED') break;
++        await new Promise(r => setTimeout(r, 100));
++      }
++
++      expect(updatedConv.status).toBe('ESCALATED');
++      expect(updatedConv.aiPendingEscalation).toBe(true);
++
++      // Verify socket event
++      expect(mockEmit).toHaveBeenCalledWith('chat:escalated', expect.objectContaining({
++        type: 'ESCALATION_ALERT',
++        payload: expect.objectContaining({
++          conversationId: testConv.id,
++          tenantId: testTenantId,
++          reason: 'AI handoff requested'
++        })
++      }));
++    } finally {
++      await prisma.message.deleteMany({ where: { conversationId: testConv.id } });
++      await prisma.conversation.delete({ where: { id: testConv.id } });
++      await prisma.client.delete({ where: { id: uniqueClient.id } });
++      jest.restoreAllMocks();
++    }
++  });
++});
+diff --git a/frontend/src/features/chat/components/ChatList.jsx b/frontend/src/features/chat/components/ChatList.jsx
+index 13f25ce..a91879c 100644
+--- a/frontend/src/features/chat/components/ChatList.jsx
++++ b/frontend/src/features/chat/components/ChatList.jsx
+@@ -28,8 +28,17 @@ export default function ChatList({ conversations, currentConversationId, current
+             }`}
+           >
+             <div className="flex justify-between items-start mb-2">
+-              <span className="font-semibold text-sales-slate-100 truncate pr-2">
+-                {conv.client?.name || conv.client?.phoneNumber}
++              <span className="font-semibold text-sales-slate-100 pr-2 flex items-center gap-2 min-w-0">
++                <span className="truncate">{conv.client?.name || conv.client?.phoneNumber}</span>
++                {conv.status === 'ESCALATED' && (
++                  <span 
++                    className="flex-shrink-0 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider shadow-sm shadow-red-500/20"
++                    aria-label="Chat escalado"
++                    title="Este chat requiere atención de un coordinador"
++                  >
++                    Escalado
++                  </span>
++                )}
+               </span>
+               <span className="text-xs text-sales-slate-500 flex-shrink-0 pt-1">
+                 {new Date(conv.lastMessageAt || conv.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+diff --git a/frontend/src/features/chat/components/ChatList.test.jsx b/frontend/src/features/chat/components/ChatList.test.jsx
+new file mode 100644
+index 0000000..ce1d359
+--- /dev/null
++++ b/frontend/src/features/chat/components/ChatList.test.jsx
+@@ -0,0 +1,47 @@
++/** @vitest-environment jsdom */
++import React from 'react';
++import { render, screen, fireEvent, cleanup } from '@testing-library/react';
++import { describe, it, expect, vi, afterEach } from 'vitest';
++import ChatList from './ChatList';
++
++describe('ChatList', () => {
++  afterEach(cleanup);
++  const mockOnSelect = vi.fn();
++
++  it('renders conversations correctly', () => {
++    const conversations = [
++      { id: '1', client: { name: 'Client 1' }, status: 'ACTIVE', lastMessageAt: new Date().toISOString() },
++      { id: '2', client: { phoneNumber: '1234567890' }, status: 'PENDING_ASSIGNMENT', lastMessageAt: new Date().toISOString() },
++    ];
++
++    render(<ChatList conversations={conversations} onSelect={mockOnSelect} />);
++    
++    expect(screen.getByText('Client 1')).toBeDefined();
++    expect(screen.getByText('1234567890')).toBeDefined();
++    expect(screen.queryByText('Escalado')).toBeNull();
++  });
++
++  it('renders the alert badge when conversation status is ESCALATED', () => {
++    const conversations = [
++      { id: '1', client: { name: 'Escalated Client' }, status: 'ESCALATED', lastMessageAt: new Date().toISOString() },
++    ];
++
++    render(<ChatList conversations={conversations} onSelect={mockOnSelect} />);
++    
++    expect(screen.getByText('Escalated Client')).toBeDefined();
++    const badge = screen.getByText('Escalado');
++    expect(badge).toBeDefined();
++    expect(badge.getAttribute('aria-label')).toBe('Chat escalado');
++  });
++
++  it('calls onSelect when a conversation is clicked', () => {
++    const conversations = [
++      { id: '1', client: { name: 'Client 1' }, status: 'ACTIVE', lastMessageAt: new Date().toISOString() },
++    ];
++
++    render(<ChatList conversations={conversations} onSelect={mockOnSelect} />);
++    
++    fireEvent.click(screen.getByText('Client 1').closest('div'));
++    expect(mockOnSelect).toHaveBeenCalledWith('1');
++  });
++});
+diff --git a/frontend/src/stores/useChatStore.js b/frontend/src/stores/useChatStore.js
+index 7538925..3ccc62f 100644
+--- a/frontend/src/stores/useChatStore.js
++++ b/frontend/src/stores/useChatStore.js
+@@ -443,6 +443,33 @@ const useChatStore = create((set, get) => ({
+       });
+     });
+ 
++    newSocket.on('chat:escalated', (event) => {
++      set((state) => {
++        const conversationId = event?.payload?.conversationId;
++        if (!conversationId) return state;
++        return {
++          conversations: state.conversations.map(c => 
++            c.id === conversationId ? { ...c, status: 'ESCALATED' } : c
++          )
++        };
++      });
++    });
++
++    const clearEscalatedStatus = (event) => {
++      set((state) => {
++        const conversationId = event?.payload?.conversationId || event?.conversationId;
++        if (!conversationId) return state;
++        return {
++          conversations: state.conversations.map(c => 
++            c.id === conversationId ? { ...c, status: 'ACTIVE' } : c
++          )
++        };
++      });
++    };
++
++    newSocket.on('chat:assigned', clearEscalatedStatus);
++    newSocket.on('chat:resolved', clearEscalatedStatus);
++
+     newSocket.on('client_blocked', (updatedClient) => {
+       set((state) => {
+         // Also remove any closed conversations from the store if the client is blocked
+diff --git a/frontend/src/stores/useChatStore.test.js b/frontend/src/stores/useChatStore.test.js
+index 5c4841d..a6478ad 100644
+--- a/frontend/src/stores/useChatStore.test.js
++++ b/frontend/src/stores/useChatStore.test.js
+@@ -79,6 +79,47 @@ describe('useChatStore - Socket functionality', () => {
+     
+   });
+ 
++  describe('chat:escalated event', () => {
++    it('updates the status of the conversation to ESCALATED', () => {
++      useChatStore.setState({
++        conversations: [{ id: 'conv1', status: 'ACTIVE' }, { id: 'conv2', status: 'ACTIVE' }]
++      });
++
++      useChatStore.getState().initializeSocket();
++      const mockSocket = io();
++      
++      const escalatedHandler = mockSocket.on.mock.calls.find(call => call[0] === 'chat:escalated')[1];
++      
++      escalatedHandler({ payload: { conversationId: 'conv1', tenantId: 'tenant1' } });
++      
++      const conversations = useChatStore.getState().conversations;
++      expect(conversations.find(c => c.id === 'conv1').status).toBe('ESCALATED');
++      expect(conversations.find(c => c.id === 'conv2').status).toBe('ACTIVE');
++    });
++  });
++
++  describe('conversation_reassigned event', () => {
++    it('replaces ESCALATED status with the incoming updated conversation status when reassigned', () => {
++      useChatStore.setState({
++        conversations: [{ id: 'conv1', status: 'ESCALATED' }]
++      });
++
++      useChatStore.getState().initializeSocket();
++      const mockSocket = io();
++      
++      const reassignedHandler = mockSocket.on.mock.calls.find(call => call[0] === 'conversation_reassigned')[1];
++      
++      reassignedHandler({
++        action: 'added',
++        conversationId: 'conv1',
++        conversation: { id: 'conv1', status: 'ACTIVE' }
++      });
++      
++      const conversations = useChatStore.getState().conversations;
++      expect(conversations.find(c => c.id === 'conv1').status).toBe('ACTIVE');
++    });
++  });
++
+   describe('Pagination', () => {
+     it('loadMoreMessages does nothing if no nextCursor', async () => {
+       useChatStore.setState({ currentConversationId: '123', hasMore: false, nextCursor: null });

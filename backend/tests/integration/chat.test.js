@@ -503,3 +503,245 @@ describe('Escalation Flow in whatsapp.service.js', () => {
     }
   });
 });
+
+describe('AI Off-Hours Mode in whatsapp.service.js', () => {
+  let uniqueClient;
+  let testConv;
+  
+  beforeEach(async () => {
+    jest.clearAllMocks();
+  });
+
+  afterEach(async () => {
+    if (testConv) {
+      try { await prisma.message.deleteMany({ where: { conversationId: testConv.id } }); } catch (e) {}
+      try { await prisma.conversation.delete({ where: { id: testConv.id } }); } catch (e) {}
+    }
+    if (uniqueClient) {
+      try { await prisma.client.delete({ where: { id: uniqueClient.id } }); } catch (e) {}
+    }
+  });
+
+  it('should explicitly inject off-hours prompt and ESCALATE when time is outside business hours', async () => {
+    // 2026-07-05T08:00:00.000Z is 02:00:00 AM in America/Mexico_City (Sunday)
+    jest.useFakeTimers({ doNotFake: ['setTimeout', 'setImmediate', 'setInterval', 'clearTimeout', 'clearInterval', 'clearImmediate', 'nextTick'] });
+    jest.setSystemTime(new Date('2026-07-05T08:00:00.000Z'));
+
+    const whatsappService = require('../../src/services/whatsapp.service');
+    const aiService = require('../../src/services/ai.service');
+    
+    // Update tenant to have businessHours (Monday to Friday, 9 to 6)
+    await prisma.tenant.update({
+      where: { id: testTenantId },
+      data: {
+        businessHours: {
+          start: '09:00',
+          end: '18:00',
+          timezone: 'America/Mexico_City',
+          days: [1, 2, 3, 4, 5] // Mon-Fri
+        }
+      }
+    });
+
+    uniqueClient = await prisma.client.create({
+      data: {
+        phoneNumber: '9998887777',
+        name: 'OffHours Test Client',
+        tenantId: testTenantId,
+      }
+    });
+
+    testConv = await prisma.conversation.create({
+      data: {
+        clientId: uniqueClient.id,
+        tenantId: testTenantId,
+        status: 'PENDING_ASSIGNMENT',
+      }
+    });
+
+    const aiSpy = jest.spyOn(aiService, 'generateAutoResponse').mockResolvedValue('Hi, it is late. [[ESCALATE]]');
+    jest.spyOn(whatsappService, 'sendMessage').mockResolvedValue({});
+
+    try {
+      await whatsappService.handleIncomingMessage({
+        object: 'whatsapp_business_account',
+        entry: [{
+          changes: [{
+            value: {
+              messages: [{
+                from: '9998887777',
+                id: 'wa-test-msg-offhours-1',
+                type: 'text',
+                text: { body: 'Hello' },
+                timestamp: Math.floor(Date.now() / 1000).toString()
+              }],
+              contacts: [{ profile: { name: 'Test' } }]
+            }
+          }]
+        }]
+      }, testTenantId);
+
+      // Wait for setImmediate using real await
+      await new Promise(r => setTimeout(r, 100));
+
+      // Ensure generateAutoResponse was called with isOffHours = true
+      expect(aiSpy).toHaveBeenCalledWith(
+        testTenantId, 
+        testConv.id, 
+        'Hello', 
+        expect.objectContaining({ isOffHours: true })
+      );
+
+      let updatedConv;
+      for (let i = 0; i < 20; i++) {
+        updatedConv = await prisma.conversation.findUnique({ where: { id: testConv.id } });
+        if (updatedConv?.status === 'ESCALATED') break;
+        await new Promise(r => setTimeout(r, 100));
+      }
+      
+      expect(updatedConv?.status).toBe('ESCALATED');
+      expect(updatedConv?.aiPendingEscalation).toBe(true);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('should explicitly inject off-hours prompt and ESCALATE when time is outside business hours but day is a weekday', async () => {
+    // 2026-07-07T08:00:00.000Z is 02:00:00 AM in America/Mexico_City (Tuesday)
+    jest.useFakeTimers({ doNotFake: ['setTimeout', 'setImmediate', 'setInterval', 'clearTimeout', 'clearInterval', 'clearImmediate', 'nextTick'] });
+    jest.setSystemTime(new Date('2026-07-07T08:00:00.000Z'));
+
+    const whatsappService = require('../../src/services/whatsapp.service');
+    const aiService = require('../../src/services/ai.service');
+    
+    await prisma.tenant.update({
+      where: { id: testTenantId },
+      data: {
+        businessHours: {
+          start: '09:00',
+          end: '18:00',
+          timezone: 'America/Mexico_City',
+          days: [1, 2, 3, 4, 5] // Mon-Fri
+        }
+      }
+    });
+
+    uniqueClient = await prisma.client.create({
+      data: {
+        phoneNumber: '9998887779',
+        name: 'OffHours Test Client 2',
+        tenantId: testTenantId,
+      }
+    });
+
+    testConv = await prisma.conversation.create({
+      data: {
+        clientId: uniqueClient.id,
+        tenantId: testTenantId,
+        status: 'PENDING_ASSIGNMENT',
+      }
+    });
+
+    const aiSpy = jest.spyOn(aiService, 'generateAutoResponse').mockResolvedValue('Hi, it is late. [[ESCALATE]]');
+    jest.spyOn(whatsappService, 'sendMessage').mockResolvedValue({});
+
+    try {
+      await whatsappService.handleIncomingMessage({
+        object: 'whatsapp_business_account',
+        entry: [{
+          changes: [{
+            value: {
+              messages: [{
+                from: '9998887779',
+                id: 'wa-test-msg-offhours-2',
+                type: 'text',
+                text: { body: 'Hello 2' },
+                timestamp: Math.floor(Date.now() / 1000).toString()
+              }],
+              contacts: [{ profile: { name: 'Test 2' } }]
+            }
+          }]
+        }]
+      }, testTenantId);
+
+      await new Promise(r => setTimeout(r, 100));
+
+      expect(aiSpy).toHaveBeenCalledWith(
+        testTenantId, 
+        testConv.id, 
+        'Hello 2', 
+        expect.objectContaining({ isOffHours: true })
+      );
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('should NOT trigger off-hours mode if tenant businessHours is null (24/7)', async () => {
+    // Set Sunday 2:00 AM
+    jest.useFakeTimers({ doNotFake: ['setTimeout', 'setImmediate', 'setInterval', 'clearTimeout', 'clearInterval', 'clearImmediate', 'nextTick'] });
+    jest.setSystemTime(new Date('2026-07-05T08:00:00.000Z'));
+
+    const whatsappService = require('../../src/services/whatsapp.service');
+    const aiService = require('../../src/services/ai.service');
+
+    await prisma.tenant.update({
+      where: { id: testTenantId },
+      data: { businessHours: null } // 24/7 operation
+    });
+
+    uniqueClient = await prisma.client.create({
+      data: {
+        phoneNumber: '9998887778',
+        name: '24/7 Test Client',
+        tenantId: testTenantId,
+      }
+    });
+
+    testConv = await prisma.conversation.create({
+      data: {
+        clientId: uniqueClient.id,
+        tenantId: testTenantId,
+        status: 'PENDING_ASSIGNMENT',
+      }
+    });
+
+    const aiSpy = jest.spyOn(aiService, 'generateAutoResponse').mockResolvedValue('Hi');
+    jest.spyOn(whatsappService, 'sendMessage').mockResolvedValue({});
+
+    try {
+      await whatsappService.handleIncomingMessage({
+        object: 'whatsapp_business_account',
+        entry: [{
+          changes: [{
+            value: {
+              messages: [{
+                from: '9998887778',
+                id: 'wa-test-msg-247',
+                type: 'text',
+                text: { body: 'Hello 247' },
+                timestamp: Math.floor(Date.now() / 1000).toString()
+              }],
+              contacts: [{ profile: { name: 'Test' } }]
+            }
+          }]
+        }]
+      }, testTenantId);
+
+      await new Promise(r => setTimeout(r, 100));
+
+      expect(aiSpy).toHaveBeenCalledWith(
+        testTenantId, 
+        testConv.id, 
+        'Hello 247', 
+        expect.objectContaining({ isOffHours: false })
+      );
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  afterAll(() => {
+    jest.restoreAllMocks();
+  });
+});

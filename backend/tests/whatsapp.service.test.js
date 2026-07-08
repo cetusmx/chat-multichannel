@@ -1,3 +1,4 @@
+process.env.ENCRYPTION_KEY = '12345678901234567890123456789012';
 const whatsappService = require('../src/services/whatsapp.service');
 const { PrismaClient } = require('@prisma/client');
 

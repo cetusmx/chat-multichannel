@@ -1,7 +1,9 @@
 const { PrismaClient } = require('@prisma/client');
 const env = require('../config/env');
 const socket = require('../socket');
+const { isOffHours } = require('../utils/date');
 const crypto = require('crypto');
+const aiService = require('./ai.service');
 const prisma = new PrismaClient();
 
 const incomingLocks = new Map();
@@ -275,8 +277,15 @@ const whatsappService = {
                     });
                     if (currentConv && currentConv.status !== 'PENDING_ASSIGNMENT') return;
 
-                    const aiService = require('./ai.service');
-                    let responseText = await aiService.generateAutoResponse(tenantId, conversation.id, text);
+                    const tenant = await prisma.tenant.findUnique({
+                      where: { id: tenantId }
+                    });
+                    
+
+                    const offHours = isOffHours(tenant?.businessHours);
+
+
+                    let responseText = await aiService.generateAutoResponse(tenantId, conversation.id, text, { isOffHours: offHours });
                     
                     if (!responseText || responseText.trim() === '') return;
 

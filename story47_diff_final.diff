@@ -1,0 +1,563 @@
+diff --git a/_bmad-output/implementation-artifacts/4-7-ai-off-hours-mode.md b/_bmad-output/implementation-artifacts/4-7-ai-off-hours-mode.md
+new file mode 100644
+index 0000000..e87844c
+--- /dev/null
++++ b/_bmad-output/implementation-artifacts/4-7-ai-off-hours-mode.md
+@@ -0,0 +1,78 @@
++---
++baseline_commit: 9a60ddd
++---
++# Story 4.7: AI Off-Hours Mode
++
++Status: in-progress
++
++<!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
++
++## Story
++
++As a System,
++I want the AI to inform clients when they contact us outside business hours,
++so that expectations are managed.
++
++## Acceptance Criteria
++
++1. **Given** a message is received from a client,
++2. **When** the current time or day is outside the tenant's configured business hours (AND the tenant has `businessHours` configured. If null, assume 24/7 operation and skip off-hours mode),
++3. **Then** the AI auto-response must explicitly self-identify as an AI assistant.
++4. **And** the AI must inform the client that it is currently outside business hours.
++5. **And** the AI should answer basic queries using the RAG knowledge base.
++6. **And** the AI must inform the user that a human will contact them the next morning (callback scheduling).
++7. **And** the conversation status is set to `ESCALATED` with `aiPendingEscalation: true` so that a human reviews it next morning.
++
++## Tasks / Subtasks
++
++- [x] Task 1 (AC: 2) - Business Hours Configuration (Database)
++  - [x] Update `backend/prisma/schema.prisma`: Add `businessHours Json?` to the `Tenant` model.
++  - [x] Create a JSDoc typedef in `backend/src/utils/date.js` defining the expected JSON structure: `{ start: string, end: string, timezone: string, days: number[] }`.
++  - [x] Generate and run Prisma migration (`npx prisma migrate dev --name add_tenant_business_hours`).
++- [x] Task 2 (AC: 1, 2) - Off-Hours Detection Logic (Backend)
++  - [x] Install `date-fns` and `date-fns-tz` if not present (`npm install date-fns date-fns-tz` in `backend/`) to safely handle timezone conversions and DST.
++  - [x] Create a helper function `isOffHours(businessHours, currentDate)` in `backend/src/utils/date.js`. Return `false` immediately if `businessHours` is null or invalid (tenant operates 24/7).
++  - [x] Fetch the tenant's `businessHours` before generating the auto-response in `whatsapp.service.js` and determine the off-hours state using the helper.
++- [x] Task 3 (AC: 3, 4, 5, 6, 7) - AI Prompt Injection for Off-Hours (Backend)
++  - [x] If off-hours, inject this explicit instruction into the system prompt for `generateAutoResponse`: *"It is currently outside business hours. You must self-identify as an AI, inform the user that human agents will review the chat the next morning, answer their question if possible using context, and include [[ESCALATE]] so a human agent is assigned."*
++  - [x] Ensure the existing `[[ESCALATE]]` parser in `whatsapp.service.js` updates the conversation to `status: 'ESCALATED'` and `aiPendingEscalation: true`.
++- [x] Task 4 (AC: 1-7) - Testing & Validation
++  - [x] Add unit tests in `backend/tests/integration/chat.test.js` simulating off-hours for both time (e.g. 2 AM) and day (e.g. Sunday) using a mock tenant with business hours.
++  - [x] Add a test verifying that if `businessHours` is null, it does NOT trigger off-hours mode (24/7 test).
++  - [x] Use `jest.useFakeTimers().setSystemTime(...)` to mock the system clock safely.
++  - [x] Clean up with `jest.useRealTimers()` in the `finally` block to prevent breaking other tests.
++
++## Dev Notes
++
++- Relevant architecture patterns and constraints
++  - **Timezones:** Use `date-fns-tz` to reliably calculate the local hour and day in the tenant's timezone before comparing against `start`, `end`, and `days`.
++  - **Escalation Reuse:** Rely exactly on the existing `[[ESCALATE]]` keyword mechanic implemented in 4.6. Do not reinvent the escalation socket emission.
++  - **Multiple Messages Edge Case:** By transitioning to `ESCALATED`, the existing architecture naturally ignores subsequent client messages for auto-response. This is the desired behavior. Do not write additional logic to block messages.
++- Source tree components to touch
++  - `backend/prisma/schema.prisma`
++  - `backend/src/services/whatsapp.service.js`
++  - `backend/src/utils/date.js` (create if doesn't exist)
++  - `backend/package.json` (add date-fns dependencies)
++- Testing standards summary
++  - Mock time using `jest.useFakeTimers()` to avoid flaky tests depending on CI server local time. Ensure timers are restored in teardown blocks.
++
++### Project Structure Notes
++
++- Alignment with unified project structure (paths, modules, naming)
++  - All date utilities belong in a shared `backend/src/utils/` folder to prevent cluttering service files with pure logic functions.
++- Detected conflicts or variances (with rationale)
++  - Modifying the `Tenant` schema is consistent with current multi-tenant boundaries. Adding `date-fns-tz` prevents critical DST calculation bugs in Node.js.
++
++### References
++
++- [Source: _bmad-output/planning-artifacts/epics.md#Epic-4-AI-Agent--RAG]
++
++## Dev Agent Record
++
++### Agent Model Used
++
++### Debug Log References
++
++### Completion Notes List
++
++### File List
+diff --git a/_bmad-output/implementation-artifacts/sprint-status.yaml b/_bmad-output/implementation-artifacts/sprint-status.yaml
+index 140d17d..00ff7de 100644
+--- a/_bmad-output/implementation-artifacts/sprint-status.yaml
++++ b/_bmad-output/implementation-artifacts/sprint-status.yaml
+@@ -74,14 +74,14 @@ development_status:
+   3-8-malicious-user-blocking: done
+   3-9-coordinator-direct-intervention: done
+   epic-3-retrospective: optional
+-  epic-4: in-progress
++  epic-4: done
+   4-1-ai-provider-configuration-adapter-pattern: done
+   4-2-rag-knowledge-base-management: done
+   4-3-ai-auto-response-to-new-clients: done
+   4-4-ai-escalation-and-human-handoff: done
+   4-5-vendor-inline-ai-assistance: done
+   4-6-coordinator-escalation-alerts: done
+-  4-7-ai-off-hours-mode: backlog
++  4-7-ai-off-hours-mode: done
+   epic-4-retrospective: optional
+   epic-5: backlog
+   5-1-client-assignment-rules-configuration: backlog
+diff --git a/backend/package-lock.json b/backend/package-lock.json
+index 5cd3900..e77a7c8 100644
+--- a/backend/package-lock.json
++++ b/backend/package-lock.json
+@@ -14,6 +14,8 @@
+         "bcryptjs": "^3.0.3",
+         "cors": "^2.8.5",
+         "csv-parser": "^3.2.1",
++        "date-fns": "^4.4.0",
++        "date-fns-tz": "^3.2.0",
+         "express": "^5.2.1",
+         "form-data": "^4.0.6",
+         "helmet": "^8.1.0",
+@@ -2583,6 +2585,25 @@
+         "node": ">= 10"
+       }
+     },
++    "node_modules/date-fns": {
++      "version": "4.4.0",
++      "resolved": "https://registry.npmjs.org/date-fns/-/date-fns-4.4.0.tgz",
++      "integrity": "sha512-+1UMbeh68lH1SegH83CGWwpb6OHHbpSgr3+s5Eww5M4CAgswBpoWS0AjTOfEJ33HiYKz1hdj/KTFprzXHmq/6w==",
++      "license": "MIT",
++      "funding": {
++        "type": "github",
++        "url": "https://github.com/sponsors/kossnocorp"
++      }
++    },
++    "node_modules/date-fns-tz": {
++      "version": "3.2.0",
++      "resolved": "https://registry.npmjs.org/date-fns-tz/-/date-fns-tz-3.2.0.tgz",
++      "integrity": "sha512-sg8HqoTEulcbbbVXeg84u5UnlsQa8GS5QXMqjjYIhS4abEVVKIUwe0/l/UhrZdKaL/W5eWZNlbTeEIiOXTcsBQ==",
++      "license": "MIT",
++      "peerDependencies": {
++        "date-fns": "^3.0.0 || ^4.0.0"
++      }
++    },
+     "node_modules/debug": {
+       "version": "4.4.3",
+       "resolved": "https://registry.npmjs.org/debug/-/debug-4.4.3.tgz",
+diff --git a/backend/package.json b/backend/package.json
+index e31016d..6cb5900 100644
+--- a/backend/package.json
++++ b/backend/package.json
+@@ -24,6 +24,8 @@
+     "bcryptjs": "^3.0.3",
+     "cors": "^2.8.5",
+     "csv-parser": "^3.2.1",
++    "date-fns": "^4.4.0",
++    "date-fns-tz": "^3.2.0",
+     "express": "^5.2.1",
+     "form-data": "^4.0.6",
+     "helmet": "^8.1.0",
+diff --git a/backend/prisma/migrations/20260708015927_add_tenant_business_hours/migration.sql b/backend/prisma/migrations/20260708015927_add_tenant_business_hours/migration.sql
+new file mode 100644
+index 0000000..853057c
+--- /dev/null
++++ b/backend/prisma/migrations/20260708015927_add_tenant_business_hours/migration.sql
+@@ -0,0 +1,2 @@
++-- AlterTable
++ALTER TABLE "tenants" ADD COLUMN     "business_hours" JSONB;
+diff --git a/backend/prisma/schema.prisma b/backend/prisma/schema.prisma
+index 689ec30..cfa316d 100644
+--- a/backend/prisma/schema.prisma
++++ b/backend/prisma/schema.prisma
+@@ -56,9 +56,10 @@ model Tenant {
+   phone     String?
+   email     String?
+   address   String?
+-  status    String   @default("active")
+-  createdAt DateTime @default(now()) @map("created_at")
+-  updatedAt DateTime @updatedAt @map("updated_at")
++  status       String   @default("active")
++  businessHours Json?   @map("business_hours")
++  createdAt    DateTime @default(now()) @map("created_at")
++  updatedAt    DateTime @updatedAt @map("updated_at")
+ 
+   users         User[]
+   branches      Branch[]
+diff --git a/backend/src/services/ai.service.js b/backend/src/services/ai.service.js
+index 388e65e..f908c22 100644
+--- a/backend/src/services/ai.service.js
++++ b/backend/src/services/ai.service.js
+@@ -59,11 +59,12 @@ class AIService {
+     }
+   }
+ 
+-  async generateAutoResponse(tenantId, conversationId, incomingText) {
++  async generateAutoResponse(tenantId, conversationId, incomingText, options = {}) {
+     if (!tenantId || !conversationId || !incomingText) {
+       throw new ApiError(400, 'Missing required parameters for auto-response');
+     }
+ 
++    const { isOffHours = false } = options;
+ 
+     try {
+       // Fetch history
+@@ -92,14 +93,18 @@ class AIService {
+         console.warn('RAG search failed, continuing without context:', err.message);
+       }
+ 
++      let baseSystemInstruction = '';
+       if (!contextString) {
+-        const fallbackSystem = `You are a helpful sales assistant. However, I currently do not have access to the knowledge base. You MUST include the exact string [[ESCALATE]] anywhere in your reply.`;
+-        return await this.generateResponse(tenantId, formattedHistory, fallbackSystem);
++        baseSystemInstruction = `You are a helpful sales assistant. However, I currently do not have access to the knowledge base. You MUST include the exact string [[ESCALATE]] anywhere in your reply.`;
++      } else {
++        baseSystemInstruction = `You are a helpful sales assistant for this company. Use ONLY the following context to answer the user's questions. If the user explicitly asks to speak to a human, or if you cannot confidently answer their question based on the provided context, you MUST include the exact string [[ESCALATE]] anywhere in your reply.\n\nContext:\n${contextString}`;
+       }
+ 
+-      const systemInstruction = `You are a helpful sales assistant for this company. Use ONLY the following context to answer the user's questions. If the user explicitly asks to speak to a human, or if you cannot confidently answer their question based on the provided context, you MUST include the exact string [[ESCALATE]] anywhere in your reply.\n\nContext:\n${contextString}`;
++      if (isOffHours) {
++        baseSystemInstruction += `\n\nIt is currently outside business hours. You must self-identify as an AI, inform the user that human agents will review the chat the next morning, answer their question if possible using context, and include [[ESCALATE]] so a human agent is assigned.`;
++      }
+ 
+-      return await this.generateResponse(tenantId, formattedHistory, systemInstruction);
++      return await this.generateResponse(tenantId, formattedHistory, baseSystemInstruction);
+     } catch (error) {
+       console.error('[AI_SERVICE] Error generating auto-response:', error.message);
+       throw error;
+diff --git a/backend/src/services/whatsapp.service.js b/backend/src/services/whatsapp.service.js
+index 8456f60..20b3b91 100644
+--- a/backend/src/services/whatsapp.service.js
++++ b/backend/src/services/whatsapp.service.js
+@@ -275,8 +275,15 @@ const whatsappService = {
+                     });
+                     if (currentConv && currentConv.status !== 'PENDING_ASSIGNMENT') return;
+ 
++                    const tenant = await prisma.tenant.findUnique({
++                      where: { id: tenantId }
++                    });
++                    
++                    const { isOffHours } = require('../utils/date');
++                    const offHours = isOffHours(tenant?.businessHours);
++
+                     const aiService = require('./ai.service');
+-                    let responseText = await aiService.generateAutoResponse(tenantId, conversation.id, text);
++                    let responseText = await aiService.generateAutoResponse(tenantId, conversation.id, text, { isOffHours: offHours });
+                     
+                     if (!responseText || responseText.trim() === '') return;
+ 
+diff --git a/backend/src/utils/date.js b/backend/src/utils/date.js
+new file mode 100644
+index 0000000..81e1f7c
+--- /dev/null
++++ b/backend/src/utils/date.js
+@@ -0,0 +1,53 @@
++/**
++ * @typedef {Object} BusinessHours
++ * @property {string} start - Start time in HH:mm format (e.g. "09:00")
++ * @property {string} end - End time in HH:mm format (e.g. "18:00")
++ * @property {string} timezone - IANA timezone string (e.g. "America/Mexico_City")
++ * @property {number[]} days - Array of days where 0 is Sunday, 1 is Monday, etc. (e.g. [1, 2, 3, 4, 5])
++ */
++
++const { formatInTimeZone } = require('date-fns-tz');
++
++/**
++ * Checks if the given date is outside the configured business hours.
++ * @param {BusinessHours|null|undefined} businessHours 
++ * @param {Date} [currentDate] - Date to check, defaults to new Date()
++ * @returns {boolean} true if it's off-hours, false if it's within business hours or if businessHours is not configured
++ */
++function isOffHours(businessHours, currentDate = new Date()) {
++  if (!businessHours || !businessHours.start || !businessHours.end || !businessHours.timezone || !Array.isArray(businessHours.days)) {
++    return false; // Assume 24/7 operation if not fully configured
++  }
++
++  try {
++    const { start, end, timezone, days } = businessHours;
++    
++    // Get current day of week (0 = Sunday, 1 = Monday) in the target timezone
++    const dayOfWeek = parseInt(formatInTimeZone(currentDate, timezone, 'i'), 10) % 7; 
++    // 'i' returns ISO day of week 1-7 (Monday-Sunday), but our config uses 0-6 (Sunday-Saturday).
++    // Let's use 'w' or 'd' if we can, wait, formatInTimeZone with 'i' gives 1=Mon, 7=Sun.
++    // 'c' or 'e' can be used. 'i' % 7 gives 1=Mon, ..., 6=Sat, 0=Sun. That matches 0=Sunday, 1=Monday!
++    
++    // If today is not a business day
++    if (!days.includes(dayOfWeek)) {
++      return true;
++    }
++
++    // Get current time in HH:mm in the target timezone
++    const currentTimeStr = formatInTimeZone(currentDate, timezone, 'HH:mm');
++
++    // Simple string comparison for time (e.g. "09:00" <= "14:30" <= "18:00")
++    if (currentTimeStr < start || currentTimeStr >= end) {
++      return true;
++    }
++
++    return false;
++  } catch (error) {
++    console.error('[DATE_UTILS] Error parsing business hours:', error.message);
++    return false; // Fallback to 24/7 if configuration is invalid and causes errors
++  }
++}
++
++module.exports = {
++  isOffHours
++};
+diff --git a/backend/tests/integration/chat.test.js b/backend/tests/integration/chat.test.js
+index 0ae3e2e..b11a8d5 100644
+--- a/backend/tests/integration/chat.test.js
++++ b/backend/tests/integration/chat.test.js
+@@ -503,3 +503,241 @@ describe('Escalation Flow in whatsapp.service.js', () => {
+     }
+   });
+ });
++
++describe('AI Off-Hours Mode in whatsapp.service.js', () => {
++  let uniqueClient;
++  let testConv;
++  
++  beforeEach(async () => {
++    jest.clearAllMocks();
++  });
++
++  afterEach(async () => {
++    if (testConv) {
++      try { await prisma.message.deleteMany({ where: { conversationId: testConv.id } }); } catch (e) {}
++      try { await prisma.conversation.delete({ where: { id: testConv.id } }); } catch (e) {}
++    }
++    if (uniqueClient) {
++      try { await prisma.client.delete({ where: { id: uniqueClient.id } }); } catch (e) {}
++    }
++  });
++
++  it('should explicitly inject off-hours prompt and ESCALATE when time is outside business hours', async () => {
++    // 2026-07-05T08:00:00.000Z is 02:00:00 AM in America/Mexico_City (Sunday)
++    jest.useFakeTimers({ doNotFake: ['setTimeout', 'setImmediate', 'setInterval', 'clearTimeout', 'clearInterval', 'clearImmediate', 'nextTick'] });
++    jest.setSystemTime(new Date('2026-07-05T08:00:00.000Z'));
++
++    const whatsappService = require('../../src/services/whatsapp.service');
++    const aiService = require('../../src/services/ai.service');
++    
++    // Update tenant to have businessHours (Monday to Friday, 9 to 6)
++    await prisma.tenant.update({
++      where: { id: testTenantId },
++      data: {
++        businessHours: {
++          start: '09:00',
++          end: '18:00',
++          timezone: 'America/Mexico_City',
++          days: [1, 2, 3, 4, 5] // Mon-Fri
++        }
++      }
++    });
++
++    uniqueClient = await prisma.client.create({
++      data: {
++        phoneNumber: '9998887777',
++        name: 'OffHours Test Client',
++        tenantId: testTenantId,
++      }
++    });
++
++    testConv = await prisma.conversation.create({
++      data: {
++        clientId: uniqueClient.id,
++        tenantId: testTenantId,
++        status: 'PENDING_ASSIGNMENT',
++      }
++    });
++
++    const aiSpy = jest.spyOn(aiService, 'generateAutoResponse').mockResolvedValue('Hi, it is late. [[ESCALATE]]');
++    jest.spyOn(whatsappService, 'sendMessage').mockResolvedValue({});
++
++    try {
++      await whatsappService.handleIncomingMessage({
++        object: 'whatsapp_business_account',
++        entry: [{
++          changes: [{
++            value: {
++              messages: [{
++                from: '9998887777',
++                id: 'wa-test-msg-offhours-1',
++                type: 'text',
++                text: { body: 'Hello' },
++                timestamp: Math.floor(Date.now() / 1000).toString()
++              }],
++              contacts: [{ profile: { name: 'Test' } }]
++            }
++          }]
++        }]
++      }, testTenantId);
++
++      // Wait for setImmediate using real await
++      await new Promise(r => setTimeout(r, 100));
++
++      // Ensure generateAutoResponse was called with isOffHours = true
++      expect(aiSpy).toHaveBeenCalledWith(
++        testTenantId, 
++        testConv.id, 
++        'Hello', 
++        expect.objectContaining({ isOffHours: true })
++      );
++
++      let updatedConv;
++      for (let i = 0; i < 20; i++) {
++        updatedConv = await prisma.conversation.findUnique({ where: { id: testConv.id } });
++        if (updatedConv?.status === 'ESCALATED') break;
++        await new Promise(r => setTimeout(r, 100));
++      }
++      
++      expect(updatedConv?.status).toBe('ESCALATED');
++    } finally {
++      jest.useRealTimers();
++    }
++  });
++
++  it('should explicitly inject off-hours prompt and ESCALATE when time is outside business hours but day is a weekday', async () => {
++    // 2026-07-07T08:00:00.000Z is 02:00:00 AM in America/Mexico_City (Tuesday)
++    jest.useFakeTimers({ doNotFake: ['setTimeout', 'setImmediate', 'setInterval', 'clearTimeout', 'clearInterval', 'clearImmediate', 'nextTick'] });
++    jest.setSystemTime(new Date('2026-07-07T08:00:00.000Z'));
++
++    const whatsappService = require('../../src/services/whatsapp.service');
++    const aiService = require('../../src/services/ai.service');
++    
++    await prisma.tenant.update({
++      where: { id: testTenantId },
++      data: {
++        businessHours: {
++          start: '09:00',
++          end: '18:00',
++          timezone: 'America/Mexico_City',
++          days: [1, 2, 3, 4, 5] // Mon-Fri
++        }
++      }
++    });
++
++    uniqueClient = await prisma.client.create({
++      data: {
++        phoneNumber: '9998887779',
++        name: 'OffHours Test Client 2',
++        tenantId: testTenantId,
++      }
++    });
++
++    testConv = await prisma.conversation.create({
++      data: {
++        clientId: uniqueClient.id,
++        tenantId: testTenantId,
++        status: 'PENDING_ASSIGNMENT',
++      }
++    });
++
++    const aiSpy = jest.spyOn(aiService, 'generateAutoResponse').mockResolvedValue('Hi, it is late. [[ESCALATE]]');
++    jest.spyOn(whatsappService, 'sendMessage').mockResolvedValue({});
++
++    try {
++      await whatsappService.handleIncomingMessage({
++        object: 'whatsapp_business_account',
++        entry: [{
++          changes: [{
++            value: {
++              messages: [{
++                from: '9998887779',
++                id: 'wa-test-msg-offhours-2',
++                type: 'text',
++                text: { body: 'Hello 2' },
++                timestamp: Math.floor(Date.now() / 1000).toString()
++              }],
++              contacts: [{ profile: { name: 'Test 2' } }]
++            }
++          }]
++        }]
++      }, testTenantId);
++
++      await new Promise(r => setTimeout(r, 100));
++
++      expect(aiSpy).toHaveBeenCalledWith(
++        testTenantId, 
++        testConv.id, 
++        'Hello 2', 
++        expect.objectContaining({ isOffHours: true })
++      );
++    } finally {
++      jest.useRealTimers();
++    }
++  });
++
++  it('should NOT trigger off-hours mode if tenant businessHours is null (24/7)', async () => {
++    // Set Sunday 2:00 AM
++    jest.useFakeTimers({ doNotFake: ['setTimeout', 'setImmediate', 'setInterval', 'clearTimeout', 'clearInterval', 'clearImmediate', 'nextTick'] });
++    jest.setSystemTime(new Date('2026-07-05T08:00:00.000Z'));
++
++    const whatsappService = require('../../src/services/whatsapp.service');
++    const aiService = require('../../src/services/ai.service');
++
++    await prisma.tenant.update({
++      where: { id: testTenantId },
++      data: { businessHours: null } // 24/7 operation
++    });
++
++    uniqueClient = await prisma.client.create({
++      data: {
++        phoneNumber: '9998887778',
++        name: '24/7 Test Client',
++        tenantId: testTenantId,
++      }
++    });
++
++    testConv = await prisma.conversation.create({
++      data: {
++        clientId: uniqueClient.id,
++        tenantId: testTenantId,
++        status: 'PENDING_ASSIGNMENT',
++      }
++    });
++
++    const aiSpy = jest.spyOn(aiService, 'generateAutoResponse').mockResolvedValue('Hi');
++    jest.spyOn(whatsappService, 'sendMessage').mockResolvedValue({});
++
++    try {
++      await whatsappService.handleIncomingMessage({
++        object: 'whatsapp_business_account',
++        entry: [{
++          changes: [{
++            value: {
++              messages: [{
++                from: '9998887778',
++                id: 'wa-test-msg-247',
++                type: 'text',
++                text: { body: 'Hello 247' },
++                timestamp: Math.floor(Date.now() / 1000).toString()
++              }],
++              contacts: [{ profile: { name: 'Test' } }]
++            }
++          }]
++        }]
++      }, testTenantId);
++
++      await new Promise(r => setTimeout(r, 100));
++
++      expect(aiSpy).toHaveBeenCalledWith(
++        testTenantId, 
++        testConv.id, 
++        'Hello 247', 
++        expect.objectContaining({ isOffHours: false })
++      );
++    } finally {
++      jest.useRealTimers();
++    }
++  });
++});
++jest.restoreAllMocks();
+diff --git a/backend/tests/integration/webhook.ai.test.js b/backend/tests/integration/webhook.ai.test.js
+index 88617f2..f37b4f5 100644
+--- a/backend/tests/integration/webhook.ai.test.js
++++ b/backend/tests/integration/webhook.ai.test.js
+@@ -106,7 +106,7 @@ describe('Webhook AI Auto-Response', () => {
+     }
+ 
+     expect(conversation).toBeDefined();
+-    expect(aiService.generateAutoResponse).toHaveBeenCalledWith(tenant.id, expect.any(String), 'I need help');
++    expect(aiService.generateAutoResponse).toHaveBeenCalledWith(tenant.id, expect.any(String), 'I need help', expect.any(Object));
+ 
+     expect(messages.length).toBe(2);
+     expect(messages[0].senderType).toBe('CLIENT');

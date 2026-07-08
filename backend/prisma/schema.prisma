@@ -56,9 +56,10 @@ model Tenant {
   phone     String?
   email     String?
   address   String?
-  status    String   @default("active")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  status       String   @default("active")
+  businessHours Json?   @map("business_hours")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
 
   users         User[]
   branches      Branch[]

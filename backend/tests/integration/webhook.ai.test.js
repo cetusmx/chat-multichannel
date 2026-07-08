@@ -106,7 +106,7 @@ describe('Webhook AI Auto-Response', () => {
     }
 
     expect(conversation).toBeDefined();
-    expect(aiService.generateAutoResponse).toHaveBeenCalledWith(tenant.id, expect.any(String), 'I need help');
+    expect(aiService.generateAutoResponse).toHaveBeenCalledWith(tenant.id, expect.any(String), 'I need help', { isOffHours: false });
 
     expect(messages.length).toBe(2);
     expect(messages[0].senderType).toBe('CLIENT');
