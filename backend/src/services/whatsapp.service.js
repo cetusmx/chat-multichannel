@@ -1,6 +1,7 @@
 const { PrismaClient } = require('@prisma/client');
 const env = require('../config/env');
-const { getIo } = require('../socket');
+const socket = require('../socket');
+const crypto = require('crypto');
 const prisma = new PrismaClient();
 
 const incomingLocks = new Map();
@@ -253,7 +254,7 @@ const whatsappService = {
             }
             
             try {
-              getIo().of('/chat').to(`conversation:${conversation.id}`).to(`tenant_${tenantId}_coordinators`).emit('new_message', msgRecord);
+              socket.getIo().of('/chat').to(`conversation:${conversation.id}`).to(`tenant_${tenantId}_coordinators`).emit('new_message', msgRecord);
             } catch (err) {
               console.error('[WHATSAPP_SERVICE] No se pudo emitir por socket:', err.message);
             }
@@ -298,13 +299,30 @@ const whatsappService = {
                       if (requiresEscalation) {
                         const updatedConv = await prisma.conversation.update({
                           where: { id: conversation.id },
-                          data: { aiPendingEscalation: true }
+                          data: { 
+                            aiPendingEscalation: true,
+                            status: 'ESCALATED' 
+                          }
                         });
                         
                         try {
-                          const { getIo } = require('../socket');
-                          const io = getIo();
-                          io.of('/chat').to(`conversation:${conversation.id}`).to(`tenant_${tenantId}_coordinators`).emit('conversation_escalated', updatedConv);
+                          const io = socket.getIo();
+                          io.of('/chat')
+                            .to(`tenant_${tenantId}_coordinators`)
+                            .emit('chat:escalated', { 
+                              type: 'ESCALATION_ALERT', 
+                              payload: { 
+                                conversationId: conversation.id, 
+                                tenantId,
+                                reason: 'AI handoff requested'
+                              }, 
+                              timestamp: new Date().toISOString(), 
+                              correlationId: crypto.randomUUID() 
+                            });
+                          
+                          io.of('/chat')
+                            .to(`conversation:${conversation.id}`)
+                            .emit('conversation_escalated', updatedConv);
                         } catch (err) {
                           console.error('[WHATSAPP_SERVICE] Error emitting escalation event:', err.message);
                         }
@@ -397,7 +415,7 @@ const whatsappService = {
       });
 
       try {
-        getIo().of('/chat').to(`conversation:${conversationId}`).to(`tenant_${conversation.tenantId}_coordinators`).emit('new_message', message);
+        socket.getIo().of('/chat').to(`conversation:${conversationId}`).to(`tenant_${conversation.tenantId}_coordinators`).emit('new_message', message);
       } catch (err) {
         console.error('[WHATSAPP_SERVICE] No se pudo emitir por socket:', err.message);
       }
@@ -529,7 +547,7 @@ const whatsappService = {
       }).catch(err => console.error('Error updating conversation lastMessageAt:', err.message));
 
       try {
-        getIo().of('/chat').to(`conversation:${conversationId}`).to(`tenant_${conversation.tenantId}_coordinators`).emit('new_message', msgRecord);
+        socket.getIo().of('/chat').to(`conversation:${conversationId}`).to(`tenant_${conversation.tenantId}_coordinators`).emit('new_message', msgRecord);
       } catch (err) {
         console.error('[WHATSAPP_SERVICE] No se pudo emitir por socket:', err.message);
       }

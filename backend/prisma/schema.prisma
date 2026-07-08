@@ -23,6 +23,7 @@ enum ConversationStatus {
   PENDING_ASSIGNMENT
   ACTIVE
   CLOSED
+  ESCALATED
 }
 
 enum SenderType {

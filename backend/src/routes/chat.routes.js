@@ -9,7 +9,7 @@ const fs = require('fs');
 const { PrismaClient } = require('@prisma/client');
 
 const crypto = require('crypto');
-const { getIo } = require('../socket');
+const socket = require('../socket');
 
 
 const prisma = new PrismaClient();
@@ -102,7 +102,7 @@ router.post('/:conversationId/messages', authenticate, authorize('ADMIN', 'COORD
         data: { lastMessageAt: new Date() }
       });
       try {
-        getIo().of('/chat').to(`conversation:${conversationId}`).to(`tenant_${conversation.tenantId}_coordinators`).emit('new_message', message);
+        socket.getIo().of('/chat').to(`conversation:${conversationId}`).to(`tenant_${conversation.tenantId}_coordinators`).emit('new_message', message);
       } catch (err) {
         console.error('[CHAT_ROUTE] No se pudo emitir mensaje interno por socket:', err.message);
       }
@@ -203,7 +203,7 @@ router.post('/:conversationId/media', authenticate, authorize('ADMIN', 'COORDINA
       });
       
       try {
-        getIo().of('/chat').to(`conversation:${conversationId}`).to(`tenant_${conversation.tenantId}_coordinators`).emit('new_message', result);
+        socket.getIo().of('/chat').to(`conversation:${conversationId}`).to(`tenant_${conversation.tenantId}_coordinators`).emit('new_message', result);
       } catch (err) {
         console.error('[CHAT_ROUTE] No se pudo emitir mensaje interno por socket:', err.message);
       }
@@ -297,7 +297,7 @@ router.post('/:conversationId/messages/:messageId/tags', authenticate, authorize
     });
 
     try {
-      const io = getIo();
+      const io = socket.getIo();
       io.of('/chat').to(`conversation:${conversationId}`).to(`tenant_${conversation.tenantId}_coordinators`).emit('message_updated', updatedMessage);
     } catch (err) {
       console.error('Failed to emit message_updated', err);
@@ -336,7 +336,7 @@ router.delete('/:conversationId/messages/:messageId/tags/:tag', authenticate, au
     });
 
     try {
-      const io = getIo();
+      const io = socket.getIo();
       io.of('/chat').to(`conversation:${conversationId}`).to(`tenant_${conversation.tenantId}_coordinators`).emit('message_updated', updatedMessage);
     } catch (err) {
       console.error('Failed to emit message_updated', err);
@@ -536,7 +536,7 @@ router.patch('/:conversationId/assign', authenticate, authorize('ADMIN', 'COORDI
     });
 
     try {
-      const io = getIo();
+      const io = socket.getIo();
       
       // Notificar al antiguo vendor para que remueva la conversacion
       if (oldVendorId) {

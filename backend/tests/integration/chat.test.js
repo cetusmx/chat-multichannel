@@ -407,4 +407,98 @@ describe('POST /api/conversations/:conversationId/ai-assist', () => {
   });
 });
 
+describe('Escalation Flow in whatsapp.service.js', () => {
+  afterEach(() => {
+    jest.clearAllMocks();
+  });
 
+  it('should update status to ESCALATED and emit chat:escalated socket event on [[ESCALATE]]', async () => {
+    const whatsappService = require('../../src/services/whatsapp.service');
+    const aiService = require('../../src/services/ai.service');
+    const socket = require('../../src/socket');
+    
+    let uniqueClient;
+    let testConv;
+    
+    try {
+      uniqueClient = await prisma.client.create({
+        data: {
+          phoneNumber: '9998887776',
+          name: 'Escalation Test Client',
+          tenantId: testTenantId,
+        }
+      });
+
+      // Create an unassigned conversation
+      testConv = await prisma.conversation.create({
+        data: {
+          clientId: uniqueClient.id,
+          tenantId: testTenantId,
+          status: 'PENDING_ASSIGNMENT',
+        }
+      });
+
+      jest.spyOn(aiService, 'generateAutoResponse').mockResolvedValue('I cannot help with that. [[ESCALATE]]');
+      jest.spyOn(whatsappService, 'sendMessage').mockResolvedValue({});
+      
+      // Mock socket
+      const mockTo = jest.fn().mockReturnThis();
+      const mockEmit = jest.fn();
+      jest.spyOn(socket, 'getIo').mockReturnValue({
+        of: jest.fn().mockReturnValue({
+          to: mockTo,
+          emit: mockEmit
+        })
+      });
+
+      // Simulate incoming message
+      await whatsappService.handleIncomingMessage({
+        object: 'whatsapp_business_account',
+        entry: [{
+          changes: [{
+            value: {
+              messages: [{
+                from: '9998887776',
+                id: 'wa-test-msg-123',
+                type: 'text',
+                text: { body: 'I need human help' },
+                timestamp: Math.floor(Date.now() / 1000).toString()
+              }],
+              contacts: [{ profile: { name: 'Test' } }]
+            }
+          }]
+        }]
+      }, testTenantId);
+
+      // Poll until the status is updated
+      let updatedConv;
+      for (let i = 0; i < 20; i++) {
+        updatedConv = await prisma.conversation.findUnique({ where: { id: testConv.id } });
+        if (updatedConv?.status === 'ESCALATED') break;
+        await new Promise(r => setTimeout(r, 100));
+      }
+
+      expect(updatedConv.status).toBe('ESCALATED');
+      expect(updatedConv.aiPendingEscalation).toBe(true);
+
+      // Verify socket event
+      expect(mockEmit).toHaveBeenCalledWith('chat:escalated', expect.objectContaining({
+        type: 'ESCALATION_ALERT',
+        payload: expect.objectContaining({
+          conversationId: testConv.id,
+          tenantId: testTenantId,
+          reason: 'AI handoff requested'
+        })
+      }));
+    } finally {
+      if (testConv) {
+        try { await prisma.message.deleteMany({ where: { conversationId: testConv.id } }); } catch (e) {}
+        try { await prisma.conversation.delete({ where: { id: testConv.id } }); } catch (e) {}
+      }
+      if (uniqueClient) {
+        try { await prisma.client.delete({ where: { id: uniqueClient.id } }); } catch (e) {}
+      }
+      jest.restoreAllMocks();
+    }
+  });
+});

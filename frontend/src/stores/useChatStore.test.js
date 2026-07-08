@@ -79,6 +79,75 @@ describe('useChatStore - Socket functionality', () => {
     
   });
 
+  describe('chat:escalated event', () => {
+    it('updates the status of the conversation to ESCALATED', () => {
+      useChatStore.setState({
+        conversations: [{ id: 'conv1', status: 'ACTIVE' }, { id: 'conv2', status: 'ACTIVE' }]
+      });
+
+      useChatStore.getState().initializeSocket();
+      const mockSocket = io();
+      
+      const escalatedHandler = mockSocket.on.mock.calls.find(call => call[0] === 'chat:escalated')[1];
+      
+      escalatedHandler({ payload: { conversationId: 'conv1', tenantId: 'tenant1' } });
+      
+      const conversations = useChatStore.getState().conversations;
+      expect(conversations.find(c => c.id === 'conv1').status).toBe('ESCALATED');
+      expect(conversations.find(c => c.id === 'conv2').status).toBe('ACTIVE');
+    });
+  });
+
+  describe('conversation_reassigned event', () => {
+    it('replaces ESCALATED status with the incoming updated conversation status when reassigned', () => {
+      useChatStore.setState({
+        conversations: [{ id: 'conv1', status: 'ESCALATED' }]
+      });
+
+      useChatStore.getState().initializeSocket();
+      const mockSocket = io();
+      
+      const reassignedHandler = mockSocket.on.mock.calls.find(call => call[0] === 'conversation_reassigned')[1];
+      
+      reassignedHandler({
+        action: 'added',
+        conversationId: 'conv1',
+        conversation: { id: 'conv1', status: 'ACTIVE' }
+      });
+      
+      const conversations = useChatStore.getState().conversations;
+      expect(conversations.find(c => c.id === 'conv1').status).toBe('ACTIVE');
+    });
+  });
+
+  describe('chat:assigned and chat:resolved events', () => {
+    it('clears ESCALATED status when assigned', () => {
+      useChatStore.setState({
+        conversations: [{ id: 'conv1', status: 'ESCALATED' }]
+      });
+
+      useChatStore.getState().initializeSocket();
+      const mockSocket = io();
+      const assignedHandler = mockSocket.on.mock.calls.find(call => call[0] === 'chat:assigned')[1];
+      
+      assignedHandler({ payload: { conversationId: 'conv1', status: 'ACTIVE' } });
+      expect(useChatStore.getState().conversations.find(c => c.id === 'conv1').status).toBe('ACTIVE');
+    });
+
+    it('clears ESCALATED status when resolved', () => {
+      useChatStore.setState({
+        conversations: [{ id: 'conv1', status: 'ESCALATED' }]
+      });
+
+      useChatStore.getState().initializeSocket();
+      const mockSocket = io();
+      const resolvedHandler = mockSocket.on.mock.calls.find(call => call[0] === 'chat:resolved')[1];
+      
+      resolvedHandler({ payload: { conversationId: 'conv1', status: 'CLOSED' } });
+      expect(useChatStore.getState().conversations.find(c => c.id === 'conv1').status).toBe('CLOSED');
+    });
+  });
+
   describe('Pagination', () => {
     it('loadMoreMessages does nothing if no nextCursor', async () => {
       useChatStore.setState({ currentConversationId: '123', hasMore: false, nextCursor: null });

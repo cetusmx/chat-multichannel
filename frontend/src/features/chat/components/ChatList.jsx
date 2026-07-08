@@ -28,8 +28,17 @@ export default function ChatList({ conversations, currentConversationId, current
             }`}
           >
             <div className="flex justify-between items-start mb-2">
-              <span className="font-semibold text-sales-slate-100 truncate pr-2">
-                {conv.client?.name || conv.client?.phoneNumber}
+              <span className="font-semibold text-sales-slate-100 pr-2 flex items-center gap-2 min-w-0">
+                <span className="truncate">{conv.client?.name || conv.client?.phoneNumber}</span>
+                {conv.status === 'ESCALATED' && (
+                  <span 
+                    className="flex-shrink-0 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider shadow-sm shadow-red-500/20"
+                    aria-label="Chat escalado"
+                    title="Este chat requiere atención de un coordinador"
+                  >
+                    Escalado
+                  </span>
+                )}
               </span>
               <span className="text-xs text-sales-slate-500 flex-shrink-0 pt-1">
                 {new Date(conv.lastMessageAt || conv.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}

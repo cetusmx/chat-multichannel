@@ -443,6 +443,34 @@ const useChatStore = create((set, get) => ({
       });
     });
 
+    newSocket.on('chat:escalated', (event) => {
+      set((state) => {
+        const conversationId = event?.payload?.conversationId;
+        if (!conversationId) return state;
+        return {
+          conversations: state.conversations.map(c => 
+            c.id === conversationId ? { ...c, status: 'ESCALATED' } : c
+          )
+        };
+      });
+    });
+
+    const handleStatusChange = (event) => {
+      set((state) => {
+        const conversationId = event?.payload?.conversationId || event?.conversationId;
+        if (!conversationId) return state;
+        const newStatus = event?.payload?.status || event?.status || 'ACTIVE';
+        return {
+          conversations: state.conversations.map(c => 
+            c.id === conversationId ? { ...c, status: newStatus } : c
+          )
+        };
+      });
+    };
+
+    newSocket.on('chat:assigned', handleStatusChange);
+    newSocket.on('chat:resolved', handleStatusChange);
+
     newSocket.on('client_blocked', (updatedClient) => {
       set((state) => {
         // Also remove any closed conversations from the store if the client is blocked
