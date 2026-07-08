@@ -209,3 +209,16 @@ export async function updateAssignmentConfig(data) {
 export async function getUsers(query = '') {
   return request(`/users?${query}`);
 }
+
+export async function getSlaConfig() {
+  const res = await request('/metrics/sla');
+  return res.data;
+}
+
+export async function updateSlaConfig(data) {
+  const res = await request('/metrics/sla', {
+    method: 'PUT',
+    body: JSON.stringify(data)
+  });
+  return res.data;
+}

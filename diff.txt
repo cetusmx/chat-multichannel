@@ -1,0 +1,950 @@
+diff --git a/_bmad-output/implementation-artifacts/5-3-sla-thresholds-configuration.md b/_bmad-output/implementation-artifacts/5-3-sla-thresholds-configuration.md
+new file mode 100644
+index 0000000..eab1d5d
+--- /dev/null
++++ b/_bmad-output/implementation-artifacts/5-3-sla-thresholds-configuration.md
+@@ -0,0 +1,101 @@
++---
++baseline_commit: 9d3d803dd6e7c0b430c34d8570c912d9ea2c645b
++---
++# Story 5.3: SLA Thresholds Configuration
++
++Status: done
++
++<!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
++
++## Story
++
++As a Coordinator,
++I want to define acceptable response times (SLAs),
++so that I can measure team performance.
++
++## Acceptance Criteria
++
++1. **Given** the SLA settings, **When** I set a limit of 15 minutes for first response, **Then** the system uses this threshold for alerts and reports.
++
++## Tasks / Subtasks
++
++- [x] Task 1: Database Schema Expansion (AC: 1)
++  - [x] Subtask 1.1: Add `SlaConfig` model in `schema.prisma`. It must belong to `Tenant` (1:1 relation) and store `firstResponseMins` (Int). Optional: `resolutionMins` (Int) for future-proofing.
++  - [x] Subtask 1.2: Add the inverse relation `slaConfig SlaConfig?` to the `Tenant` model.
++  - [x] Subtask 1.3: Run `npx prisma format` and create a migration (or let dev agent handle migration step).
++- [x] Task 2: Backend Service & API (AC: 1)
++  - [x] Subtask 2.1: Create `backend/src/services/sla.service.js` with methods to `getSlaConfig(tenantId)` and `updateSlaConfig(tenantId, data)`.
++  - [x] Subtask 2.2: Expose REST endpoints (`GET` and `PUT` `/api/metrics/sla`) in `backend/src/routes/metrics.routes.js` and mount this route in `backend/src/app.js` (e.g., `app.use('/api/metrics', metricsRoutes)`).
++  - [x] Subtask 2.3: Protect the endpoints using `authMiddleware` and `rbacMiddleware(['ADMIN', 'COORDINATOR'])`.
++  - [x] Subtask 2.4: Validate inputs (ensure minutes > 0).
++- [x] Task 3: Frontend UI & State (AC: 1)
++  - [x] Subtask 3.1: Create `frontend/src/features/settings/SlaConfigSection.jsx` to configure SLA limits.
++  - [x] Subtask 3.2: Wire this new component into `frontend/src/pages/Settings.jsx` by adding a new tab: `{ id: 'sla', label: 'SLA y Tiempos', roles: ['ADMIN', 'COORDINATOR'] }`.
++  - [x] Subtask 3.3: On component mount, `GET` the current configuration to pre-fill the form fields.
++  - [x] Subtask 3.4: Use `apiFetch` (from `services/api.js`) to load and save the SLA configuration.
++  - [x] Subtask 3.5: Implement simple form validation and success/error toasts.
++- [x] Task 4: Testing & Quality (AC: 1)
++  - [x] Subtask 4.1: Write unit tests for `sla.service.js` logic and integration tests for the `/api/metrics/sla` endpoints as required by DoD.
++
++## Dev Notes
++
++- **Multi-tenancy:** Always scope Prisma queries with `tenantId` from the authenticated user (`req.user.tenantId`).
++- **RBAC Check:** Use `rbacMiddleware(['ADMIN', 'COORDINATOR'])` to enforce strict role access.
++- **Prisma Schema:** `SlaConfig` must map to `sla_configs` table. You MUST use `@map("first_response_mins")`, `@map("tenant_id")`, etc., to comply with the project's strict `snake_case` DB column naming convention.
++- **Error Handling:** Backend should use `ApiError` utility or standard Express error handling per project-context.md.
++- **Frontend State:** `Zustand` or local `useState` is fine for the form. If fetched globally, consider where it should live, but standard fetch on the settings page is acceptable.
++
++### Project Structure Notes
++
++- **Backend:** `backend/src/services/sla.service.js`, `backend/src/routes/metrics.routes.js`, `backend/src/app.js`.
++- **Frontend:** Components should be in `frontend/src/features/settings/` and follow existing patterns (e.g., `SlaConfigSection.jsx`), integrated into `Settings.jsx`.
++- **Database:** `backend/prisma/schema.prisma`
++
++### References
++
++- [Source: _bmad/project-context.md#Code Quality & Style Rules]
++- [Source: _bmad-output/planning-artifacts/architecture.md#Requirements Coverage Validation]
++- [Source: backend/prisma/schema.prisma]
++
++## Dev Agent Record
++
++### Agent Model Used
++
++Gemini 3.1 Pro (High)
++
++### Debug Log References
++
++### Completion Notes List
++
++- ✅ Database: Added `SlaConfig` model to Prisma schema, mapped to `sla_configs` and ran migration.
++- ✅ Backend Service: Created `sla.service.js` with `getSlaConfig` and `updateSlaConfig` methods, handling validation and upsert logic.
++- ✅ Backend API: Created `metrics.routes.js`, secured with `authenticate` and `authorize('ADMIN', 'COORDINATOR')` middlewares, and mounted under `/api/metrics` in `app.js`.
++- ✅ Frontend UI: Created `SlaConfigSection.jsx` to render the configuration form, with fetch and save behavior via `api.js`.
++- ✅ Frontend Integration: Mounted the SLA Config section as a new tab in `Settings.jsx` following existing patterns.
++- ✅ Tests: Implemented unit tests for `sla.service.js` and integration tests for `/api/metrics/sla`, both with 100% pass rate.
++
++### File List
++
++- `backend/prisma/schema.prisma` (Modified)
++- `backend/prisma/migrations/20260708172731_add_sla_config/migration.sql` (New)
++- `backend/src/app.js` (Modified)
++- `backend/src/routes/metrics.routes.js` (New)
++- `backend/src/services/sla.service.js` (New)
++- `backend/tests/integration/metrics.test.js` (New)
++- `backend/tests/unit/sla.service.test.js` (New)
++- `frontend/src/features/settings/SlaConfigSection.jsx` (New)
++- `frontend/src/pages/Settings.jsx` (Modified)
++- `frontend/src/services/api.js` (Modified)
++
++### Review Findings
++
++- [x] [Review][Patch] Unbounded configuration values — Apply an upper limit of 10080 minutos (7 days) for both fields. [backend/src/services/sla.service.js]
++- [x] [Review][Patch] Missing payload object validation [backend/src/services/sla.service.js]
++- [x] [Review][Patch] Missing integer and NaN validation for SLA minutes [backend/src/services/sla.service.js]
++- [x] [Review][Patch] Logical inconsistency allowing firstResponseMins > resolutionMins [backend/src/services/sla.service.js]
++- [x] [Review][Patch] Missing integration tests for COORDINATOR role [backend/tests/integration/metrics.test.js]
++- [x] [Review][Patch] Test cleanup failure risk with potentially undefined tenantId [backend/tests/integration/metrics.test.js]
++- [x] [Review][Patch] Missing input IDs and a11y labels [frontend/src/features/settings/SlaConfigSection.jsx]
++- [x] [Review][Patch] Incomplete Swagger documentation for 400 and 500 error responses [backend/src/routes/metrics.routes.js]
++- [x] [Review][Patch] UI state override vulnerability if backend payload properties are missing [frontend/src/features/settings/SlaConfigSection.jsx]
++- [x] [Review][Patch] Missing implementation of success/error toasts [frontend/src/features/settings/SlaConfigSection.jsx]
+diff --git a/_bmad-output/implementation-artifacts/deferred-work.md b/_bmad-output/implementation-artifacts/deferred-work.md
+index 292dd26..7ecb88e 100644
+--- a/_bmad-output/implementation-artifacts/deferred-work.md
++++ b/_bmad-output/implementation-artifacts/deferred-work.md
+@@ -153,3 +153,6 @@
+ - Success/Error feedback implemented as inline alerts instead of toasts
+ - Useless Swagger Documentation
+ - Missing Frontend Component Unit Tests
++
++## Deferred from: code review of 5-2-automatic-client-assignment-engine.md (2026-07-08)
++- Test suite coverage ignores unhappy paths and transaction isolation [backend/tests/unit/assignment.service.test.js:147]
+diff --git a/_bmad-output/implementation-artifacts/sprint-status.yaml b/_bmad-output/implementation-artifacts/sprint-status.yaml
+index f6b2ecc..92e7e3d 100644
+--- a/_bmad-output/implementation-artifacts/sprint-status.yaml
++++ b/_bmad-output/implementation-artifacts/sprint-status.yaml
+@@ -41,7 +41,7 @@
+ # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
+ 
+ generated: 2026-07-04T19:33:21-06:00
+-last_updated: 2026-07-07T20:50:30-06:00
++last_updated: 2026-07-08T11:02:00-06:00
+ project: chat-multichannel-sales-ia
+ project_key: NOKEY
+ tracking_system: file-system
+@@ -85,8 +85,8 @@ development_status:
+   epic-4-retrospective: optional
+   epic-5: in-progress
+   5-1-client-assignment-rules-configuration: done
+-  5-2-automatic-client-assignment-engine: backlog
+-  5-3-sla-thresholds-configuration: backlog
++  5-2-automatic-client-assignment-engine: done
++  5-3-sla-thresholds-configuration: done
+   5-4-real-time-sla-alerts: backlog
+   5-5-vendor-productivity-metrics: backlog
+   5-6-usage-and-activity-reports: backlog
+diff --git a/backend/prisma/migrations/20260708172731_add_sla_config/migration.sql b/backend/prisma/migrations/20260708172731_add_sla_config/migration.sql
+new file mode 100644
+index 0000000..550b0c1
+--- /dev/null
++++ b/backend/prisma/migrations/20260708172731_add_sla_config/migration.sql
+@@ -0,0 +1,17 @@
++-- CreateTable
++CREATE TABLE "sla_configs" (
++    "id" TEXT NOT NULL,
++    "tenant_id" TEXT NOT NULL,
++    "first_response_mins" INTEGER NOT NULL DEFAULT 15,
++    "resolution_mins" INTEGER NOT NULL DEFAULT 60,
++    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
++    "updated_at" TIMESTAMP(3) NOT NULL,
++
++    CONSTRAINT "sla_configs_pkey" PRIMARY KEY ("id")
++);
++
++-- CreateIndex
++CREATE UNIQUE INDEX "sla_configs_tenant_id_key" ON "sla_configs"("tenant_id");
++
++-- AddForeignKey
++ALTER TABLE "sla_configs" ADD CONSTRAINT "sla_configs_tenant_id_fkey" FOREIGN KEY ("tenant_id") REFERENCES "tenants"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+diff --git a/backend/prisma/schema.prisma b/backend/prisma/schema.prisma
+index 12b97d3..30a41f2 100644
+--- a/backend/prisma/schema.prisma
++++ b/backend/prisma/schema.prisma
+@@ -55,25 +55,26 @@ enum AttachmentType {
+ }
+ 
+ model Tenant {
+-  id        String   @id @default(cuid())
+-  name      String
+-  domain    String   @unique
+-  phone     String?
+-  email     String?
+-  address   String?
+-  status       String   @default("active")
+-  businessHours Json?   @map("business_hours")
+-  createdAt    DateTime @default(now()) @map("created_at")
+-  updatedAt    DateTime @updatedAt @map("updated_at")
+-
+-  users         User[]
+-  branches      Branch[]
++  id            String   @id @default(cuid())
++  name          String
++  domain        String   @unique
++  phone         String?
++  email         String?
++  address       String?
++  status        String   @default("active")
++  businessHours Json?    @map("business_hours")
++  createdAt     DateTime @default(now()) @map("created_at")
++  updatedAt     DateTime @updatedAt @map("updated_at")
++
++  users          User[]
++  branches       Branch[]
+   whatsappConfig WhatsAppConfig?
+-  aiConfig      AiConfig?
++  aiConfig       AiConfig?
+   assignmentRule AssignmentRule?
+-  clients       Client[]
+-  conversations Conversation[]
+-  documents     Document[]
++  slaConfig      SlaConfig?
++  clients        Client[]
++  conversations  Conversation[]
++  documents      Document[]
+   documentChunks DocumentChunk[]
+ 
+   @@map("tenants")
+@@ -103,7 +104,7 @@ model Group {
+   createdAt   DateTime @default(now()) @map("created_at")
+   updatedAt   DateTime @updatedAt @map("updated_at")
+ 
+-  branch  Branch         @relation(fields: [branchId], references: [id], onDelete: Cascade)
++  branch  Branch        @relation(fields: [branchId], references: [id], onDelete: Cascade)
+   vendors GroupVendor[]
+ 
+   @@index([branchId])
+@@ -111,25 +112,25 @@ model Group {
+ }
+ 
+ model User {
+-  id             String   @id @default(cuid())
+-  name           String
+-  email          String   @unique
+-  phone          String?
+-  passwordHash   String   @map("password_hash")
+-  role           RoleType
+-  tenantId       String   @map("tenant_id")
+-  isActive       Boolean  @default(true) @map("is_active")
+-  lastLoginAt    DateTime? @map("last_login_at")
+-  createdAt      DateTime @default(now()) @map("created_at")
+-  updatedAt      DateTime @updatedAt @map("updated_at")
++  id           String    @id @default(cuid())
++  name         String
++  email        String    @unique
++  phone        String?
++  passwordHash String    @map("password_hash")
++  role         RoleType
++  tenantId     String    @map("tenant_id")
++  isActive     Boolean   @default(true) @map("is_active")
++  lastLoginAt  DateTime? @map("last_login_at")
++  createdAt    DateTime  @default(now()) @map("created_at")
++  updatedAt    DateTime  @updatedAt @map("updated_at")
+ 
+   coordinatorId String? @map("coordinator_id")
+ 
+-  tenant      Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+-  groups      GroupVendor[]
+-  coordinator User?          @relation("UserCoordinator", fields: [coordinatorId], references: [id])
+-  assignees   User[]         @relation("UserCoordinator")
+-  conversations Conversation[] @relation("VendorConversations")
++  tenant        Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
++  groups        GroupVendor[]
++  coordinator   User?            @relation("UserCoordinator", fields: [coordinatorId], references: [id])
++  assignees     User[]           @relation("UserCoordinator")
++  conversations Conversation[]   @relation("VendorConversations")
+   eligibleRules EligibleVendor[]
+ 
+   @@index([tenantId])
+@@ -168,18 +169,31 @@ model WhatsAppConfig {
+ }
+ 
+ model AssignmentRule {
+-  id              String          @id @default(cuid())
+-  tenantId        String          @unique @map("tenant_id")
+-  strategy        RoutingStrategy @default(MANUAL)
+-  createdAt       DateTime        @default(now()) @map("created_at")
+-  updatedAt       DateTime        @updatedAt @map("updated_at")
++  id        String          @id @default(cuid())
++  tenantId  String          @unique @map("tenant_id")
++  strategy  RoutingStrategy @default(MANUAL)
++  createdAt DateTime        @default(now()) @map("created_at")
++  updatedAt DateTime        @updatedAt @map("updated_at")
+ 
+-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
++  tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+   eligibleVendors EligibleVendor[]
+ 
+   @@map("assignment_rules")
+ }
+ 
++model SlaConfig {
++  id                String   @id @default(cuid())
++  tenantId          String   @unique @map("tenant_id")
++  firstResponseMins Int      @default(15) @map("first_response_mins")
++  resolutionMins    Int      @default(60) @map("resolution_mins")
++  createdAt         DateTime @default(now()) @map("created_at")
++  updatedAt         DateTime @updatedAt @map("updated_at")
++
++  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
++
++  @@map("sla_configs")
++}
++
+ model EligibleVendor {
+   ruleId String @map("rule_id")
+   userId String @map("user_id")
+@@ -212,15 +226,15 @@ model Client {
+ }
+ 
+ model Conversation {
+-  id            String             @id @default(cuid())
+-  tenantId      String             @map("tenant_id")
+-  clientId      String             @map("client_id")
+-  vendorId          String?            @map("vendor_id")
+-  status            ConversationStatus @default(PENDING_ASSIGNMENT)
+-  aiPendingEscalation Boolean          @default(false) @map("ai_pending_escalation")
+-  lastMessageAt     DateTime           @default(now()) @map("last_message_at")
+-  createdAt         DateTime           @default(now()) @map("created_at")
+-  updatedAt         DateTime           @updatedAt @map("updated_at")
++  id                  String             @id @default(cuid())
++  tenantId            String             @map("tenant_id")
++  clientId            String             @map("client_id")
++  vendorId            String?            @map("vendor_id")
++  status              ConversationStatus @default(PENDING_ASSIGNMENT)
++  aiPendingEscalation Boolean            @default(false) @map("ai_pending_escalation")
++  lastMessageAt       DateTime           @default(now()) @map("last_message_at")
++  createdAt           DateTime           @default(now()) @map("created_at")
++  updatedAt           DateTime           @updatedAt @map("updated_at")
+ 
+   tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+   client   Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+@@ -234,17 +248,17 @@ model Conversation {
+ }
+ 
+ model Message {
+-  id             String        @id @default(cuid())
+-  conversationId String        @map("conversation_id")
+-  senderType     SenderType    @map("sender_type")
+-  senderId       String?       @map("sender_id") // ID del User si es VENDOR o SYSTEM.
+-  content        String?       @db.Text
+-  waMessageId    String?       @unique @map("wa_message_id")
+-  tags           String[]      @default([])
+-  isInternal     Boolean       @default(false) @map("is_internal")
++  id             String         @id @default(cuid())
++  conversationId String         @map("conversation_id")
++  senderType     SenderType     @map("sender_type")
++  senderId       String?        @map("sender_id") // ID del User si es VENDOR o SYSTEM.
++  content        String?        @db.Text
++  waMessageId    String?        @unique @map("wa_message_id")
++  tags           String[]       @default([])
++  isInternal     Boolean        @default(false) @map("is_internal")
+   status         MessageStatus?
+-  createdAt      DateTime      @default(now()) @map("created_at")
+-  updatedAt      DateTime      @updatedAt @map("updated_at")
++  createdAt      DateTime       @default(now()) @map("created_at")
++  updatedAt      DateTime       @updatedAt @map("updated_at")
+ 
+   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+   attachments  Attachment[]
+@@ -271,12 +285,12 @@ model Attachment {
+ }
+ 
+ model AiConfig {
+-  id                String   @id @default(cuid())
+-  tenantId          String   @unique @map("tenant_id")
+-  provider          String   @default("gemini")
+-  apiKey            String   @map("api_key") // Encrypted
+-  createdAt         DateTime @default(now()) @map("created_at")
+-  updatedAt         DateTime @updatedAt @map("updated_at")
++  id        String   @id @default(cuid())
++  tenantId  String   @unique @map("tenant_id")
++  provider  String   @default("gemini")
++  apiKey    String   @map("api_key") // Encrypted
++  createdAt DateTime @default(now()) @map("created_at")
++  updatedAt DateTime @updatedAt @map("updated_at")
+ 
+   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+ 
+diff --git a/backend/src/app.js b/backend/src/app.js
+index 2a56c00..f86e419 100644
+--- a/backend/src/app.js
++++ b/backend/src/app.js
+@@ -16,6 +16,7 @@ const whatsappRoutes = require('./routes/whatsapp.routes');
+ const chatRoutes = require('./routes/chat.routes');
+ const clientRoutes = require('./routes/client.routes');
+ const conversationRoutes = require('./routes/conversation.routes');
++const metricsRoutes = require('./routes/metrics.routes');
+ 
+ const app = express();
+ 
+@@ -51,6 +52,7 @@ app.use('/api/whatsapp', whatsappRoutes);
+ app.use('/api/chat', chatRoutes);
+ app.use('/api/clients', clientRoutes);
+ app.use('/api/conversations', conversationRoutes);
++app.use('/api/metrics', metricsRoutes);
+ 
+ app.use('/api-docs', swaggerRoutes);
+ 
+diff --git a/backend/src/routes/metrics.routes.js b/backend/src/routes/metrics.routes.js
+new file mode 100644
+index 0000000..40d98e0
+--- /dev/null
++++ b/backend/src/routes/metrics.routes.js
+@@ -0,0 +1,69 @@
++const express = require('express');
++const router = express.Router();
++const slaService = require('../services/sla.service');
++const authenticate = require('../middleware/auth');
++const authorize = require('../middleware/rbac');
++const ApiError = require('../utils/ApiError');
++
++// Protected by authenticate and authorize (ADMIN, COORDINATOR)
++router.use(authenticate);
++router.use(authorize('ADMIN', 'COORDINATOR'));
++
++/**
++ * @swagger
++ * /api/metrics/sla:
++ *   get:
++ *     summary: Retrieve the SLA configuration for the current tenant.
++ *     tags: [Metrics]
++ *     security:
++ *       - bearerAuth: []
++ *     responses:
++ *       200:
++ *         description: SLA config retrieved successfully.
++ */
++router.get('/sla', async (req, res, next) => {
++  try {
++    const config = await slaService.getSlaConfig(req.user.tenantId);
++    res.json({ data: config });
++  } catch (error) {
++    next(error);
++  }
++});
++
++/**
++ * @swagger
++ * /api/metrics/sla:
++ *   put:
++ *     summary: Update the SLA configuration for the current tenant.
++ *     tags: [Metrics]
++ *     security:
++ *       - bearerAuth: []
++ *     requestBody:
++ *       required: true
++ *       content:
++ *         application/json:
++ *           schema:
++ *             type: object
++ *             properties:
++ *               firstResponseMins:
++ *                 type: integer
++ *               resolutionMins:
++ *                 type: integer
++ *     responses:
++ *       200:
++ *         description: SLA config updated successfully.
++ *       400:
++ *         description: Validation error.
++ *       500:
++ *         description: Internal server error.
++ */
++router.put('/sla', async (req, res, next) => {
++  try {
++    const config = await slaService.updateSlaConfig(req.user.tenantId, req.body);
++    res.json({ data: config });
++  } catch (error) {
++    next(error);
++  }
++});
++
++module.exports = router;
+diff --git a/backend/src/services/sla.service.js b/backend/src/services/sla.service.js
+new file mode 100644
+index 0000000..3cfdc08
+--- /dev/null
++++ b/backend/src/services/sla.service.js
+@@ -0,0 +1,69 @@
++const prisma = require('../config/database');
++const ApiError = require('../utils/ApiError');
++
++class SlaService {
++  /**
++   * Retrieves the SLA configuration for a given tenant.
++   * If it doesn't exist, returns default values.
++   */
++  async getSlaConfig(tenantId) {
++    if (!tenantId) throw new ApiError(400, 'Tenant ID is required', 'VALIDATION_ERROR');
++
++    const config = await prisma.slaConfig.findUnique({
++      where: { tenantId }
++    });
++
++    if (!config) {
++      return {
++        firstResponseMins: 15,
++        resolutionMins: 60
++      };
++    }
++
++    return config;
++  }
++
++  /**
++   * Updates or creates the SLA configuration for a given tenant.
++   */
++  async updateSlaConfig(tenantId, data) {
++    if (!tenantId) throw new ApiError(400, 'Tenant ID is required', 'VALIDATION_ERROR');
++
++    if (!data || typeof data !== 'object' || Object.keys(data).length === 0) {
++      throw new ApiError(400, 'Payload is empty or invalid', 'VALIDATION_ERROR');
++    }
++
++    const { firstResponseMins, resolutionMins } = data;
++
++    if (firstResponseMins !== undefined && (!Number.isInteger(firstResponseMins) || firstResponseMins <= 0 || firstResponseMins > 10080)) {
++      throw new ApiError(400, 'firstResponseMins must be an integer between 1 and 10080', 'VALIDATION_ERROR');
++    }
++
++    if (resolutionMins !== undefined && (!Number.isInteger(resolutionMins) || resolutionMins <= 0 || resolutionMins > 10080)) {
++      throw new ApiError(400, 'resolutionMins must be an integer between 1 and 10080', 'VALIDATION_ERROR');
++    }
++
++    if (firstResponseMins !== undefined && resolutionMins !== undefined) {
++      if (firstResponseMins > resolutionMins) {
++        throw new ApiError(400, 'firstResponseMins cannot be greater than resolutionMins', 'VALIDATION_ERROR');
++      }
++    }
++
++    const config = await prisma.slaConfig.upsert({
++      where: { tenantId },
++      update: {
++        ...(firstResponseMins !== undefined && { firstResponseMins }),
++        ...(resolutionMins !== undefined && { resolutionMins })
++      },
++      create: {
++        tenantId,
++        firstResponseMins: firstResponseMins || 15,
++        resolutionMins: resolutionMins || 60
++      }
++    });
++
++    return config;
++  }
++}
++
++module.exports = new SlaService();
+diff --git a/backend/tests/integration/metrics.test.js b/backend/tests/integration/metrics.test.js
+new file mode 100644
+index 0000000..517b08a
+--- /dev/null
++++ b/backend/tests/integration/metrics.test.js
+@@ -0,0 +1,130 @@
++const request = require('supertest');
++const jwt = require('jsonwebtoken');
++const app = require('../../src/app');
++const prisma = require('../../src/config/database');
++
++const JWT_SECRET = process.env.JWT_SECRET || 'test-secret';
++
++describe('Metrics API - SLA', () => {
++  let adminToken;
++  let coordinatorToken;
++  let vendorToken;
++  let tenantId;
++
++  beforeAll(async () => {
++    // Create tenant
++    const tenant = await prisma.tenant.create({
++      data: { name: 'Test Tenant SLA', domain: 'testsla.com' }
++    });
++    tenantId = tenant.id;
++
++    // Create admin
++    const admin = await prisma.user.create({
++      data: {
++        name: 'Admin',
++        email: 'admin.sla@test.com',
++        passwordHash: 'hash',
++        role: 'ADMIN',
++        tenantId
++      }
++    });
++    adminToken = jwt.sign(
++      { id: admin.id, role: admin.role, tenantId: admin.tenantId },
++      JWT_SECRET
++    );
++
++    // Create coordinator
++    const coordinator = await prisma.user.create({
++      data: {
++        name: 'Coordinator',
++        email: 'coordinator.sla@test.com',
++        passwordHash: 'hash',
++        role: 'COORDINATOR',
++        tenantId
++      }
++    });
++    coordinatorToken = jwt.sign(
++      { id: coordinator.id, role: coordinator.role, tenantId: coordinator.tenantId },
++      JWT_SECRET
++    );
++
++    // Create vendor
++    const vendor = await prisma.user.create({
++      data: {
++        name: 'Vendor',
++        email: 'vendor.sla@test.com',
++        passwordHash: 'hash',
++        role: 'VENDOR',
++        tenantId
++      }
++    });
++    vendorToken = jwt.sign(
++      { id: vendor.id, role: vendor.role, tenantId: vendor.tenantId },
++      JWT_SECRET
++    );
++  });
++
++  afterAll(async () => {
++    if (tenantId) {
++      await prisma.slaConfig.deleteMany({ where: { tenantId } });
++      await prisma.user.deleteMany({ where: { tenantId } });
++      await prisma.tenant.delete({ where: { id: tenantId } });
++    }
++    await prisma.$disconnect();
++  });
++
++  describe('GET /api/metrics/sla', () => {
++    it('should return 401 without token', async () => {
++      await request(app).get('/api/metrics/sla').expect(401);
++    });
++
++    it('should return 403 for VENDOR role', async () => {
++      await request(app)
++        .get('/api/metrics/sla')
++        .set('Authorization', `Bearer ${vendorToken}`)
++        .expect(403);
++    });
++
++    it('should return default config if none exists for admin', async () => {
++      const res = await request(app)
++        .get('/api/metrics/sla')
++        .set('Authorization', `Bearer ${adminToken}`)
++        .expect(200);
++
++      expect(res.body.data.firstResponseMins).toBe(15);
++      expect(res.body.data.resolutionMins).toBe(60);
++    });
++
++    it('should allow access for COORDINATOR role', async () => {
++      await request(app)
++        .get('/api/metrics/sla')
++        .set('Authorization', `Bearer ${coordinatorToken}`)
++        .expect(200);
++    });
++  });
++
++  describe('PUT /api/metrics/sla', () => {
++    it('should update config and return 200', async () => {
++      const res = await request(app)
++        .put('/api/metrics/sla')
++        .set('Authorization', `Bearer ${adminToken}`)
++        .send({ firstResponseMins: 5, resolutionMins: 30 })
++        .expect(200);
++
++      expect(res.body.data.firstResponseMins).toBe(5);
++      expect(res.body.data.resolutionMins).toBe(30);
++
++      // Verify DB
++      const dbConfig = await prisma.slaConfig.findUnique({ where: { tenantId } });
++      expect(dbConfig.firstResponseMins).toBe(5);
++    });
++
++    it('should return 400 for negative values', async () => {
++      await request(app)
++        .put('/api/metrics/sla')
++        .set('Authorization', `Bearer ${adminToken}`)
++        .send({ firstResponseMins: -5 })
++        .expect(400);
++    });
++  });
++});
+diff --git a/backend/tests/unit/sla.service.test.js b/backend/tests/unit/sla.service.test.js
+new file mode 100644
+index 0000000..ca37493
+--- /dev/null
++++ b/backend/tests/unit/sla.service.test.js
+@@ -0,0 +1,86 @@
++const slaService = require('../../src/services/sla.service');
++const prisma = require('../../src/config/database');
++const ApiError = require('../../src/utils/ApiError');
++
++jest.mock('../../src/config/database', () => ({
++  slaConfig: {
++    findUnique: jest.fn(),
++    upsert: jest.fn(),
++  }
++}));
++
++describe('SlaService', () => {
++  beforeEach(() => {
++    jest.clearAllMocks();
++  });
++
++  describe('getSlaConfig', () => {
++    it('should throw if tenantId is missing', async () => {
++      await expect(slaService.getSlaConfig()).rejects.toThrow(ApiError);
++      await expect(slaService.getSlaConfig()).rejects.toHaveProperty('code', 'VALIDATION_ERROR');
++    });
++
++    it('should return default config if none exists', async () => {
++      prisma.slaConfig.findUnique.mockResolvedValue(null);
++      const config = await slaService.getSlaConfig('tenant-1');
++      expect(config).toEqual({ firstResponseMins: 15, resolutionMins: 60 });
++      expect(prisma.slaConfig.findUnique).toHaveBeenCalledWith({ where: { tenantId: 'tenant-1' } });
++    });
++
++    it('should return existing config', async () => {
++      prisma.slaConfig.findUnique.mockResolvedValue({
++        tenantId: 'tenant-1',
++        firstResponseMins: 10,
++        resolutionMins: 30
++      });
++      const config = await slaService.getSlaConfig('tenant-1');
++      expect(config.firstResponseMins).toBe(10);
++      expect(config.resolutionMins).toBe(30);
++    });
++  });
++
++  describe('updateSlaConfig', () => {
++    it('should throw if tenantId is missing', async () => {
++      await expect(slaService.updateSlaConfig(null, { firstResponseMins: 10 })).rejects.toThrow(ApiError);
++    });
++
++    it('should throw if minutes are invalid or out of bounds', async () => {
++      await expect(slaService.updateSlaConfig('tenant-1', { firstResponseMins: -5 })).rejects.toThrow(/integer between 1/);
++      await expect(slaService.updateSlaConfig('tenant-1', { resolutionMins: 0 })).rejects.toThrow(/integer between 1/);
++      await expect(slaService.updateSlaConfig('tenant-1', { resolutionMins: 20000 })).rejects.toThrow(/integer between 1/);
++      await expect(slaService.updateSlaConfig('tenant-1', { firstResponseMins: 1.5 })).rejects.toThrow(/integer between 1/);
++    });
++
++    it('should throw if first response is greater than resolution', async () => {
++      await expect(slaService.updateSlaConfig('tenant-1', { firstResponseMins: 60, resolutionMins: 30 })).rejects.toThrow(/cannot be greater than/);
++    });
++
++    it('should upsert config with valid data', async () => {
++      prisma.slaConfig.upsert.mockResolvedValue({
++        tenantId: 'tenant-1',
++        firstResponseMins: 20,
++        resolutionMins: 120
++      });
++
++      const data = { firstResponseMins: 20, resolutionMins: 120 };
++      const config = await slaService.updateSlaConfig('tenant-1', data);
++
++      expect(config.firstResponseMins).toBe(20);
++      expect(prisma.slaConfig.upsert).toHaveBeenCalledWith({
++        where: { tenantId: 'tenant-1' },
++        update: { firstResponseMins: 20, resolutionMins: 120 },
++        create: { tenantId: 'tenant-1', firstResponseMins: 20, resolutionMins: 120 }
++      });
++    });
++
++    it('should handle partial updates in upsert', async () => {
++      prisma.slaConfig.upsert.mockResolvedValue({});
++      await slaService.updateSlaConfig('tenant-1', { firstResponseMins: 5 });
++
++      expect(prisma.slaConfig.upsert).toHaveBeenCalledWith(expect.objectContaining({
++        update: { firstResponseMins: 5 },
++        create: { tenantId: 'tenant-1', firstResponseMins: 5, resolutionMins: 60 } // Default for resolution if missing
++      }));
++    });
++  });
++});
+diff --git a/frontend/src/features/settings/SlaConfigSection.jsx b/frontend/src/features/settings/SlaConfigSection.jsx
+new file mode 100644
+index 0000000..b3f6063
+--- /dev/null
++++ b/frontend/src/features/settings/SlaConfigSection.jsx
+@@ -0,0 +1,123 @@
++import { useState, useEffect } from 'react';
++import { getSlaConfig, updateSlaConfig } from '../../services/api.js';
++
++export default function SlaConfigSection() {
++  const [firstResponseMins, setFirstResponseMins] = useState(15);
++  const [resolutionMins, setResolutionMins] = useState(60);
++  const [loading, setLoading] = useState(true);
++  const [saving, setSaving] = useState(false);
++  const [error, setError] = useState('');
++  const [success, setSuccess] = useState('');
++
++  useEffect(() => {
++    async function fetchConfig() {
++      try {
++        const config = await getSlaConfig();
++        if (config) {
++          if (config.firstResponseMins !== undefined) setFirstResponseMins(config.firstResponseMins);
++          if (config.resolutionMins !== undefined) setResolutionMins(config.resolutionMins);
++        }
++      } catch (err) {
++        setError(err.message || 'Error al cargar la configuración SLA');
++      } finally {
++        setLoading(false);
++      }
++    }
++    fetchConfig();
++  }, []);
++
++  const handleSubmit = async (e) => {
++    e.preventDefault();
++    setError('');
++    setSuccess('');
++    setSaving(true);
++
++    try {
++      await updateSlaConfig({
++        firstResponseMins: Number(firstResponseMins),
++        resolutionMins: Number(resolutionMins),
++      });
++      setSuccess('Configuración SLA guardada exitosamente.');
++      setTimeout(() => setSuccess(''), 3000);
++    } catch (err) {
++      setError(err.message || 'Error al guardar la configuración SLA.');
++      setTimeout(() => setError(''), 5000);
++    } finally {
++      setSaving(false);
++    }
++  };
++
++  if (loading) {
++    return <div className="text-sales-slate-400">Cargando configuración...</div>;
++  }
++
++  return (
++    <div className="rounded-lg border border-slate-800 bg-slate-900/50 p-6">
++      <h2 className="mb-4 text-lg font-medium text-sales-slate-200">
++        Configuración de Tiempos de Respuesta (SLA)
++      </h2>
++      <p className="mb-6 text-sm text-sales-slate-400">
++        Define los límites de tiempo aceptables para responder a los clientes. 
++        Estos valores se usarán para alertas de "vencimiento" y reportes.
++      </p>
++
++      {error && (
++        <div className="mb-4 rounded bg-red-500/10 p-3 text-sm text-red-500">
++          {error}
++        </div>
++      )}
++
++      {success && (
++        <div className="mb-4 rounded bg-green-500/10 p-3 text-sm text-green-500">
++          {success}
++        </div>
++      )}
++
++      <form onSubmit={handleSubmit} className="space-y-6 max-w-md">
++        <div>
++          <label htmlFor="firstResponseMins" className="mb-2 block text-sm font-medium text-sales-slate-300">
++            Primer Contacto (minutos)
++          </label>
++          <input
++            id="firstResponseMins"
++            type="number"
++            min="1"
++            value={firstResponseMins}
++            onChange={(e) => setFirstResponseMins(e.target.value)}
++            className="w-full rounded-md border border-slate-700 bg-slate-800 px-3 py-2 text-sales-slate-200 focus:border-sales-coral focus:outline-none"
++            required
++          />
++          <p className="mt-1 text-xs text-sales-slate-400">
++            Tiempo máximo esperado para la primera respuesta.
++          </p>
++        </div>
++
++        <div>
++          <label htmlFor="resolutionMins" className="mb-2 block text-sm font-medium text-sales-slate-300">
++            Resolución (minutos)
++          </label>
++          <input
++            id="resolutionMins"
++            type="number"
++            min="1"
++            value={resolutionMins}
++            onChange={(e) => setResolutionMins(e.target.value)}
++            className="w-full rounded-md border border-slate-700 bg-slate-800 px-3 py-2 text-sales-slate-200 focus:border-sales-coral focus:outline-none"
++            required
++          />
++          <p className="mt-1 text-xs text-sales-slate-400">
++            Tiempo máximo estimado para cerrar la conversación.
++          </p>
++        </div>
++
++        <button
++          type="submit"
++          disabled={saving}
++          className="rounded-md bg-sales-coral px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-sales-coral/90 disabled:opacity-50"
++        >
++          {saving ? 'Guardando...' : 'Guardar Cambios'}
++        </button>
++      </form>
++    </div>
++  );
++}
+diff --git a/frontend/src/pages/Settings.jsx b/frontend/src/pages/Settings.jsx
+index 476ad74..4044fd1 100644
+--- a/frontend/src/pages/Settings.jsx
++++ b/frontend/src/pages/Settings.jsx
+@@ -7,6 +7,7 @@ import WhatsAppSettingsSection from '../features/settings/WhatsAppSettingsSectio
+ import AiConfigSection from '../features/settings/AiConfigSection.jsx';
+ import KnowledgeBaseSection from '../features/settings/KnowledgeBaseSection.jsx';
+ import AssignmentRulesSection from '../features/settings/AssignmentRulesSection.jsx';
++import SlaConfigSection from '../features/settings/SlaConfigSection.jsx';
+ 
+ const tabs = [
+   { id: 'company', label: 'Empresa', roles: ['ADMIN', 'COORDINATOR'] },
+@@ -16,6 +17,7 @@ const tabs = [
+   { id: 'ai', label: 'Inteligencia Artificial', roles: ['ADMIN'] },
+   { id: 'kb', label: 'Base de Conocimiento', roles: ['ADMIN'] },
+   { id: 'assignment', label: 'Asignación de Clientes', roles: ['ADMIN'] },
++  { id: 'sla', label: 'SLA y Tiempos', roles: ['ADMIN', 'COORDINATOR'] },
+ ];
+ 
+ export default function Settings() {
+@@ -33,6 +35,7 @@ export default function Settings() {
+       case 'ai': return <AiConfigSection />;
+       case 'kb': return <KnowledgeBaseSection />;
+       case 'assignment': return <AssignmentRulesSection />;
++      case 'sla': return <SlaConfigSection />;
+       default: return null;
+     }
+   }
+diff --git a/frontend/src/services/api.js b/frontend/src/services/api.js
+index 2ca9297..f1796a3 100644
+--- a/frontend/src/services/api.js
++++ b/frontend/src/services/api.js
+@@ -209,3 +209,16 @@ export async function updateAssignmentConfig(data) {
+ export async function getUsers(query = '') {
+   return request(`/users?${query}`);
+ }
++
++export async function getSlaConfig() {
++  const res = await request('/metrics/sla');
++  return res.data;
++}
++
++export async function updateSlaConfig(data) {
++  const res = await request('/metrics/sla', {
++    method: 'PUT',
++    body: JSON.stringify(data)
++  });
++  return res.data;
++}

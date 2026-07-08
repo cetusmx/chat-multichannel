@@ -55,25 +55,26 @@ enum AttachmentType {
 }
 
 model Tenant {
-  id        String   @id @default(cuid())
-  name      String
-  domain    String   @unique
-  phone     String?
-  email     String?
-  address   String?
-  status       String   @default("active")
-  businessHours Json?   @map("business_hours")
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  id            String   @id @default(cuid())
+  name          String
+  domain        String   @unique
+  phone         String?
+  email         String?
+  address       String?
+  status        String   @default("active")
+  businessHours Json?    @map("business_hours")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
 
-  users         User[]
-  branches      Branch[]
+  users          User[]
+  branches       Branch[]
   whatsappConfig WhatsAppConfig?
-  aiConfig      AiConfig?
+  aiConfig       AiConfig?
   assignmentRule AssignmentRule?
-  clients       Client[]
-  conversations Conversation[]
-  documents     Document[]
+  slaConfig      SlaConfig?
+  clients        Client[]
+  conversations  Conversation[]
+  documents      Document[]
   documentChunks DocumentChunk[]
 
   @@map("tenants")
@@ -103,7 +104,7 @@ model Group {
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
-  branch  Branch         @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  branch  Branch        @relation(fields: [branchId], references: [id], onDelete: Cascade)
   vendors GroupVendor[]
 
   @@index([branchId])
@@ -111,25 +112,25 @@ model Group {
 }
 
 model User {
-  id             String   @id @default(cuid())
-  name           String
-  email          String   @unique
-  phone          String?
-  passwordHash   String   @map("password_hash")
-  role           RoleType
-  tenantId       String   @map("tenant_id")
-  isActive       Boolean  @default(true) @map("is_active")
-  lastLoginAt    DateTime? @map("last_login_at")
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
+  id           String    @id @default(cuid())
+  name         String
+  email        String    @unique
+  phone        String?
+  passwordHash String    @map("password_hash")
+  role         RoleType
+  tenantId     String    @map("tenant_id")
+  isActive     Boolean   @default(true) @map("is_active")
+  lastLoginAt  DateTime? @map("last_login_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
 
   coordinatorId String? @map("coordinator_id")
 
-  tenant      Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  groups      GroupVendor[]
-  coordinator User?          @relation("UserCoordinator", fields: [coordinatorId], references: [id])
-  assignees   User[]         @relation("UserCoordinator")
-  conversations Conversation[] @relation("VendorConversations")
+  tenant        Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  groups        GroupVendor[]
+  coordinator   User?            @relation("UserCoordinator", fields: [coordinatorId], references: [id])
+  assignees     User[]           @relation("UserCoordinator")
+  conversations Conversation[]   @relation("VendorConversations")
   eligibleRules EligibleVendor[]
 
   @@index([tenantId])
@@ -168,16 +169,29 @@ model WhatsAppConfig {
 }
 
 model AssignmentRule {
-  id              String          @id @default(cuid())
-  tenantId        String          @unique @map("tenant_id")
-  strategy        RoutingStrategy @default(MANUAL)
-  createdAt       DateTime        @default(now()) @map("created_at")
-  updatedAt       DateTime        @updatedAt @map("updated_at")
+  id        String          @id @default(cuid())
+  tenantId  String          @unique @map("tenant_id")
+  strategy  RoutingStrategy @default(MANUAL)
+  createdAt DateTime        @default(now()) @map("created_at")
+  updatedAt DateTime        @updatedAt @map("updated_at")
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   eligibleVendors EligibleVendor[]
 
   @@map("assignment_rules")
+}
+
+model SlaConfig {
+  id                String   @id @default(cuid())
+  tenantId          String   @unique @map("tenant_id")
+  firstResponseMins Int      @default(15) @map("first_response_mins")
+  resolutionMins    Int      @default(60) @map("resolution_mins")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("sla_configs")
 }
 
 model EligibleVendor {
@@ -212,15 +226,15 @@ model Client {
 }
 
 model Conversation {
-  id            String             @id @default(cuid())
-  tenantId      String             @map("tenant_id")
-  clientId      String             @map("client_id")
-  vendorId          String?            @map("vendor_id")
-  status            ConversationStatus @default(PENDING_ASSIGNMENT)
-  aiPendingEscalation Boolean          @default(false) @map("ai_pending_escalation")
-  lastMessageAt     DateTime           @default(now()) @map("last_message_at")
-  createdAt         DateTime           @default(now()) @map("created_at")
-  updatedAt         DateTime           @updatedAt @map("updated_at")
+  id                  String             @id @default(cuid())
+  tenantId            String             @map("tenant_id")
+  clientId            String             @map("client_id")
+  vendorId            String?            @map("vendor_id")
+  status              ConversationStatus @default(PENDING_ASSIGNMENT)
+  aiPendingEscalation Boolean            @default(false) @map("ai_pending_escalation")
+  lastMessageAt       DateTime           @default(now()) @map("last_message_at")
+  createdAt           DateTime           @default(now()) @map("created_at")
+  updatedAt           DateTime           @updatedAt @map("updated_at")
 
   tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   client   Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
@@ -234,17 +248,17 @@ model Conversation {
 }
 
 model Message {
-  id             String        @id @default(cuid())
-  conversationId String        @map("conversation_id")
-  senderType     SenderType    @map("sender_type")
-  senderId       String?       @map("sender_id") // ID del User si es VENDOR o SYSTEM.
-  content        String?       @db.Text
-  waMessageId    String?       @unique @map("wa_message_id")
-  tags           String[]      @default([])
-  isInternal     Boolean       @default(false) @map("is_internal")
+  id             String         @id @default(cuid())
+  conversationId String         @map("conversation_id")
+  senderType     SenderType     @map("sender_type")
+  senderId       String?        @map("sender_id") // ID del User si es VENDOR o SYSTEM.
+  content        String?        @db.Text
+  waMessageId    String?        @unique @map("wa_message_id")
+  tags           String[]       @default([])
+  isInternal     Boolean        @default(false) @map("is_internal")
   status         MessageStatus?
-  createdAt      DateTime      @default(now()) @map("created_at")
-  updatedAt      DateTime      @updatedAt @map("updated_at")
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
 
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   attachments  Attachment[]
@@ -271,12 +285,12 @@ model Attachment {
 }
 
 model AiConfig {
-  id                String   @id @default(cuid())
-  tenantId          String   @unique @map("tenant_id")
-  provider          String   @default("gemini")
-  apiKey            String   @map("api_key") // Encrypted
-  createdAt         DateTime @default(now()) @map("created_at")
-  updatedAt         DateTime @updatedAt @map("updated_at")
+  id        String   @id @default(cuid())
+  tenantId  String   @unique @map("tenant_id")
+  provider  String   @default("gemini")
+  apiKey    String   @map("api_key") // Encrypted
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 

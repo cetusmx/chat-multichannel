@@ -12,6 +12,13 @@
 - Unauthenticated socket configuration [backend/src/socket.js]
 - Hardcoded tenant data in integration tests [backend/tests/integration/chat.test.js]
 - Internal mutation of socket auth options [frontend/src/stores/useChatStore.js:215]
+- Task 1.4: "Write integration tests that ensure endpoints correctly enforce limits for both scenarios" was deferred in story 1.3 since limits apply globally for now, not per-tenant.
+
+## Deferred from: code review (2026-07-08)
+- [Frontend] SlaConfigSection fails to implement AbortController — deferred, pre-existing pattern
+- [Frontend] Frontend duplicates business defaults for SLA minutes — deferred, minor
+- [Backend] Test suite neglects testing Prisma errors — deferred, pre-existing pattern
+- [Backend] Global router-level authorization limits scope of metrics routes — deferred, current scope is SLA only
 - In-memory Map for webhook locking [backend/src/services/whatsapp.service.js]
 - Sequential non-transactional database calls in webhook [backend/src/services/whatsapp.service.js]
 - Missing progressive validation of downloaded bytes [backend/src/services/whatsapp.service.js]
@@ -153,3 +160,6 @@
 - Success/Error feedback implemented as inline alerts instead of toasts
 - Useless Swagger Documentation
 - Missing Frontend Component Unit Tests
+
+## Deferred from: code review of 5-2-automatic-client-assignment-engine.md (2026-07-08)
+- Test suite coverage ignores unhappy paths and transaction isolation [backend/tests/unit/assignment.service.test.js:147]

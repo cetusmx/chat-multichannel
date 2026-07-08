@@ -1,4 +1,5 @@
 const prisma = require('../config/database');
+const { getIo } = require('../socket');
 
 class AssignmentService {
   async getConfig(tenantId) {
@@ -115,6 +116,84 @@ class AssignmentService {
 
       return await this.getConfig(tenantId);
     } catch (error) {
+      throw error;
+    }
+  }
+
+  async autoAssign(tenantId, conversationId) {
+    try {
+      if (!tenantId || !conversationId) return null;
+
+      const selectedVendor = await prisma.$transaction(async (tx) => {
+        const conversation = await tx.conversation.findFirst({
+          where: { id: conversationId, tenantId }
+        });
+        
+        if (!conversation || conversation.status !== 'PENDING_ASSIGNMENT') {
+          return null;
+        }
+
+        const rule = await tx.assignmentRule.findUnique({
+          where: { tenantId }
+        });
+
+        if (!rule || rule.strategy !== 'ROUND_ROBIN') {
+          return null;
+        }
+
+        let eligibleUsers = await tx.user.findMany({
+          where: {
+            tenantId,
+            eligibleRules: { some: { ruleId: rule.id } }
+          },
+          include: {
+            _count: {
+              select: {
+                conversations: { where: { status: 'ACTIVE', tenantId } }
+              }
+            }
+          }
+        });
+
+        if (eligibleUsers.length === 0) {
+          return null;
+        }
+
+        eligibleUsers.sort((a, b) => a._count.conversations - b._count.conversations);
+        const vendor = eligibleUsers[0];
+
+        const updateResult = await tx.conversation.updateMany({
+          where: { id: conversationId, tenantId, status: 'PENDING_ASSIGNMENT' },
+          data: {
+            vendorId: vendor.id,
+            status: 'ACTIVE'
+          }
+        });
+
+        if (updateResult.count === 0) {
+          return null;
+        }
+
+        return vendor;
+      });
+
+      if (selectedVendor) {
+        try {
+          const io = getIo();
+          io.of('/chat').to(`vendor_${selectedVendor.id}`).emit('chat:assigned', {
+            type: 'chat:assigned',
+            payload: { conversationId },
+            timestamp: new Date().toISOString(),
+            correlationId: conversationId
+          });
+        } catch (socketErr) {
+          console.error(`[AssignmentService] Error emitting socket event:`, socketErr);
+        }
+      }
+
+      return selectedVendor;
+    } catch (error) {
+      console.error(`[AssignmentService] Error in autoAssign:`, error);
       throw error;
     }
   }

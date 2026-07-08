@@ -4,6 +4,7 @@ const socket = require('../socket');
 const { isOffHours } = require('../utils/date');
 const crypto = require('crypto');
 const aiService = require('./ai.service');
+const assignmentService = require('./assignment.service');
 const prisma = new PrismaClient();
 
 const incomingLocks = new Map();
@@ -155,7 +156,19 @@ const whatsappService = {
               conversation = await prisma.conversation.create({
                 data: { tenantId, clientId: finalClient.id, status: 'PENDING_ASSIGNMENT' }
               });
+              try {
+                await assignmentService.autoAssign(tenantId, conversation.id);
+              } catch (autoAssignErr) {
+                console.error(`[WHATSAPP_SERVICE] Error auto-assigning chat for tenant ${tenantId}, conversation ${conversation.id}:`, autoAssignErr);
+              }
             } else {
+              if (conversation.status === 'PENDING_ASSIGNMENT') {
+                try {
+                  await assignmentService.autoAssign(tenantId, conversation.id);
+                } catch (autoAssignErr) {
+                  console.error(`[WHATSAPP_SERVICE] Error auto-assigning chat for tenant ${tenantId}, conversation ${conversation.id}:`, autoAssignErr);
+                }
+              }
               // Actualizar fecha del último mensaje
               await prisma.conversation.update({
                 where: { id: conversation.id },
