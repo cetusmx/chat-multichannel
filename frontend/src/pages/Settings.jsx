@@ -6,6 +6,7 @@ import GroupListSection from '../features/settings/GroupListSection.jsx';
 import WhatsAppSettingsSection from '../features/settings/WhatsAppSettingsSection.jsx';
 import AiConfigSection from '../features/settings/AiConfigSection.jsx';
 import KnowledgeBaseSection from '../features/settings/KnowledgeBaseSection.jsx';
+import AssignmentRulesSection from '../features/settings/AssignmentRulesSection.jsx';
 
 const tabs = [
   { id: 'company', label: 'Empresa', roles: ['ADMIN', 'COORDINATOR'] },
@@ -14,6 +15,7 @@ const tabs = [
   { id: 'whatsapp', label: 'WhatsApp API', roles: ['ADMIN'] },
   { id: 'ai', label: 'Inteligencia Artificial', roles: ['ADMIN'] },
   { id: 'kb', label: 'Base de Conocimiento', roles: ['ADMIN'] },
+  { id: 'assignment', label: 'Asignación de Clientes', roles: ['ADMIN'] },
 ];
 
 export default function Settings() {
@@ -30,6 +32,7 @@ export default function Settings() {
       case 'whatsapp': return <WhatsAppSettingsSection />;
       case 'ai': return <AiConfigSection />;
       case 'kb': return <KnowledgeBaseSection />;
+      case 'assignment': return <AssignmentRulesSection />;
       default: return null;
     }
   }

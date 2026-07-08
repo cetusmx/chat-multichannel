@@ -144,3 +144,12 @@
 ## Deferred from: code review pass 3 of 4-7-ai-off-hours-mode.md (2026-07-07)
 - `options` parameter explicitly passed as null causes `TypeError` during object destructuring (default params only protect against undefined) [backend/src/services/ai.service.js]
 - Strict regex validation for hours accepts impossible times like 25:99 [backend/src/utils/date.js]
+
+## Deferred from: code review (5-1-client-assignment-rules-configuration)
+- Hardcoded Pagination Truncation limit=100 (Frontend)
+- Unexplained Disabled UI State
+- Brittle Integration Test Setup
+- Redundant Database Indexing @@index([ruleId])
+- Success/Error feedback implemented as inline alerts instead of toasts
+- Useless Swagger Documentation
+- Missing Frontend Component Unit Tests

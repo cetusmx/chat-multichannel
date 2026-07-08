@@ -81,6 +81,12 @@ export async function del(endpoint) {
   return request(endpoint, { method: 'DELETE' });
 }
 
+export async function deleteGroup(id) {
+  return request(`/tenant/groups/${id}`, { method: 'DELETE' });
+}
+
+
+
 /**
  * Fetches the AI configuration for the current tenant.
  * @returns {Promise<Object>} The AI configuration object containing isConfigured and provider
@@ -170,4 +176,36 @@ export async function getKnowledgeBaseDocuments() {
     throw new Error(error.error || 'Failed to fetch knowledge base documents');
   }
   return res.json();
+}
+
+// Assignment Config
+/**
+ * Retrieves the client assignment configuration for the tenant.
+ * @returns {Promise<Response>} The raw fetch Response
+ */
+export async function getAssignmentConfig() {
+  return request('/tenant/assignment-config');
+}
+
+/**
+ * Updates the client assignment configuration for the tenant.
+ * @param {Object} data - Configuration payload
+ * @param {string} data.strategy - 'MANUAL' or 'ROUND_ROBIN'
+ * @param {Array<string>} data.activeVendorIds - Array of vendor IDs
+ * @returns {Promise<Response>} The raw fetch Response
+ */
+export async function updateAssignmentConfig(data) {
+  return request('/tenant/assignment-config', {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
+}
+
+/**
+ * Retrieves the users for the tenant, filtered by query string.
+ * @param {string} query - The query string parameters
+ * @returns {Promise<Response>} The raw fetch Response
+ */
+export async function getUsers(query = '') {
+  return request(`/users?${query}`);
 }

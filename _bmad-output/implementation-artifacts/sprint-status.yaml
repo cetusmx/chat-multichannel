@@ -41,7 +41,7 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-07-04T19:33:21-06:00
-last_updated: 2026-07-07T12:53:00-06:00
+last_updated: 2026-07-07T20:50:30-06:00
 project: chat-multichannel-sales-ia
 project_key: NOKEY
 tracking_system: file-system
@@ -83,8 +83,8 @@ development_status:
   4-6-coordinator-escalation-alerts: done
   4-7-ai-off-hours-mode: done
   epic-4-retrospective: optional
-  epic-5: backlog
-  5-1-client-assignment-rules-configuration: backlog
+  epic-5: in-progress
+  5-1-client-assignment-rules-configuration: done
   5-2-automatic-client-assignment-engine: backlog
   5-3-sla-thresholds-configuration: backlog
   5-4-real-time-sla-alerts: backlog

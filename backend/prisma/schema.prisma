@@ -26,6 +26,11 @@ enum ConversationStatus {
   ESCALATED
 }
 
+enum RoutingStrategy {
+  MANUAL
+  ROUND_ROBIN
+}
+
 enum SenderType {
   CLIENT
   VENDOR
@@ -65,6 +70,7 @@ model Tenant {
   branches      Branch[]
   whatsappConfig WhatsAppConfig?
   aiConfig      AiConfig?
+  assignmentRule AssignmentRule?
   clients       Client[]
   conversations Conversation[]
   documents     Document[]
@@ -124,6 +130,7 @@ model User {
   coordinator User?          @relation("UserCoordinator", fields: [coordinatorId], references: [id])
   assignees   User[]         @relation("UserCoordinator")
   conversations Conversation[] @relation("VendorConversations")
+  eligibleRules EligibleVendor[]
 
   @@index([tenantId])
   @@index([role])
@@ -158,6 +165,32 @@ model WhatsAppConfig {
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@map("whatsapp_configs")
+}
+
+model AssignmentRule {
+  id              String          @id @default(cuid())
+  tenantId        String          @unique @map("tenant_id")
+  strategy        RoutingStrategy @default(MANUAL)
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  eligibleVendors EligibleVendor[]
+
+  @@map("assignment_rules")
+}
+
+model EligibleVendor {
+  ruleId String @map("rule_id")
+  userId String @map("user_id")
+
+  rule AssignmentRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  user User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([ruleId, userId])
+  @@index([ruleId])
+  @@index([userId])
+  @@map("eligible_vendors")
 }
 
 model Client {
