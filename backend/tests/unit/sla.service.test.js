@@ -1,3 +1,4 @@
+const EventEmitter = require('events');
 const slaService = require('../../src/services/sla.service');
 const prisma = require('../../src/config/database');
 const ApiError = require('../../src/utils/ApiError');
@@ -6,12 +7,18 @@ jest.mock('../../src/config/database', () => ({
   slaConfig: {
     findUnique: jest.fn(),
     upsert: jest.fn(),
+    findMany: jest.fn(),
+  },
+  conversation: {
+    findMany: jest.fn(),
   }
 }));
 
 describe('SlaService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    slaService.configCache.clear();
+    slaService.notifiedBreaches.clear();
   });
 
   describe('getSlaConfig', () => {
@@ -80,6 +87,133 @@ describe('SlaService', () => {
       expect(prisma.slaConfig.upsert).toHaveBeenCalledWith(expect.objectContaining({
         update: { firstResponseMins: 5 },
         create: { tenantId: 'tenant-1', firstResponseMins: 5, resolutionMins: 60 } // Default for resolution if missing
+      }));
+    });
+  });
+
+  describe('SLA Monitor', () => {
+    beforeEach(() => {
+      jest.useFakeTimers();
+      jest.spyOn(slaService, 'emit');
+    });
+
+    afterEach(() => {
+      slaService.stopMonitor();
+      jest.useRealTimers();
+      jest.restoreAllMocks();
+    });
+
+    it('should emit firstResponse breach for PENDING_ASSIGNMENT', async () => {
+      const now = Date.now();
+      jest.setSystemTime(now);
+
+      prisma.slaConfig.findUnique.mockResolvedValue(
+        { tenantId: 't1', firstResponseMins: 15, resolutionMins: 60 }
+      );
+      
+      prisma.conversation.findMany.mockResolvedValue([
+        {
+          id: 'c1',
+          tenantId: 't1',
+          status: 'PENDING_ASSIGNMENT',
+          lastMessageAt: new Date(now - 20 * 60 * 1000) // 20 mins ago (breached)
+        },
+        {
+          id: 'c2',
+          tenantId: 't1',
+          status: 'PENDING_ASSIGNMENT',
+          lastMessageAt: new Date(now - 10 * 60 * 1000) // 10 mins ago (ok)
+        }
+      ]);
+
+      slaService.startMonitor(1000);
+      
+      await jest.advanceTimersByTimeAsync(1000);
+
+      expect(prisma.conversation.findMany).toHaveBeenCalled();
+      expect(slaService.emit).toHaveBeenCalledWith('alerts:breach', expect.objectContaining({
+        type: 'SLA_BREACH',
+        tenantId: 't1',
+        payload: {
+          conversationId: 'c1',
+          metric: 'firstResponse',
+          excessMinutes: 5
+        }
+      }));
+      expect(slaService.emit).not.toHaveBeenCalledWith('alerts:breach', expect.objectContaining({
+        payload: expect.objectContaining({ conversationId: 'c2' })
+      }));
+    });
+
+    it('should emit resolution breach for ACTIVE', async () => {
+      const now = Date.now();
+      jest.setSystemTime(now);
+
+      prisma.slaConfig.findUnique.mockResolvedValue(
+        { tenantId: 't1', firstResponseMins: 15, resolutionMins: 60 }
+      );
+      
+      prisma.conversation.findMany.mockResolvedValue([
+        {
+          id: 'c3',
+          tenantId: 't1',
+          status: 'ACTIVE',
+          createdAt: new Date(now - 70 * 60 * 1000) // 70 mins ago (breached)
+        },
+        {
+          id: 'c4',
+          tenantId: 't1',
+          status: 'ACTIVE',
+          createdAt: new Date(now - 50 * 60 * 1000) // 50 mins ago (ok)
+        }
+      ]);
+
+      slaService.startMonitor(1000);
+      
+      await jest.advanceTimersByTimeAsync(1000);
+
+      expect(slaService.emit).toHaveBeenCalledWith('alerts:breach', expect.objectContaining({
+        type: 'SLA_BREACH',
+        tenantId: 't1',
+        payload: {
+          conversationId: 'c3',
+          metric: 'resolution',
+          excessMinutes: 10
+        }
+      }));
+      expect(slaService.emit).not.toHaveBeenCalledWith('alerts:breach', expect.objectContaining({
+        payload: expect.objectContaining({ conversationId: 'c4' })
+      }));
+    });
+
+    it('should fallback to default config if missing and still emit breaches', async () => {
+      const now = Date.now();
+      jest.setSystemTime(now);
+
+      // Return null to simulate missing config
+      prisma.slaConfig.findUnique.mockResolvedValue(null);
+      
+      prisma.conversation.findMany.mockResolvedValue([
+        {
+          id: 'c5',
+          tenantId: 't2',
+          status: 'PENDING_ASSIGNMENT',
+          lastMessageAt: new Date(now - 25 * 60 * 1000) // 25 mins ago (breached default 15 min)
+        }
+      ]);
+
+      slaService.startMonitor(1000);
+      
+      await jest.advanceTimersByTimeAsync(1000);
+
+      expect(slaService.emit).toHaveBeenCalledWith('alerts:breach', expect.objectContaining({
+        type: 'SLA_BREACH',
+        tenantId: 't2',
+        payload: {
+          conversationId: 'c5',
+          metric: 'firstResponse',
+          excessMinutes: 10 // 25 - 15 = 10
+        }
       }));
     });
   });

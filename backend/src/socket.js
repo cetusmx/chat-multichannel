@@ -1,4 +1,5 @@
 const { Server } = require('socket.io');
+const { setupAlerts } = require('./socket/alerts.handler');
 
 let ioInstance;
 
@@ -47,11 +48,7 @@ function setupSocket(server) {
     });
   });
 
-  alerts.on('connection', (socket) => {
-    socket.on('join:tenant', (tenantId) => {
-      socket.join(`tenant:${tenantId}`);
-    });
-  });
+  setupAlerts(alerts);
 
   notifications.on('connection', (socket) => {
     socket.on('join:user', (userId) => {

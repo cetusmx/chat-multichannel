@@ -163,3 +163,11 @@
 
 ## Deferred from: code review of 5-2-automatic-client-assignment-engine.md (2026-07-08)
 - Test suite coverage ignores unhappy paths and transaction isolation [backend/tests/unit/assignment.service.test.js:147]
+
+## Deferred from: code review of 5-4-real-time-sla-alerts (2026-07-12)
+- Horizontal Scaling Issues (In-memory cache and monitor interval are incompatible with clustered deployments) [backend/src/services/sla.service.js]
+
+- Unscalable Full-Table Retrieval in Backend Monitor [backend/src/services/sla.service.js]
+- Inefficient FIFO Config Cache [backend/src/services/sla.service.js]
+- Fragile Event Listener Wiring [backend/src/socket/alerts.handler.js]
+- Missing Explicit Dashboard Modification [frontend/src/features/chat/components/CoordinatorDashboard.jsx]

@@ -1,3 +1,5 @@
+import SlaBadge from '../../metrics/SlaBadge';
+
 /**
  * ChatList - Muestra las conversaciones en el panel izquierdo o en un grid de vista previa
  * 
@@ -16,6 +18,26 @@ export default function ChatList({ conversations, currentConversationId, current
       {conversations.map((conv) => {
         const isSelected = selectedIds.includes(conv.id);
         const lastMsg = conv.messages?.[0]?.content || 'Sin mensajes...';
+        const isSlaBreached = conv.isSlaBreached;
+        const breachType = conv.breachType;
+        const isFirstResponse = breachType === 'firstResponse';
+
+        let gridStyles = isSelected 
+          ? 'border-sales-coral-400 bg-sales-slate-800/80 shadow-md shadow-sales-coral-500/10' 
+          : 'border-sales-slate-700 bg-sales-slate-800/40';
+        
+        let listStyles = isSelected ? 'bg-sales-slate-800 border-l-4 border-sales-coral-400' : '';
+
+        if (isSlaBreached) {
+          const borderColor = isFirstResponse ? 'border-orange-500/60' : 'border-red-500/60';
+          const shadowColor = isFirstResponse ? 'shadow-orange-500/10' : 'shadow-red-500/10';
+          if (isGrid) {
+             gridStyles = `${borderColor} bg-sales-slate-800/50 shadow-md ${shadowColor} ${isSelected ? 'ring-1 ring-sales-coral-400' : ''}`;
+          } else {
+             const borderList = isFirstResponse ? 'border-orange-500' : 'border-red-500';
+             listStyles = `border-l-4 ${borderList} ${isSelected ? 'bg-sales-slate-800' : 'bg-sales-slate-800/30'}`;
+          }
+        }
 
         return (
           <div 
@@ -23,21 +45,23 @@ export default function ChatList({ conversations, currentConversationId, current
             onClick={() => onSelect(conv.id)}
             className={`cursor-pointer transition-all ${
               isGrid 
-                ? `p-4 rounded-xl border ${isSelected ? 'border-sales-coral-400 bg-sales-slate-800/80 shadow-md shadow-sales-coral-500/10' : 'border-sales-slate-700 bg-sales-slate-800/40'} backdrop-blur-md hover:bg-sales-slate-800/70`
-                : `p-4 hover:bg-sales-slate-800 ${isSelected ? 'bg-sales-slate-800 border-l-4 border-sales-coral-400' : ''}`
+                ? `p-4 rounded-xl border backdrop-blur-md hover:bg-sales-slate-800/70 ${gridStyles}`
+                : `p-4 hover:bg-sales-slate-800 ${listStyles}`
             }`}
           >
             <div className="flex justify-between items-start mb-2">
-              <span className="font-semibold text-sales-slate-100 pr-2 flex items-center gap-2 min-w-0">
+              <span className="font-semibold text-sales-slate-100 pr-2 flex flex-wrap items-center gap-2 min-w-0">
                 <span className="truncate">{conv.client?.name || conv.client?.phoneNumber}</span>
                 {conv.status === 'ESCALATED' && (
                   <span 
                     className="flex-shrink-0 px-1.5 py-0.5 rounded bg-red-500 text-white shadow-sm shadow-red-500/20 text-[10px] font-bold uppercase tracking-wider"
-                    aria-label="Chat escalado"
                     title="Este chat requiere atención de un coordinador"
                   >
                     Escalado
                   </span>
+                )}
+                {isSlaBreached && (
+                  <SlaBadge isSlaBreached={isSlaBreached} breachType={breachType} />
                 )}
               </span>
               <span className="text-xs text-sales-slate-500 flex-shrink-0 pt-1">

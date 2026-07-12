@@ -5,9 +5,8 @@ const authenticate = require('../middleware/auth');
 const authorize = require('../middleware/rbac');
 const ApiError = require('../utils/ApiError');
 
-// Protected by authenticate and authorize (ADMIN, COORDINATOR)
+// Protected by authenticate
 router.use(authenticate);
-router.use(authorize('ADMIN', 'COORDINATOR'));
 
 /**
  * @swagger
@@ -57,7 +56,7 @@ router.get('/sla', async (req, res, next) => {
  *       500:
  *         description: Internal server error.
  */
-router.put('/sla', async (req, res, next) => {
+router.put('/sla', authorize('ADMIN', 'COORDINATOR'), async (req, res, next) => {
   try {
     const config = await slaService.updateSlaConfig(req.user.tenantId, req.body);
     res.json({ data: config });

@@ -15,6 +15,7 @@ const useChatStore = create((set, get) => ({
   nextCursor: {},
   isLoadingMore: false,
   socket: null,
+  alertsSocket: null,
   uploadingIds: {},
   errorMsg: null,
   searchResults: [],
@@ -53,13 +54,52 @@ const useChatStore = create((set, get) => ({
 
   fetchConversations: async () => {
     try {
-      const res = await get('/chat/conversations');
+      const [res, slaRes] = await Promise.all([
+        get('/chat/conversations'),
+        get('/metrics/sla').catch(() => null)
+      ]);
+      
+      let slaConfig = { firstResponseMins: 15, resolutionMins: 60 };
+      if (slaRes && slaRes.ok) {
+        try {
+          const slaData = await slaRes.json();
+          if (slaData && slaData.data) slaConfig = { ...slaConfig, ...slaData.data };
+        } catch (e) {
+          console.error('SLA response is not JSON:', e);
+        }
+      }
+
       if (!res.ok) {
         const errText = await res.text();
         throw new Error(`HTTP Error ${res.status}: ${errText}`);
       }
       const data = await res.json();
-      set({ conversations: data?.data || [], errorMsg: null });
+      let convs = data?.data || [];
+      const now = Date.now();
+
+      convs = convs.map(c => {
+        let isSlaBreached = false;
+        let breachType = null;
+        
+        if (c.status === 'PENDING_ASSIGNMENT' && slaConfig.firstResponseMins) {
+          const start = c.lastMessageAt || c.createdAt;
+          const elapsedMins = (now - new Date(start).getTime()) / 60000;
+          if (elapsedMins > slaConfig.firstResponseMins) {
+            isSlaBreached = true;
+            breachType = 'firstResponse';
+          }
+        } else if (c.status === 'ACTIVE' && slaConfig.resolutionMins) {
+          const start = c.createdAt;
+          const elapsedMins = (now - new Date(start).getTime()) / 60000;
+          if (elapsedMins > slaConfig.resolutionMins) {
+            isSlaBreached = true;
+            breachType = 'resolution';
+          }
+        }
+        return { ...c, isSlaBreached, breachType };
+      });
+
+      set({ conversations: convs, errorMsg: null });
     } catch (error) {
       console.error('Error al cargar conversaciones:', error);
       set({ errorMsg: 'Failed to load conversations' });
@@ -325,9 +365,42 @@ const useChatStore = create((set, get) => ({
     const currentSocket = get().socket;
     if (currentSocket) currentSocket.disconnect();
 
+    const currentAlertsSocket = get().alertsSocket;
+    if (currentAlertsSocket) currentAlertsSocket.disconnect();
+
     const newSocket = io(SOCKET_URL, {
       auth: { token }, // if needed by backend later
       transports: ['websocket'],
+    });
+
+    const ALERTS_URL = SOCKET_URL.replace('/chat', '/alerts');
+    const newAlertsSocket = io(ALERTS_URL, {
+      auth: { token },
+      transports: ['websocket'],
+    });
+
+    newAlertsSocket.on('connect', () => {
+      console.log('Alerts socket connected');
+      const { user } = useAuthStore.getState();
+      if (user?.tenantId) {
+        newAlertsSocket.emit('join:tenant', user.tenantId);
+      }
+    });
+
+    newAlertsSocket.on('alerts:breach', (data) => {
+      if (data?.type === 'SLA_BREACH' && data?.payload) {
+        const { conversationId, metric } = data.payload;
+        set((state) => {
+          const conv = state.conversations.find(c => c.id === conversationId);
+          if (!conv || (conv.isSlaBreached === true && conv.breachType === metric)) return state;
+          
+          return {
+            conversations: state.conversations.map(c => 
+              c.id === conversationId ? { ...c, isSlaBreached: true, breachType: metric } : c
+            )
+          };
+        });
+      }
     });
 
     newSocket.on('connect', () => {
@@ -512,15 +585,19 @@ const useChatStore = create((set, get) => ({
       });
     });
 
-    set({ socket: newSocket });
+    set({ socket: newSocket, alertsSocket: newAlertsSocket });
   },
   
   disconnectSocket: () => {
     const currentSocket = get().socket;
     if (currentSocket) {
       currentSocket.disconnect();
-      set({ socket: null });
     }
+    const alertsSocket = get().alertsSocket;
+    if (alertsSocket) {
+      alertsSocket.disconnect();
+    }
+    set({ socket: null, alertsSocket: null });
   }
 }));
 
