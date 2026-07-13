@@ -179,3 +179,6 @@
 - Hardcoded 5-year Lookback: UI year dropdown locked to 5 years. [frontend/src/features/metrics/components/UsageReport.jsx]
 - Brittle CSV Concatenation: Manual string concatenation breaks if text columns are added. [backend/src/services/metrics.service.js]
 - UI Month Restriction Relies on Local Time: Client TZ might allow selecting future month if they are a day ahead. [frontend/src/features/metrics/components/UsageReport.jsx]
+
+## Deferred from: code review of 6-1-react-native-project-scaffold.md (2026-07-13)
+- keychainStorage.js shoves entire state tree into password field [mobile/src/utils/keychainStorage.js] — deferred, pre-existing

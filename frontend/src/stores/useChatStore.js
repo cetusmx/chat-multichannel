@@ -1,11 +1,26 @@
 import { create } from 'zustand';
-import { get, post, postFormData, del } from '../services/api';
+import * as defaultApi from '../services/api';
 import io from 'socket.io-client';
 import useAuthStore from './useAuthStore';
 import useUIStore from './useUIStore';
 
-// URL del backend hardcoded por ahora o lo leemos del origin (MVP pragmático)
-const SOCKET_URL = window.location.origin.includes('localhost') ? 'http://localhost:4000/chat' : '/chat';
+const config = {
+  api: defaultApi,
+  SOCKET_URL: typeof window !== 'undefined' && window.location
+    ? (window.location.origin.includes('localhost') ? 'http://localhost:4000/chat' : '/chat')
+    : null
+};
+
+export const configureChatStore = (customApi, customSocketUrl) => {
+  if (customApi) config.api = customApi;
+  if (customSocketUrl) config.SOCKET_URL = customSocketUrl;
+  
+  // Re-initialize socket if already connected to apply new URL
+  const { socket, initializeSocket } = useChatStore.getState();
+  if (socket) {
+    initializeSocket();
+  }
+};
 
 const useChatStore = create((set, get) => ({
   conversations: [],
@@ -35,7 +50,7 @@ const useChatStore = create((set, get) => ({
     set({ isSearching: true, searchError: null });
     try {
       const options = signal ? { signal } : {};
-      const res = await get(`/chat/search?q=${encodeURIComponent(query)}`, options);
+      const res = await config.api.get(`/chat/search?q=${encodeURIComponent(query)}`, options);
       if (!res.ok) {
         const errText = await res.text();
         throw new Error(`Search error ${res.status}: ${errText}`);
@@ -55,8 +70,8 @@ const useChatStore = create((set, get) => ({
   fetchConversations: async () => {
     try {
       const [res, slaRes] = await Promise.all([
-        get('/chat/conversations'),
-        get('/metrics/sla').catch(() => null)
+        config.api.get('/chat/conversations'),
+        config.api.get('/metrics/sla').catch(() => null)
       ]);
       
       let slaConfig = { firstResponseMins: 15, resolutionMins: 60 };
@@ -125,7 +140,7 @@ const useChatStore = create((set, get) => ({
       if (aroundMessageId) url += `&aroundMessageId=${aroundMessageId}`;
       else if (cursor) url += `&cursor=${cursor}`;
       
-      const res = await get(url);
+      const res = await config.api.get(url);
       if (!res.ok) {
         const errText = await res.text();
         throw new Error(`HTTP Error ${res.status}: ${errText}`);
@@ -196,7 +211,7 @@ const useChatStore = create((set, get) => ({
     set((state) => ({ messages: [...state.messages, tempMsg] }));
 
     try {
-      const res = await post(`/chat/${currentConversationId}/messages`, { content, isInternal });
+      const res = await config.api.post(`/chat/${currentConversationId}/messages`, { content, isInternal });
       if (!res.ok) {
         const errText = await res.text();
         throw new Error(`HTTP Error ${res.status}: ${errText}`);
@@ -234,7 +249,7 @@ const useChatStore = create((set, get) => ({
       if (text) formData.append('caption', text);
       if (isInternal) formData.append('isInternal', 'true');
       
-      const res = await postFormData(`/chat/${currentConversationId}/media`, formData, signal);
+      const res = await config.api.postFormData(`/chat/${currentConversationId}/media`, formData, signal);
       
       if (!res.ok) {
         let errorMessage = 'Fallo inesperado del servidor';
@@ -295,7 +310,7 @@ const useChatStore = create((set, get) => ({
     });
 
     try {
-      const res = await post(`/chat/${currentConversationId}/messages/${messageId}/tags`, { tag: cleanTag });
+      const res = await config.api.post(`/chat/${currentConversationId}/messages/${messageId}/tags`, { tag: cleanTag });
       if (!res.ok) {
         const errText = await res.text();
         throw new Error(`HTTP Error ${res.status}: ${errText}`);
@@ -338,7 +353,7 @@ const useChatStore = create((set, get) => ({
     });
 
     try {
-      const res = await del(`/chat/${currentConversationId}/messages/${messageId}/tags/${encodeURIComponent(tag)}`);
+      const res = await config.api.del(`/chat/${currentConversationId}/messages/${messageId}/tags/${encodeURIComponent(tag)}`);
       if (!res.ok) {
         const errText = await res.text();
         throw new Error(`HTTP Error ${res.status}: ${errText}`);
@@ -361,6 +376,8 @@ const useChatStore = create((set, get) => ({
   },
 
   initializeSocket: () => {
+    if (!config.SOCKET_URL) return; // Wait until injected via configureChatStore
+
     const { token } = useAuthStore.getState();
     const currentSocket = get().socket;
     if (currentSocket) currentSocket.disconnect();
@@ -368,14 +385,14 @@ const useChatStore = create((set, get) => ({
     const currentAlertsSocket = get().alertsSocket;
     if (currentAlertsSocket) currentAlertsSocket.disconnect();
 
-    const newSocket = io(SOCKET_URL, {
-      auth: { token }, // if needed by backend later
+    const newSocket = io(config.SOCKET_URL, {
+      auth: (cb) => cb({ token: useAuthStore.getState().token }),
       transports: ['websocket'],
     });
 
-    const ALERTS_URL = SOCKET_URL.replace('/chat', '/alerts');
+    const ALERTS_URL = config.SOCKET_URL.replace(/\/chat$/, '/alerts');
     const newAlertsSocket = io(ALERTS_URL, {
-      auth: { token },
+      auth: (cb) => cb({ token: useAuthStore.getState().token }),
       transports: ['websocket'],
     });
 
@@ -417,8 +434,6 @@ const useChatStore = create((set, get) => ({
 
     newSocket.on('connect_error', (error) => {
       console.error('Chat socket connection error:', error);
-      // Actualizamos auth context en caso de fallo, para el proximo retry
-      newSocket.io.opts.auth = { token: useAuthStore.getState().token };
     });
 
     newSocket.on('new_message', (msg) => {

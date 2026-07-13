@@ -1,0 +1,749 @@
+diff --git a/frontend/src/stores/useAuthStore.js b/frontend/src/stores/useAuthStore.js
+index a075e23..b9ec5d2 100644
+--- a/frontend/src/stores/useAuthStore.js
++++ b/frontend/src/stores/useAuthStore.js
+@@ -1,5 +1,12 @@
+ import { create } from 'zustand';
+-import { persist } from 'zustand/middleware';
++import { persist, createJSONStorage } from 'zustand/middleware';
++
++// Default to localStorage on web, or a dummy storage on mobile until configured
++const defaultStorage = typeof window !== 'undefined' ? window.localStorage : {
++  getItem: () => null,
++  setItem: () => {},
++  removeItem: () => {}
++};
+ 
+ const useAuthStore = create(
+   persist(
+@@ -20,8 +27,17 @@ const useAuthStore = create(
+         set({ token });
+       },
+     }),
+-    { name: 'salesflow-auth' },
++    { 
++      name: 'salesflow-auth',
++      storage: createJSONStorage(() => defaultStorage)
++    }
+   ),
+ );
+ 
++// Method to inject platform-specific storage engine (e.g., react-native-keychain)
++export const configureAuthStorage = async (storageEngine) => {
++  useAuthStore.persist.setOptions({ storage: createJSONStorage(() => storageEngine) });
++  await useAuthStore.persist.rehydrate();
++};
++
+ export default useAuthStore;
+diff --git a/frontend/src/stores/useChatStore.js b/frontend/src/stores/useChatStore.js
+index 984866d..a7a8a5d 100644
+--- a/frontend/src/stores/useChatStore.js
++++ b/frontend/src/stores/useChatStore.js
+@@ -1,11 +1,26 @@
+ import { create } from 'zustand';
+-import { get, post, postFormData, del } from '../services/api';
++import * as defaultApi from '../services/api';
+ import io from 'socket.io-client';
+ import useAuthStore from './useAuthStore';
+ import useUIStore from './useUIStore';
+ 
+-// URL del backend hardcoded por ahora o lo leemos del origin (MVP pragmático)
+-const SOCKET_URL = window.location.origin.includes('localhost') ? 'http://localhost:4000/chat' : '/chat';
++const config = {
++  api: defaultApi,
++  SOCKET_URL: typeof window !== 'undefined' && window.location.origin.includes('localhost') 
++    ? 'http://localhost:4000/chat' 
++    : '/chat'
++};
++
++export const configureChatStore = (customApi, customSocketUrl) => {
++  if (customApi) config.api = customApi;
++  if (customSocketUrl) config.SOCKET_URL = customSocketUrl;
++  
++  // Re-initialize socket if already connected to apply new URL
++  const { socket, initializeSocket } = useChatStore.getState();
++  if (socket) {
++    initializeSocket();
++  }
++};
+ 
+ const useChatStore = create((set, get) => ({
+   conversations: [],
+@@ -35,7 +50,7 @@ const useChatStore = create((set, get) => ({
+     set({ isSearching: true, searchError: null });
+     try {
+       const options = signal ? { signal } : {};
+-      const res = await get(`/chat/search?q=${encodeURIComponent(query)}`, options);
++      const res = await config.api.get(`/chat/search?q=${encodeURIComponent(query)}`, options);
+       if (!res.ok) {
+         const errText = await res.text();
+         throw new Error(`Search error ${res.status}: ${errText}`);
+@@ -55,8 +70,8 @@ const useChatStore = create((set, get) => ({
+   fetchConversations: async () => {
+     try {
+       const [res, slaRes] = await Promise.all([
+-        get('/chat/conversations'),
+-        get('/metrics/sla').catch(() => null)
++        config.api.get('/chat/conversations'),
++        config.api.get('/metrics/sla').catch(() => null)
+       ]);
+       
+       let slaConfig = { firstResponseMins: 15, resolutionMins: 60 };
+@@ -125,7 +140,7 @@ const useChatStore = create((set, get) => ({
+       if (aroundMessageId) url += `&aroundMessageId=${aroundMessageId}`;
+       else if (cursor) url += `&cursor=${cursor}`;
+       
+-      const res = await get(url);
++      const res = await config.api.get(url);
+       if (!res.ok) {
+         const errText = await res.text();
+         throw new Error(`HTTP Error ${res.status}: ${errText}`);
+@@ -196,7 +211,7 @@ const useChatStore = create((set, get) => ({
+     set((state) => ({ messages: [...state.messages, tempMsg] }));
+ 
+     try {
+-      const res = await post(`/chat/${currentConversationId}/messages`, { content, isInternal });
++      const res = await config.api.post(`/chat/${currentConversationId}/messages`, { content, isInternal });
+       if (!res.ok) {
+         const errText = await res.text();
+         throw new Error(`HTTP Error ${res.status}: ${errText}`);
+@@ -234,7 +249,7 @@ const useChatStore = create((set, get) => ({
+       if (text) formData.append('caption', text);
+       if (isInternal) formData.append('isInternal', 'true');
+       
+-      const res = await postFormData(`/chat/${currentConversationId}/media`, formData, signal);
++      const res = await config.api.postFormData(`/chat/${currentConversationId}/media`, formData, signal);
+       
+       if (!res.ok) {
+         let errorMessage = 'Fallo inesperado del servidor';
+@@ -295,7 +310,7 @@ const useChatStore = create((set, get) => ({
+     });
+ 
+     try {
+-      const res = await post(`/chat/${currentConversationId}/messages/${messageId}/tags`, { tag: cleanTag });
++      const res = await config.api.post(`/chat/${currentConversationId}/messages/${messageId}/tags`, { tag: cleanTag });
+       if (!res.ok) {
+         const errText = await res.text();
+         throw new Error(`HTTP Error ${res.status}: ${errText}`);
+@@ -338,7 +353,7 @@ const useChatStore = create((set, get) => ({
+     });
+ 
+     try {
+-      const res = await del(`/chat/${currentConversationId}/messages/${messageId}/tags/${encodeURIComponent(tag)}`);
++      const res = await config.api.del(`/chat/${currentConversationId}/messages/${messageId}/tags/${encodeURIComponent(tag)}`);
+       if (!res.ok) {
+         const errText = await res.text();
+         throw new Error(`HTTP Error ${res.status}: ${errText}`);
+@@ -368,14 +383,14 @@ const useChatStore = create((set, get) => ({
+     const currentAlertsSocket = get().alertsSocket;
+     if (currentAlertsSocket) currentAlertsSocket.disconnect();
+ 
+-    const newSocket = io(SOCKET_URL, {
+-      auth: { token }, // if needed by backend later
++    const newSocket = io(config.SOCKET_URL, {
++      auth: (cb) => cb({ token: useAuthStore.getState().token }),
+       transports: ['websocket'],
+     });
+ 
+-    const ALERTS_URL = SOCKET_URL.replace('/chat', '/alerts');
++    const ALERTS_URL = config.SOCKET_URL.replace('/chat', '/alerts');
+     const newAlertsSocket = io(ALERTS_URL, {
+-      auth: { token },
++      auth: (cb) => cb({ token: useAuthStore.getState().token }),
+       transports: ['websocket'],
+     });
+ 
+@@ -417,8 +432,6 @@ const useChatStore = create((set, get) => ({
+ 
+     newSocket.on('connect_error', (error) => {
+       console.error('Chat socket connection error:', error);
+-      // Actualizamos auth context en caso de fallo, para el proximo retry
+-      newSocket.io.opts.auth = { token: useAuthStore.getState().token };
+     });
+ 
+     newSocket.on('new_message', (msg) => {
+diff --git a/mobile/.eslintrc.js b/mobile/.eslintrc.js
+new file mode 100644
+index 0000000..187894b
+--- /dev/null
++++ b/mobile/.eslintrc.js
+@@ -0,0 +1,4 @@
++module.exports = {
++  root: true,
++  extends: '@react-native',
++};
+diff --git a/mobile/.prettierrc.js b/mobile/.prettierrc.js
+new file mode 100644
+index 0000000..06860c8
+--- /dev/null
++++ b/mobile/.prettierrc.js
+@@ -0,0 +1,5 @@
++module.exports = {
++  arrowParens: 'avoid',
++  singleQuote: true,
++  trailingComma: 'all',
++};
+diff --git a/mobile/App.jsx b/mobile/App.jsx
+new file mode 100644
+index 0000000..4cc92bb
+--- /dev/null
++++ b/mobile/App.jsx
+@@ -0,0 +1,49 @@
++import React, { useEffect } from 'react';
++import { NavigationContainer } from '@react-navigation/native';
++import { createNativeStackNavigator } from '@react-navigation/native-stack';
++import { SafeAreaProvider } from 'react-native-safe-area-context';
++import { Platform } from 'react-native';
++
++// Screens
++import LoginScreen from './src/screens/LoginScreen';
++import ChatListScreen from './src/screens/ChatListScreen';
++import ChatDetailScreen from './src/screens/ChatDetailScreen';
++import ProfileScreen from './src/screens/ProfileScreen';
++
++// Shared Stores Config
++import useAuthStore, { configureAuthStorage } from '@shared/stores/useAuthStore';
++import { configureChatStore } from '@shared/stores/useChatStore';
++import * as keychainStorage from './src/utils/keychainStorage';
++import * as api from './src/services/api';
++import Config from 'react-native-config';
++
++// Inject React Native specific implementations into the shared stores
++configureAuthStorage(keychainStorage.default);
++const BASE_URL = Config.BACKEND_URL || (Platform.OS === 'android' ? 'http://10.0.2.2:4000/chat' : 'http://localhost:4000/chat');
++configureChatStore(api, BASE_URL);
++
++const Stack = createNativeStackNavigator();
++
++export default function App() {
++  const token = useAuthStore((state) => state.token);
++  // Optional: const hasHydrated = useAuthStore.persist.hasHydrated(); 
++  // You could return a loading screen here if !hasHydrated
++
++  return (
++    <SafeAreaProvider>
++      <NavigationContainer>
++        <Stack.Navigator>
++          {token ? (
++            <>
++              <Stack.Screen name="ChatList" component={ChatListScreen} />
++              <Stack.Screen name="ChatDetail" component={ChatDetailScreen} />
++              <Stack.Screen name="Profile" component={ProfileScreen} />
++            </>
++          ) : (
++            <Stack.Screen name="Login" component={LoginScreen} />
++          )}
++        </Stack.Navigator>
++      </NavigationContainer>
++    </SafeAreaProvider>
++  );
++}
+diff --git a/mobile/babel.config.js b/mobile/babel.config.js
+new file mode 100644
+index 0000000..85785b5
+--- /dev/null
++++ b/mobile/babel.config.js
+@@ -0,0 +1,14 @@
++module.exports = {
++  presets: ['module:@react-native/babel-preset'],
++  plugins: [
++    [
++      'module-resolver',
++      {
++        root: ['./src'],
++        alias: {
++          '@shared': '../frontend/src',
++        },
++      },
++    ],
++  ],
++};
+diff --git a/mobile/index.js b/mobile/index.js
+new file mode 100644
+index 0000000..9b73932
+--- /dev/null
++++ b/mobile/index.js
+@@ -0,0 +1,9 @@
++/**
++ * @format
++ */
++
++import { AppRegistry } from 'react-native';
++import App from './App';
++import { name as appName } from './app.json';
++
++AppRegistry.registerComponent(appName, () => App);
+diff --git a/mobile/jest.config.js b/mobile/jest.config.js
+new file mode 100644
+index 0000000..294be30
+--- /dev/null
++++ b/mobile/jest.config.js
+@@ -0,0 +1,3 @@
++module.exports = {
++  preset: '@react-native/jest-preset',
++};
+diff --git a/mobile/metro.config.js b/mobile/metro.config.js
+new file mode 100644
+index 0000000..78e3a90
+--- /dev/null
++++ b/mobile/metro.config.js
+@@ -0,0 +1,14 @@
++const { getDefaultConfig, mergeConfig } = require('@react-native/metro-config');
++const path = require('path');
++
++/**
++ * Metro configuration
++ * https://reactnative.dev/docs/metro
++ *
++ * @type {import('@react-native/metro-config').MetroConfig}
++ */
++const config = {
++  watchFolders: [path.resolve(__dirname, '../frontend')],
++};
++
++module.exports = mergeConfig(getDefaultConfig(__dirname), config);
+diff --git a/mobile/package.json b/mobile/package.json
+new file mode 100644
+index 0000000..9fc025e
+--- /dev/null
++++ b/mobile/package.json
+@@ -0,0 +1,49 @@
++{
++  "name": "mobile",
++  "version": "0.0.1",
++  "private": true,
++  "scripts": {
++    "android": "react-native run-android",
++    "ios": "react-native run-ios",
++    "lint": "eslint .",
++    "start": "react-native start",
++    "test": "jest"
++  },
++  "dependencies": {
++    "@react-native/new-app-screen": "0.86.0",
++    "@react-navigation/native": "^7.3.8",
++    "@react-navigation/native-stack": "^7.17.10",
++    "react": "19.2.3",
++    "react-native": "0.86.0",
++    "react-native-config": "^1.6.1",
++    "react-native-keychain": "^10.0.0",
++    "react-native-safe-area-context": "^5.8.0",
++    "react-native-screens": "^4.26.0",
++    "socket.io-client": "^4.8.3",
++    "zustand": "^5.0.14"
++  },
++  "devDependencies": {
++    "@babel/core": "^7.25.2",
++    "@babel/preset-env": "^7.25.3",
++    "@babel/runtime": "^7.25.0",
++    "@react-native-community/cli": "20.1.0",
++    "@react-native-community/cli-platform-android": "20.1.0",
++    "@react-native-community/cli-platform-ios": "20.1.0",
++    "@react-native/babel-preset": "0.86.0",
++    "@react-native/eslint-config": "0.86.0",
++    "@react-native/metro-config": "0.86.0",
++    "@react-native/typescript-config": "0.86.0",
++    "@types/jest": "^29.5.13",
++    "@types/react": "^19.2.0",
++    "@types/react-test-renderer": "^19.1.0",
++    "babel-plugin-module-resolver": "^5.0.3",
++    "eslint": "^8.19.0",
++    "jest": "^29.6.3",
++    "prettier": "2.8.8",
++    "react-test-renderer": "19.2.3",
++    "typescript": "^5.8.3"
++  },
++  "engines": {
++    "node": ">= 22.11.0"
++  }
++}
+diff --git a/mobile/src/components/ChatBubble.jsx b/mobile/src/components/ChatBubble.jsx
+new file mode 100644
+index 0000000..91de0d1
+--- /dev/null
++++ b/mobile/src/components/ChatBubble.jsx
+@@ -0,0 +1,21 @@
++import React from 'react';
++import { View, Text, StyleSheet } from 'react-native';
++import { theme } from '../utils/theme';
++
++export default function ChatBubble() {
++  return (
++    <View style={styles.container}>
++      <Text style={styles.text}>ChatBubble Component</Text>
++    </View>
++  );
++}
++
++const styles = StyleSheet.create({
++  container: {
++    padding: theme.spacing.md,
++    backgroundColor: theme.colors.surface,
++  },
++  text: {
++    color: theme.colors.text,
++  },
++});
+diff --git a/mobile/src/components/MessageInput.jsx b/mobile/src/components/MessageInput.jsx
+new file mode 100644
+index 0000000..33c4bbf
+--- /dev/null
++++ b/mobile/src/components/MessageInput.jsx
+@@ -0,0 +1,21 @@
++import React from 'react';
++import { View, Text, StyleSheet } from 'react-native';
++import { theme } from '../utils/theme';
++
++export default function MessageInput() {
++  return (
++    <View style={styles.container}>
++      <Text style={styles.text}>MessageInput Component</Text>
++    </View>
++  );
++}
++
++const styles = StyleSheet.create({
++  container: {
++    padding: theme.spacing.md,
++    backgroundColor: theme.colors.surface,
++  },
++  text: {
++    color: theme.colors.text,
++  },
++});
+diff --git a/mobile/src/components/StatusIndicator.jsx b/mobile/src/components/StatusIndicator.jsx
+new file mode 100644
+index 0000000..255c385
+--- /dev/null
++++ b/mobile/src/components/StatusIndicator.jsx
+@@ -0,0 +1,21 @@
++import React from 'react';
++import { View, Text, StyleSheet } from 'react-native';
++import { theme } from '../utils/theme';
++
++export default function StatusIndicator() {
++  return (
++    <View style={styles.container}>
++      <Text style={styles.text}>StatusIndicator Component</Text>
++    </View>
++  );
++}
++
++const styles = StyleSheet.create({
++  container: {
++    padding: theme.spacing.md,
++    backgroundColor: theme.colors.surface,
++  },
++  text: {
++    color: theme.colors.text,
++  },
++});
+diff --git a/mobile/src/hooks/.gitkeep b/mobile/src/hooks/.gitkeep
+new file mode 100644
+index 0000000..fb12942
+--- /dev/null
++++ b/mobile/src/hooks/.gitkeep
+@@ -0,0 +1 @@
++# gitkeep
+diff --git a/mobile/src/screens/ChatDetailScreen.jsx b/mobile/src/screens/ChatDetailScreen.jsx
+new file mode 100644
+index 0000000..9f3b6cb
+--- /dev/null
++++ b/mobile/src/screens/ChatDetailScreen.jsx
+@@ -0,0 +1,23 @@
++import React from 'react';
++import { View, Text, StyleSheet } from 'react-native';
++import { theme } from '../utils/theme';
++
++export default function ChatDetailScreen() {
++  return (
++    <View style={styles.container}>
++      <Text style={styles.text}>ChatDetailScreen Placeholder</Text>
++    </View>
++  );
++}
++
++const styles = StyleSheet.create({
++  container: {
++    flex: 1,
++    backgroundColor: theme.colors.background,
++    justifyContent: 'center',
++    alignItems: 'center',
++  },
++  text: {
++    color: theme.colors.text,
++  },
++});
+diff --git a/mobile/src/screens/ChatListScreen.jsx b/mobile/src/screens/ChatListScreen.jsx
+new file mode 100644
+index 0000000..a2870c8
+--- /dev/null
++++ b/mobile/src/screens/ChatListScreen.jsx
+@@ -0,0 +1,23 @@
++import React from 'react';
++import { View, Text, StyleSheet } from 'react-native';
++import { theme } from '../utils/theme';
++
++export default function ChatListScreen() {
++  return (
++    <View style={styles.container}>
++      <Text style={styles.text}>ChatListScreen Placeholder</Text>
++    </View>
++  );
++}
++
++const styles = StyleSheet.create({
++  container: {
++    flex: 1,
++    backgroundColor: theme.colors.background,
++    justifyContent: 'center',
++    alignItems: 'center',
++  },
++  text: {
++    color: theme.colors.text,
++  },
++});
+diff --git a/mobile/src/screens/LoginScreen.jsx b/mobile/src/screens/LoginScreen.jsx
+new file mode 100644
+index 0000000..b8fec0b
+--- /dev/null
++++ b/mobile/src/screens/LoginScreen.jsx
+@@ -0,0 +1,23 @@
++import React from 'react';
++import { View, Text, StyleSheet } from 'react-native';
++import { theme } from '../utils/theme';
++
++export default function LoginScreen() {
++  return (
++    <View style={styles.container}>
++      <Text style={styles.text}>LoginScreen Placeholder</Text>
++    </View>
++  );
++}
++
++const styles = StyleSheet.create({
++  container: {
++    flex: 1,
++    backgroundColor: theme.colors.background,
++    justifyContent: 'center',
++    alignItems: 'center',
++  },
++  text: {
++    color: theme.colors.text,
++  },
++});
+diff --git a/mobile/src/screens/ProfileScreen.jsx b/mobile/src/screens/ProfileScreen.jsx
+new file mode 100644
+index 0000000..af46674
+--- /dev/null
++++ b/mobile/src/screens/ProfileScreen.jsx
+@@ -0,0 +1,23 @@
++import React from 'react';
++import { View, Text, StyleSheet } from 'react-native';
++import { theme } from '../utils/theme';
++
++export default function ProfileScreen() {
++  return (
++    <View style={styles.container}>
++      <Text style={styles.text}>ProfileScreen Placeholder</Text>
++    </View>
++  );
++}
++
++const styles = StyleSheet.create({
++  container: {
++    flex: 1,
++    backgroundColor: theme.colors.background,
++    justifyContent: 'center',
++    alignItems: 'center',
++  },
++  text: {
++    color: theme.colors.text,
++  },
++});
+diff --git a/mobile/src/services/api.js b/mobile/src/services/api.js
+new file mode 100644
+index 0000000..b0b44cb
+--- /dev/null
++++ b/mobile/src/services/api.js
+@@ -0,0 +1,102 @@
++import useAuthStore from '@shared/useAuthStore';
++import Config from 'react-native-config';
++
++import { Platform } from 'react-native';
++
++// Fallback to localhost for emulator if env var is missing
++const BASE_URL = Config.BACKEND_URL || (Platform.OS === 'android' ? 'http://10.0.2.2:4000/api' : 'http://localhost:4000/api');
++let refreshPromise = null;
++
++async function request(endpoint, options = {}, isFormData = false) {
++  const { token } = useAuthStore.getState();
++  const headers = { ...options.headers };
++  
++  if (!isFormData) {
++    headers['Content-Type'] = 'application/json';
++  }
++
++  if (token) {
++    headers.Authorization = `Bearer ${token}`;
++  }
++
++  const res = await fetch(`${BASE_URL}${endpoint}`, {
++    ...options,
++    headers,
++  });
++
++  if (res.status === 401) {
++    const { refreshToken, setToken, clearAuth } = useAuthStore.getState();
++    if (!refreshToken) {
++      clearAuth();
++      throw new Error('Session expired');
++    }
++
++    if (!refreshPromise) {
++      refreshPromise = (async () => {
++        try {
++          const refreshRes = await fetch(`${BASE_URL}/auth/refresh`, {
++            method: 'POST',
++            headers: { 'Content-Type': 'application/json' },
++            body: JSON.stringify({ refreshToken }),
++          });
++          if (!refreshRes.ok) {
++            clearAuth();
++            throw new Error('Session expired');
++          }
++          const data = await refreshRes.json();
++          if (!data || !data.token) {
++            clearAuth();
++            throw new Error('No token returned');
++          }
++          setToken(data.token);
++          return data.token;
++        } catch (error) {
++          refreshPromise = null;
++          throw error;
++        }
++      })();
++    }
++
++    try {
++      const newToken = await refreshPromise;
++      refreshPromise = null; // Reset for future refreshes
++      
++      // If we are still processing an old request and the token we had is NOT the new token,
++      // it means this request was waiting on the refresh and can now retry.
++      headers.Authorization = `Bearer ${newToken}`;
++      const retryRes = await fetch(`${BASE_URL}${endpoint}`, { ...options, headers });
++      return retryRes;
++    } catch (error) {
++      // If refresh failed, the original request fails too
++      return res;
++    }
++  }
++
++  return res;
++}
++
++export async function get(endpoint, options = {}) {
++  return request(endpoint, options);
++}
++
++export async function post(endpoint, data, options = {}) {
++  return request(endpoint, { method: 'POST', body: JSON.stringify(data), ...options });
++}
++
++export async function put(endpoint, data, options = {}) {
++  return request(endpoint, { method: 'PUT', body: JSON.stringify(data), ...options });
++}
++
++export async function patch(endpoint, data) {
++  return request(endpoint, { method: 'PATCH', body: JSON.stringify(data) });
++}
++
++export async function postFormData(endpoint, formData, signal = null) {
++  const options = { method: 'POST', body: formData };
++  if (signal) options.signal = signal;
++  return request(endpoint, options, true);
++}
++
++export async function del(endpoint) {
++  return request(endpoint, { method: 'DELETE' });
++}
+diff --git a/mobile/src/stores/.gitkeep b/mobile/src/stores/.gitkeep
+new file mode 100644
+index 0000000..fb12942
+--- /dev/null
++++ b/mobile/src/stores/.gitkeep
+@@ -0,0 +1 @@
++# gitkeep
+diff --git a/mobile/src/utils/keychainStorage.js b/mobile/src/utils/keychainStorage.js
+new file mode 100644
+index 0000000..d45604a
+--- /dev/null
++++ b/mobile/src/utils/keychainStorage.js
+@@ -0,0 +1,32 @@
++import * as Keychain from 'react-native-keychain';
++
++const keychainStorage = {
++  getItem: async (name) => {
++    try {
++      const credentials = await Keychain.getGenericPassword({ service: name });
++      if (credentials) {
++        return credentials.password; // we store the state JSON in password
++      }
++      return null;
++    } catch (error) {
++      console.error("Keychain load error:", error.message);
++      return null;
++    }
++  },
++  setItem: async (name, value) => {
++    try {
++      await Keychain.setGenericPassword('salesflow_user', value, { service: name });
++    } catch (error) {
++      console.error("Keychain save error:", error.message);
++    }
++  },
++  removeItem: async (name) => {
++    try {
++      await Keychain.resetGenericPassword({ service: name });
++    } catch (error) {
++      console.error("Keychain reset error:", error.message);
++    }
++  },
++};
++
++export default keychainStorage;
+diff --git a/mobile/src/utils/theme.js b/mobile/src/utils/theme.js
+new file mode 100644
+index 0000000..4c09a13
+--- /dev/null
++++ b/mobile/src/utils/theme.js
+@@ -0,0 +1,27 @@
++// UX-DR9: Slate, Coral UI, Orange CTAs
++export const theme = {
++  colors: {
++    primary: '#FB7185', // Coral UI
++    secondary: '#F97316', // Orange CTAs
++    background: '#0F172A', // Slate 900
++    surface: '#1E293B', // Slate 800
++    text: '#F8FAFC', // Slate 50
++    textMuted: '#94A3B8', // Slate 400
++    border: '#334155', // Slate 700
++    error: '#EF4444', 
++    success: '#10B981',
++  },
++  spacing: {
++    xs: 4,
++    sm: 8,
++    md: 16,
++    lg: 24,
++    xl: 32,
++  },
++  borderRadius: {
++    sm: 4,
++    md: 8,
++    lg: 16,
++    full: 9999,
++  }
++};
