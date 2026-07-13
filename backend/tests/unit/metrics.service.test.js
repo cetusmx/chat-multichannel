@@ -194,4 +194,30 @@ describe('Metrics Service (Integration with DB)', () => {
     const adminMetric = result.find(v => v.vendorId === adminId);
     expect(adminMetric).toBeUndefined();
   });
+
+  it('should generate a CSV usage report correctly', async () => {
+    // Generate report for June 2023
+    const csvData = await metricsService.generateUsageReportCSV(testTenantId, 2023, 6);
+    
+    expect(typeof csvData).toBe('string');
+    expect(csvData.startsWith('\uFEFF')).toBe(true);
+    
+    const lines = csvData.split('\n');
+    expect(lines[0].includes('Fecha,Total Mensajes,Intervenciones IA,Sesiones Activas')).toBe(true);
+    
+    // Check if the data for June is there (should have entries for 2023-06-01 to 2023-06-05)
+    // We expect at least one row of data
+    expect(lines.length).toBeGreaterThan(1);
+    
+    // The report must contain the dates of the messages
+    const csvContent = csvData.toString();
+    expect(csvContent).toContain('2023-06-01');
+    expect(csvContent).toContain('2023-06-02');
+  });
+
+  it('should throw an error for invalid dates in CSV generation', async () => {
+    await expect(metricsService.generateUsageReportCSV(testTenantId, 2023, 13)).rejects.toThrow('Invalid year or month');
+    await expect(metricsService.generateUsageReportCSV(testTenantId, 'abc', 5)).rejects.toThrow('Invalid year or month');
+    await expect(metricsService.generateUsageReportCSV(testTenantId, 2050, 6)).rejects.toThrow('Cannot generate report for future dates');
+  });
 });

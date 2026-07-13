@@ -89,7 +89,7 @@ development_status:
   5-3-sla-thresholds-configuration: done
   5-4-real-time-sla-alerts: done
   5-5-vendor-productivity-metrics: done
-  5-6-usage-and-activity-reports: backlog
+  5-6-usage-and-activity-reports: ready-for-dev
   epic-5-retrospective: optional
   epic-6: backlog
   6-1-react-native-project-scaffold: backlog

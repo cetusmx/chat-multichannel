@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import VendorMetricsTable from '../features/metrics/components/VendorMetricsTable';
+import UsageReport from '../features/metrics/components/UsageReport';
 import { getVendorProductivityMetrics } from '../features/metrics/metricsService';
 import './Metrics.css';
 
@@ -148,6 +149,10 @@ export default function Metrics() {
       ) : (
         <VendorMetricsTable metrics={metrics} />
       )}
+      
+      <div className="mt-8">
+        <UsageReport />
+      </div>
     </div>
   );
 }

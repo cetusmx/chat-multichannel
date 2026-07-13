@@ -137,4 +137,56 @@ router.get('/productivity', authorize('ADMIN', 'COORDINATOR'), async (req, res, 
   }
 });
 
+/**
+ * @swagger
+ * /api/metrics/reports/usage:
+ *   get:
+ *     summary: Download usage and activity report for a specific month
+ *     tags: [Metrics]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: year
+ *         schema:
+ *           type: integer
+ *         required: true
+ *       - in: query
+ *         name: month
+ *         schema:
+ *           type: integer
+ *         required: true
+ *     responses:
+ *       200:
+ *         description: CSV file generated successfully.
+ *         content:
+ *           text/csv:
+ *             schema:
+ *               type: string
+ *               format: binary
+ *       400:
+ *         description: Validation error.
+ *       401:
+ *         description: Unauthorized.
+ *       403:
+ *         description: Forbidden.
+ */
+router.get('/reports/usage', authorize('ADMIN'), async (req, res, next) => {
+  try {
+    const { year, month } = req.query;
+    
+    if (!year || !month) {
+      throw new ApiError(400, 'year and month are required');
+    }
+
+    const csvData = await metricsService.generateUsageReportCSV(req.user.tenantId, year, month);
+    
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="usage-report-${year}-${month.toString().padStart(2, '0')}.csv"`);
+    res.status(200).send(csvData);
+  } catch (error) {
+    next(error);
+  }
+});
+
 module.exports = router;

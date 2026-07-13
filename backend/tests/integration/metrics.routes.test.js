@@ -118,4 +118,52 @@ afterAll(async () => {
 
     expect(res.status).toBe(403);
   });
+
+  describe('GET /reports/usage', () => {
+    let superAdminToken;
+
+    beforeAll(() => {
+      superAdminToken = jwt.sign(
+        { id: 'real-admin', tenantId: testTenantId, role: 'ADMIN' },
+        JWT_SECRET,
+        { expiresIn: '1h' },
+      );
+    });
+
+    it('should return 200 OK and CSV for ADMIN', async () => {
+      const res = await request(app)
+        .get('/api/metrics/reports/usage?year=2023&month=6')
+        .set('Authorization', `Bearer ${superAdminToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.headers['content-type']).toContain('text/csv');
+      expect(res.headers['content-disposition']).toContain('attachment');
+      expect(res.text.startsWith('\uFEFF')).toBe(true);
+      expect(res.text).toContain('Total Mensajes');
+    });
+
+    it('should return 403 Forbidden for COORDINATOR', async () => {
+      const res = await request(app)
+        .get('/api/metrics/reports/usage?year=2023&month=6')
+        .set('Authorization', `Bearer ${adminToken}`); // which is actually COORDINATOR
+
+      expect(res.status).toBe(403);
+    });
+
+    it('should return 403 Forbidden for VENDOR', async () => {
+      const res = await request(app)
+        .get('/api/metrics/reports/usage?year=2023&month=6')
+        .set('Authorization', `Bearer ${vendorToken}`);
+
+      expect(res.status).toBe(403);
+    });
+
+    it('should return 400 Bad Request if year or month is missing', async () => {
+      const res = await request(app)
+        .get('/api/metrics/reports/usage?year=2023')
+        .set('Authorization', `Bearer ${superAdminToken}`);
+
+      expect(res.status).toBe(400);
+    });
+  });
 });
