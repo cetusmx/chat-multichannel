@@ -4,6 +4,7 @@ const slaService = require('../services/sla.service');
 const authenticate = require('../middleware/auth');
 const authorize = require('../middleware/rbac');
 const ApiError = require('../utils/ApiError');
+const { MAX_DATE_RANGE_MS } = require('../config/constants');
 
 // Protected by authenticate
 router.use(authenticate);
@@ -19,6 +20,8 @@ router.use(authenticate);
  *     responses:
  *       200:
  *         description: SLA config retrieved successfully.
+ *       401:
+ *         description: Unauthorized.
  */
 router.get('/sla', async (req, res, next) => {
   try {
@@ -53,6 +56,8 @@ router.get('/sla', async (req, res, next) => {
  *         description: SLA config updated successfully.
  *       400:
  *         description: Validation error.
+ *       401:
+ *         description: Unauthorized.
  *       500:
  *         description: Internal server error.
  */
@@ -60,6 +65,73 @@ router.put('/sla', authorize('ADMIN', 'COORDINATOR'), async (req, res, next) => 
   try {
     const config = await slaService.updateSlaConfig(req.user.tenantId, req.body);
     res.json({ data: config });
+  } catch (error) {
+    next(error);
+  }
+});
+
+const metricsService = require('../services/metrics.service');
+
+/**
+ * @swagger
+ * /api/metrics/productivity:
+ *   get:
+ *     summary: Retrieve vendor productivity metrics for the current tenant.
+ *     tags: [Metrics]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: startDate
+ *         schema:
+ *           type: string
+ *           format: date-time
+ *         required: true
+ *       - in: query
+ *         name: endDate
+ *         schema:
+ *           type: string
+ *           format: date-time
+ *         required: true
+ *     responses:
+ *       200:
+ *         description: Productivity metrics retrieved successfully.
+ *       400:
+ *         description: Validation error.
+ *       401:
+ *         description: Unauthorized.
+ *       403:
+ *         description: Forbidden.
+ */
+router.get('/productivity', authorize('ADMIN', 'COORDINATOR'), async (req, res, next) => {
+  try {
+    const { startDate, endDate } = req.query;
+    if (!startDate || !endDate) {
+      throw new ApiError(400, 'startDate and endDate are required');
+    }
+
+    if (typeof startDate !== 'string' || typeof endDate !== 'string') {
+      throw new ApiError(400, 'startDate and endDate must be valid strings');
+    }
+
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+      throw new ApiError(400, 'Invalid startDate or endDate format');
+    }
+
+    const diffMs = end.getTime() - start.getTime();
+    if (diffMs < 0) {
+      throw new ApiError(400, 'endDate must be after startDate');
+    }
+
+    if (diffMs > MAX_DATE_RANGE_MS) {
+      throw new ApiError(400, 'Date range cannot exceed 1 year');
+    }
+
+    const metrics = await metricsService.getVendorProductivityMetrics(req.user.tenantId, startDate, endDate);
+    res.json({ data: metrics });
   } catch (error) {
     next(error);
   }

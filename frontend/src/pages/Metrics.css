@@ -1,0 +1,212 @@
+.metrics-container {
+  padding: 1.5rem;
+  background-color: #0f172a;
+  min-height: 100vh;
+  color: #e2e8f0;
+}
+
+.metrics-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+
+.metrics-title {
+  font-size: 1.875rem;
+  font-weight: 700;
+  background: linear-gradient(to right, #22d3ee, #3b82f6);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  margin: 0;
+}
+
+.metrics-subtitle {
+  margin-top: 0.5rem;
+  color: #94a3b8;
+  font-size: 0.875rem;
+}
+
+.date-picker-container {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  background-color: rgba(31, 41, 55, 0.6);
+  padding: 0.75rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(55, 65, 81, 0.5);
+  backdrop-filter: blur(4px);
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+}
+
+.date-field {
+  display: flex;
+  flex-direction: column;
+}
+
+.date-label {
+  font-size: 0.75rem;
+  color: #9ca3af;
+  margin-bottom: 0.25rem;
+  margin-left: 0.25rem;
+}
+
+.date-input {
+  background-color: rgba(17, 24, 39, 0.5);
+  color: #e5e7eb;
+  border: 1px solid rgba(75, 85, 99, 0.5);
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  transition: all 0.2s;
+  outline: none;
+}
+
+.date-input:focus {
+  border-color: #06b6d4;
+  box-shadow: 0 0 0 2px rgba(6, 182, 212, 0.2);
+}
+
+.apply-button {
+  margin-top: 1.25rem;
+  background: linear-gradient(to right, #06b6d4, #2563eb);
+  color: white;
+  font-weight: 500;
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 4px 6px -1px rgba(6, 182, 212, 0.2);
+}
+
+.apply-button:hover {
+  background: linear-gradient(to right, #22d3ee, #3b82f6);
+}
+
+.apply-button:active {
+  transform: scale(0.95);
+}
+
+.error-message {
+  background-color: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.5);
+  color: #f87171;
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  margin-bottom: 1.5rem;
+  backdrop-filter: blur(4px);
+}
+
+.loading-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 16rem;
+}
+
+.spinner {
+  border: 2px solid transparent;
+  border-top-color: #06b6d4;
+  border-bottom-color: #06b6d4;
+  border-radius: 50%;
+  width: 3rem;
+  height: 3rem;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Vendor Metrics Table CSS */
+.table-container {
+  overflow-x: auto;
+  border-radius: 0.5rem;
+  background-color: rgba(31, 41, 55, 0.4);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(55, 65, 81, 0.5);
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  padding: 1rem;
+  margin-top: 1.5rem;
+}
+
+.metrics-table {
+  width: 100%;
+  text-align: left;
+  font-size: 0.875rem;
+  color: #e5e7eb;
+  border-collapse: collapse;
+}
+
+.metrics-table th {
+  text-transform: uppercase;
+  background-color: rgba(55, 65, 81, 0.3);
+  color: #9ca3af;
+  font-weight: 500;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid rgba(75, 85, 99, 0.5);
+}
+
+.metrics-table td {
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid rgba(55, 65, 81, 0.3);
+}
+
+.metrics-table tr:hover {
+  background-color: rgba(55, 65, 81, 0.2);
+}
+
+.vendor-name {
+  font-weight: 600;
+  color: white;
+}
+
+.vendor-email {
+  font-size: 0.75rem;
+  color: #9ca3af;
+}
+
+.badge {
+  padding: 0.25rem 0.5rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.badge-na {
+  background-color: rgba(107, 114, 128, 0.2);
+  color: #9ca3af;
+}
+
+.badge-good {
+  background-color: rgba(34, 197, 94, 0.2);
+  color: #86efac;
+}
+
+.badge-warning {
+  background-color: rgba(234, 179, 8, 0.2);
+  color: #fde047;
+}
+
+.progress-bar-bg {
+  width: 100%;
+  background-color: #374151;
+  border-radius: 9999px;
+  height: 0.625rem;
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 0.625rem;
+  border-radius: 9999px;
+  background: linear-gradient(to right, #22d3ee, #3b82f6);
+}
+
+.empty-state {
+  color: #9ca3af;
+  padding: 1rem;
+  text-align: center;
+}

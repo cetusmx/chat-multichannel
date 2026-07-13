@@ -171,3 +171,5 @@
 - Inefficient FIFO Config Cache [backend/src/services/sla.service.js]
 - Fragile Event Listener Wiring [backend/src/socket/alerts.handler.js]
 - Missing Explicit Dashboard Modification [frontend/src/features/chat/components/CoordinatorDashboard.jsx]
+## Deferred from: code review of 5-5-vendor-productivity-metrics.md (2026-07-12)
+- Browser-Crashing UI Rendering: No pagination in frontend/src/pages/Metrics.jsx

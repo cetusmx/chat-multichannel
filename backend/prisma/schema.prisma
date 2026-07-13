@@ -241,7 +241,7 @@ model Conversation {
   vendor   User?     @relation("VendorConversations", fields: [vendorId], references: [id], onDelete: SetNull)
   messages Message[]
 
-  @@index([tenantId])
+  @@index([tenantId, createdAt])
   @@index([clientId])
   @@index([vendorId])
   @@map("conversations")
@@ -266,6 +266,7 @@ model Message {
   @@index([conversationId])
   @@index([senderId])
   @@index([waMessageId])
+  @@index([conversationId, senderType, createdAt])
   @@map("messages")
 }
 
