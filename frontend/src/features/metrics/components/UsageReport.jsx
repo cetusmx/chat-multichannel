@@ -1,5 +1,20 @@
-import React, { useState } from 'react';
+import React, { useState, useId, useMemo } from 'react';
 import { downloadUsageReport } from '../metricsService';
+
+const months = [
+  { value: 1, label: 'Enero' },
+  { value: 2, label: 'Febrero' },
+  { value: 3, label: 'Marzo' },
+  { value: 4, label: 'Abril' },
+  { value: 5, label: 'Mayo' },
+  { value: 6, label: 'Junio' },
+  { value: 7, label: 'Julio' },
+  { value: 8, label: 'Agosto' },
+  { value: 9, label: 'Septiembre' },
+  { value: 10, label: 'Octubre' },
+  { value: 11, label: 'Noviembre' },
+  { value: 12, label: 'Diciembre' }
+];
 
 const UsageReport = () => {
   const currentYear = new Date().getFullYear();
@@ -9,6 +24,13 @@ const UsageReport = () => {
   const [month, setMonth] = useState(currentMonth);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
+
+  const yearInputId = useId();
+  const monthInputId = useId();
+
+  const years = useMemo(() => {
+    return Array.from({ length: 5 }, (_, i) => currentYear - i);
+  }, [currentYear]);
 
   const handleDownload = async () => {
     setIsLoading(true);
@@ -33,22 +55,6 @@ const UsageReport = () => {
     }
   };
 
-  const years = Array.from({ length: 5 }, (_, i) => currentYear - i);
-  const months = [
-    { value: 1, label: 'Enero' },
-    { value: 2, label: 'Febrero' },
-    { value: 3, label: 'Marzo' },
-    { value: 4, label: 'Abril' },
-    { value: 5, label: 'Mayo' },
-    { value: 6, label: 'Junio' },
-    { value: 7, label: 'Julio' },
-    { value: 8, label: 'Agosto' },
-    { value: 9, label: 'Septiembre' },
-    { value: 10, label: 'Octubre' },
-    { value: 11, label: 'Noviembre' },
-    { value: 12, label: 'Diciembre' }
-  ];
-
   return (
     <div className="bg-white p-6 rounded-lg shadow-sm border border-slate-200">
       <h3 className="text-lg font-semibold text-slate-800 mb-4">Reporte de Uso y Actividad</h3>
@@ -64,8 +70,9 @@ const UsageReport = () => {
 
       <div className="flex flex-col sm:flex-row gap-4 items-end">
         <div className="w-full sm:w-1/3">
-          <label className="block text-sm font-medium text-slate-700 mb-1">Año</label>
+          <label htmlFor={yearInputId} className="block text-sm font-medium text-slate-700 mb-1">Año</label>
           <select 
+            id={yearInputId}
             value={year}
             onChange={(e) => {
               const selectedYear = Number(e.target.value);
@@ -74,6 +81,7 @@ const UsageReport = () => {
                 setMonth(currentMonth);
               }
             }}
+            disabled={isLoading}
             className="w-full rounded-md border border-slate-300 p-2 text-sm focus:border-coral-500 focus:outline-none focus:ring-1 focus:ring-coral-500"
           >
             {years.map(y => (
@@ -83,10 +91,12 @@ const UsageReport = () => {
         </div>
         
         <div className="w-full sm:w-1/3">
-          <label className="block text-sm font-medium text-slate-700 mb-1">Mes</label>
+          <label htmlFor={monthInputId} className="block text-sm font-medium text-slate-700 mb-1">Mes</label>
           <select 
+            id={monthInputId}
             value={month}
             onChange={(e) => setMonth(Number(e.target.value))}
+            disabled={isLoading}
             className="w-full rounded-md border border-slate-300 p-2 text-sm focus:border-coral-500 focus:outline-none focus:ring-1 focus:ring-coral-500"
           >
             {months.map(m => (
@@ -103,6 +113,7 @@ const UsageReport = () => {
 
         <div className="w-full sm:w-1/3">
           <button
+            type="button"
             onClick={handleDownload}
             disabled={isLoading}
             className="w-full flex items-center justify-center gap-2 rounded-md bg-coral-500 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-coral-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
@@ -113,7 +124,7 @@ const UsageReport = () => {
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                 </svg>
-                Generando...
+                Descargando...
               </>
             ) : (
               <>

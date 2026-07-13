@@ -176,6 +176,6 @@
 
 ## Deferred from: code review of 5-6-usage-and-activity-reports.md (2026-07-12)
 - "Sesiones Activas" Logic: Only counts sessions created on that day, ignoring ongoing multi-day sessions. [backend/src/services/metrics.service.js]
-- Unindexed DATE() Joins: `FULL OUTER JOIN` on unindexed DATE derivations isn't scalable. [backend/src/services/metrics.service.js]
 - Hardcoded 5-year Lookback: UI year dropdown locked to 5 years. [frontend/src/features/metrics/components/UsageReport.jsx]
 - Brittle CSV Concatenation: Manual string concatenation breaks if text columns are added. [backend/src/services/metrics.service.js]
+- UI Month Restriction Relies on Local Time: Client TZ might allow selecting future month if they are a day ahead. [frontend/src/features/metrics/components/UsageReport.jsx]

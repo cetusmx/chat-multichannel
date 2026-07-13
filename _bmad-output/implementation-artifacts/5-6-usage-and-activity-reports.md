@@ -47,6 +47,25 @@ so that I can analyze business volume.
 - [x] [Review][Defer] Unindexed DATE() Joins — `FULL OUTER JOIN` on unindexed DATE derivations isn't scalable. — deferred, pre-existing
 - [x] [Review][Defer] Hardcoded 5-year Lookback — UI year dropdown locked to 5 years. — deferred, pre-existing
 - [x] [Review][Defer] Brittle CSV Concatenation — Manual string concatenation breaks if text columns are added. — deferred, pre-existing
+- [x] [Review][Defer] UI Month Restriction Relies on Local Time — Client TZ might allow selecting future month. — deferred, pre-existing
+
+### Iteration 4, 5, 6 & 7 Review Findings
+- [x] [Review][Patch] Case-Sensitive HTML Sniffing — Robust error handler now correctly detects lowercase, uppercase, and whitespace-padded HTML errors. [frontend/src/features/metrics/metricsService.js]
+- [x] [Review][Patch] Missing Button Semantics — Added `type="button"` and correct disabled loading states. [frontend/src/features/metrics/components/UsageReport.jsx]
+- [x] [Review][Patch] Error Stringification & Fallbacks — Safe extraction of nested `.error` or `.message` strings without throwing exceptions on primitive JSON. [frontend/src/features/metrics/metricsService.js]
+- [x] [Review][Patch] DOM ID Collision Risk — Handled cleanly using React's `useId()` for form inputs. [frontend/src/features/metrics/components/UsageReport.jsx]
+- [x] [Review][Patch] Needless Reallocations — Extracted static arrays properly. [frontend/src/features/metrics/components/UsageReport.jsx]
+- [x] [Review][Defer] UI Month Restriction Relies on Local Time — Client TZ might allow selecting future month. — deferred, pre-existing
+
+### Iteration 4 & 5 Review Findings
+- [x] [Review][Patch] Memory Exhaustion / Redundant Marshalling — Reading as text to wrap in Blob is inefficient; reverting to `.blob()` while fixing error parsing. [frontend/src/features/metrics/metricsService.js]
+- [x] [Review][Patch] CSV Format Corruption via Spacing — Removing spaces from CSV to comply with RFC 4180. [backend/src/services/metrics.service.js]
+- [x] [Review][Patch] Case-Sensitive HTML Sniffing — `.startsWith('<html')` failed for uppercase or whitespace-padded proxy responses. [frontend/src/features/metrics/metricsService.js]
+- [x] [Review][Patch] DOM ID Collision Risk — Hardcoded label IDs replaced with `useId()`. [frontend/src/features/metrics/components/UsageReport.jsx]
+- [x] [Review][Patch] Needless Reallocations & State Entanglement — Static arrays wrapped in `useMemo` and variables placed correctly. [frontend/src/features/metrics/components/UsageReport.jsx]
+- [x] [Review][Patch] Error Stringification — Replaced raw `JSON.stringify(errorData.error)` with safe property extraction to avoid breaking the UI toast. [frontend/src/features/metrics/metricsService.js]
+- [x] [Review][Patch] JSX Syntax Structure — Fixed broken block scoping during patch application. [frontend/src/features/metrics/components/UsageReport.jsx]
+- [x] [Review][Defer] Unindexed DATE() Joins — `FULL OUTER JOIN` on unindexed DATE derivations isn't scalable. — closed (phantom risk). [backend/src/services/metrics.service.js]
 
 ### Review Findings (Iteración 2)
 - [x] [Review][Patch] Broken Regex Validation — Regex rejects zero-padded months ("01"). [backend/src/routes/metrics.routes.js]
