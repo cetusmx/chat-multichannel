@@ -1,5 +1,5 @@
 import React from 'react';
-import '../../pages/Metrics.css';
+import '../../../pages/Metrics.css';
 
 const VendorMetricsTable = ({ metrics }) => {
   const isEmpty = !metrics || metrics.length === 0;

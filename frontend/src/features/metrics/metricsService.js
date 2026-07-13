@@ -1,9 +1,7 @@
-import api from '../../services/api';
+import { get } from '../../services/api';
 
 export const getVendorProductivityMetrics = async (startDate, endDate, config = {}) => {
-  const response = await api.get('/metrics/productivity', {
-    params: { startDate, endDate },
-    ...config
-  });
-  return response.data;
+  const query = new URLSearchParams({ startDate, endDate }).toString();
+  const response = await get(`/metrics/productivity?${query}`, config);
+  return response.json();
 };
