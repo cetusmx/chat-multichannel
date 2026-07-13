@@ -2,8 +2,11 @@ import React, { useState } from 'react';
 import { downloadUsageReport } from '../metricsService';
 
 const UsageReport = () => {
-  const [year, setYear] = useState(new Date().getFullYear());
-  const [month, setMonth] = useState(new Date().getMonth() + 1); // 1-12
+  const currentYear = new Date().getFullYear();
+  const currentMonth = new Date().getMonth() + 1; // 1-12
+
+  const [year, setYear] = useState(currentYear);
+  const [month, setMonth] = useState(currentMonth);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
 
@@ -30,7 +33,7 @@ const UsageReport = () => {
     }
   };
 
-  const years = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i);
+  const years = Array.from({ length: 5 }, (_, i) => currentYear - i);
   const months = [
     { value: 1, label: 'Enero' },
     { value: 2, label: 'Febrero' },
@@ -64,7 +67,13 @@ const UsageReport = () => {
           <label className="block text-sm font-medium text-slate-700 mb-1">Año</label>
           <select 
             value={year}
-            onChange={(e) => setYear(Number(e.target.value))}
+            onChange={(e) => {
+              const selectedYear = Number(e.target.value);
+              setYear(selectedYear);
+              if (selectedYear === currentYear && month > currentMonth) {
+                setMonth(currentMonth);
+              }
+            }}
             className="w-full rounded-md border border-slate-300 p-2 text-sm focus:border-coral-500 focus:outline-none focus:ring-1 focus:ring-coral-500"
           >
             {years.map(y => (
@@ -81,7 +90,13 @@ const UsageReport = () => {
             className="w-full rounded-md border border-slate-300 p-2 text-sm focus:border-coral-500 focus:outline-none focus:ring-1 focus:ring-coral-500"
           >
             {months.map(m => (
-              <option key={m.value} value={m.value}>{m.label}</option>
+              <option 
+                key={m.value} 
+                value={m.value}
+                disabled={year === currentYear && m.value > currentMonth}
+              >
+                {m.label}
+              </option>
             ))}
           </select>
         </div>

@@ -9,8 +9,23 @@ export const downloadUsageReport = async (year, month, config = {}) => {
   const query = new URLSearchParams({ year, month }).toString();
   const response = await get(`/metrics/reports/usage?${query}`, config);
   if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.error || 'Failed to download report');
+    let errorMessage = 'Failed to download report';
+    const textError = await response.text().catch(() => null);
+    if (textError) {
+      try {
+        const errorData = JSON.parse(textError);
+        if (errorData.error) errorMessage = errorData.error;
+      } catch (e) {
+        if (textError.length < 200) {
+          errorMessage = textError;
+        } else {
+          errorMessage = `Server Error (${response.status})`;
+        }
+      }
+    } else {
+      errorMessage = `Server Error (${response.status})`;
+    }
+    throw new Error(errorMessage);
   }
   return response.blob();
 };

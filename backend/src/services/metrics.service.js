@@ -136,15 +136,22 @@ const generateUsageReportCSV = async (tenantId, year, month) => {
   const start = new Date(Date.UTC(parsedYear, parsedMonth - 1, 1, 0, 0, 0, 0));
   const end = new Date(Date.UTC(parsedYear, parsedMonth, 0, 23, 59, 59, 999));
 
+  if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+    throw ApiError.badRequest('Invalid date constructed');
+  }
+
   const now = new Date();
   if (start > now) {
     throw ApiError.badRequest('Cannot generate report for future dates');
   }
 
   const rows = await prisma.$queryRaw`
-    WITH daily_messages AS (
+    WITH calendar AS (
+      SELECT generate_series(${start}::timestamptz AT TIME ZONE 'UTC', ${end}::timestamptz AT TIME ZONE 'UTC', '1 day'::interval)::date as log_date
+    ),
+    daily_messages AS (
       SELECT 
-        DATE(m.created_at) as log_date,
+        DATE(m.created_at AT TIME ZONE 'UTC') as log_date,
         COUNT(m.id)::int as total_mensajes,
         COUNT(CASE WHEN m.sender_type = 'IA' THEN 1 END)::int as intervenciones_ia
       FROM messages m
@@ -152,32 +159,42 @@ const generateUsageReportCSV = async (tenantId, year, month) => {
       WHERE c.tenant_id = ${tenantId}
         AND m.created_at >= ${start}
         AND m.created_at <= ${end}
-      GROUP BY DATE(m.created_at)
+      GROUP BY DATE(m.created_at AT TIME ZONE 'UTC')
     ),
     daily_sessions AS (
       SELECT 
-        DATE(c.created_at) as log_date,
+        DATE(c.created_at AT TIME ZONE 'UTC') as log_date,
         COUNT(c.id)::int as sesiones_activas
       FROM conversations c
       WHERE c.tenant_id = ${tenantId}
         AND c.created_at >= ${start}
         AND c.created_at <= ${end}
-      GROUP BY DATE(c.created_at)
+      GROUP BY DATE(c.created_at AT TIME ZONE 'UTC')
     )
     SELECT 
-      COALESCE(dm.log_date, ds.log_date) as log_date,
+      cal.log_date,
       COALESCE(dm.total_mensajes, 0) as total_mensajes,
       COALESCE(dm.intervenciones_ia, 0) as intervenciones_ia,
       COALESCE(ds.sesiones_activas, 0) as sesiones_activas
-    FROM daily_messages dm
-    FULL OUTER JOIN daily_sessions ds ON dm.log_date = ds.log_date
-    ORDER BY log_date ASC
+    FROM calendar cal
+    LEFT JOIN daily_messages dm ON cal.log_date = dm.log_date
+    LEFT JOIN daily_sessions ds ON cal.log_date = ds.log_date
+    ORDER BY cal.log_date ASC
   `;
 
   const csvRows = ['Fecha,Total Mensajes,Intervenciones IA,Sesiones Activas'];
   
   for (const row of rows) {
-    const dateStr = row.log_date ? new Date(row.log_date).toISOString().split('T')[0] : '';
+    let dateStr = '';
+    if (row.log_date) {
+      // row.log_date might be a Date object or string depending on driver.
+      // If Date object, formatting it nicely in UTC:
+      const d = new Date(row.log_date);
+      const y = d.getUTCFullYear();
+      const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+      const day = String(d.getUTCDate()).padStart(2, '0');
+      dateStr = `${y}-${m}-${day}`;
+    }
     csvRows.push(`${dateStr},${row.total_mensajes},${row.intervenciones_ia},${row.sesiones_activas}`);
   }
 

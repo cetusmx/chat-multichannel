@@ -1,0 +1,279 @@
+diff --git a/_bmad-output/implementation-artifacts/5-6-usage-and-activity-reports.md b/_bmad-output/implementation-artifacts/5-6-usage-and-activity-reports.md
+index 6a4b806..e6526d3 100644
+--- a/_bmad-output/implementation-artifacts/5-6-usage-and-activity-reports.md
++++ b/_bmad-output/implementation-artifacts/5-6-usage-and-activity-reports.md
+@@ -1,6 +1,6 @@
+ # Story 5.6: Usage and Activity Reports
+ 
+-Status: ready-for-dev
++Status: done
+ 
+ <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
+ 
+@@ -29,8 +29,25 @@ so that I can analyze business volume.
+   - [ ] Add loading state (e.g., spinner while generating) and error handling (toast or alert on failure).
+   - [ ] Trigger file download using `URL.createObjectURL(new Blob([data], {type: 'text/csv'}))` and a hidden temporary `<a>` element.
+ - [ ] Integration & Testing
+-  - [ ] Integrate API call in `metricsService.js` ensuring the fetch uses `.blob()` or `.text()` instead of `.json()`.
+-  - [ ] Mount `UsageReport` component in the main Reports/Metrics page.
++  - [x] Integrate API call in `metricsService.js` ensuring the fetch uses `.blob()` or `.text()` instead of `.json()`.
++  - [x] Mount `UsageReport` component in the main Reports/Metrics page.
++
++### Review Findings
++
++- [x] [Review][Decision] Filename Format — Spec requested literal `report.csv`, but implementation provides `usage-report-YYYY-MM.csv`. Which should we keep? -> Decided to keep dynamic name.
++- [x] [Review][Patch] Lenient Parameter Validation — `req.query.year` and `month` accept arrays or garbage strings like '2023abc' via `parseInt`. [backend/src/routes/metrics.routes.js]
++- [x] [Review][Patch] Invalid Date Validation Gap — `NaN` bypasses the `start > now` check. [backend/src/services/metrics.service.js]
++- [x] [Review][Patch] Missing Zero-Activity Days — SQL query omits days without messages/sessions, creating gaps in the time-series. [backend/src/services/metrics.service.js]
++- [x] [Review][Patch] Timezone Mismatch — `DATE(created_at)` uses DB timezone, mismatching the UTC parameters. [backend/src/services/metrics.service.js]
++- [x] [Review][Patch] Future Months Allowed in UI — Frontend allows selecting future months for the current year. [frontend/src/features/metrics/components/UsageReport.jsx]
++- [x] [Review][Patch] Proxy Error Swallowing — `.catch(() => ({}))` on API response hides HTML proxy errors. [frontend/src/features/metrics/metricsService.js]
++- [x] [Review][Patch] CSV Header Whitespace — Missing space padding after commas per AC. [backend/src/services/metrics.service.js]
++- [x] [Review][Patch] Blob Snippet Deviation — Missing explicit `new Blob([data], {type: 'text/csv'})` wrapping. [frontend/src/features/metrics/components/UsageReport.jsx]
++- [x] [Review][Defer] "Sesiones Activas" Logic — Only counts sessions created on that day, ignoring ongoing multi-day sessions. — deferred, pre-existing
++- [x] [Review][Defer] Unindexed DATE() Joins — `FULL OUTER JOIN` on unindexed DATE derivations isn't scalable. — deferred, pre-existing
++- [x] [Review][Defer] Hardcoded 5-year Lookback — UI year dropdown locked to 5 years. — deferred, pre-existing
++- [x] [Review][Defer] Brittle CSV Concatenation — Manual string concatenation breaks if text columns are added. — deferred, pre-existing
++
+ 
+ ## Dev Notes
+ 
+diff --git a/_bmad-output/implementation-artifacts/deferred-work.md b/_bmad-output/implementation-artifacts/deferred-work.md
+index c1148fb..08a8e18 100644
+--- a/_bmad-output/implementation-artifacts/deferred-work.md
++++ b/_bmad-output/implementation-artifacts/deferred-work.md
+@@ -166,6 +166,7 @@
+ 
+ ## Deferred from: code review of 5-4-real-time-sla-alerts (2026-07-12)
+ - Horizontal Scaling Issues (In-memory cache and monitor interval are incompatible with clustered deployments) [backend/src/services/sla.service.js]
++- Horizontal Scaling Issues (In-memory cache and monitor interval are incompatible with clustered deployments) [backend/src/services/sla.service.js]
+ 
+ - Unscalable Full-Table Retrieval in Backend Monitor [backend/src/services/sla.service.js]
+ - Inefficient FIFO Config Cache [backend/src/services/sla.service.js]
+@@ -173,3 +174,9 @@
+ - Missing Explicit Dashboard Modification [frontend/src/features/chat/components/CoordinatorDashboard.jsx]
+ ## Deferred from: code review of 5-5-vendor-productivity-metrics.md (2026-07-12)
+ - Browser-Crashing UI Rendering: No pagination in frontend/src/pages/Metrics.jsx
++
++## Deferred from: code review of 5-6-usage-and-activity-reports.md (2026-07-12)
++- "Sesiones Activas" Logic: Only counts sessions created on that day, ignoring ongoing multi-day sessions.
++- Unindexed DATE() Joins: `FULL OUTER JOIN` on unindexed DATE derivations isn't scalable.
++- Hardcoded 5-year Lookback: UI year dropdown locked to 5 years.
++- Brittle CSV Concatenation: Manual string concatenation breaks if text columns are added.
+diff --git a/_bmad-output/implementation-artifacts/sprint-status.yaml b/_bmad-output/implementation-artifacts/sprint-status.yaml
+index 4ab769c..bbe5ecd 100644
+--- a/_bmad-output/implementation-artifacts/sprint-status.yaml
++++ b/_bmad-output/implementation-artifacts/sprint-status.yaml
+@@ -83,13 +83,13 @@ development_status:
+   4-6-coordinator-escalation-alerts: done
+   4-7-ai-off-hours-mode: done
+   epic-4-retrospective: optional
+-  epic-5: in-progress
++  epic-5: done
+   5-1-client-assignment-rules-configuration: done
+   5-2-automatic-client-assignment-engine: done
+   5-3-sla-thresholds-configuration: done
+   5-4-real-time-sla-alerts: done
+   5-5-vendor-productivity-metrics: done
+-  5-6-usage-and-activity-reports: ready-for-dev
++  5-6-usage-and-activity-reports: done
+   epic-5-retrospective: optional
+   epic-6: backlog
+   6-1-react-native-project-scaffold: backlog
+diff --git a/backend/src/routes/metrics.routes.js b/backend/src/routes/metrics.routes.js
+index 3f61129..a7ff784 100644
+--- a/backend/src/routes/metrics.routes.js
++++ b/backend/src/routes/metrics.routes.js
+@@ -175,14 +175,22 @@ router.get('/reports/usage', authorize('ADMIN'), async (req, res, next) => {
+   try {
+     const { year, month } = req.query;
+     
+-    if (!year || !month) {
++    if (year === undefined || month === undefined) {
+       throw new ApiError(400, 'year and month are required');
+     }
+ 
++    if (typeof year !== 'string' || typeof month !== 'string') {
++      throw new ApiError(400, 'year and month must be single string parameters');
++    }
++
++    if (!/^\d{4}$/.test(year) || !/^(1[0-2]|[1-9])$/.test(month)) {
++      throw new ApiError(400, 'Invalid year or month format');
++    }
++
+     const csvData = await metricsService.generateUsageReportCSV(req.user.tenantId, year, month);
+     
+     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+-    res.setHeader('Content-Disposition', `attachment; filename="usage-report-${year}-${month.toString().padStart(2, '0')}.csv"`);
++    res.setHeader('Content-Disposition', `attachment; filename="usage-report-${year}-${month.padStart(2, '0')}.csv"`);
+     res.status(200).send(csvData);
+   } catch (error) {
+     next(error);
+diff --git a/backend/src/services/metrics.service.js b/backend/src/services/metrics.service.js
+index e81323c..773d464 100644
+--- a/backend/src/services/metrics.service.js
++++ b/backend/src/services/metrics.service.js
+@@ -136,15 +136,22 @@ const generateUsageReportCSV = async (tenantId, year, month) => {
+   const start = new Date(Date.UTC(parsedYear, parsedMonth - 1, 1, 0, 0, 0, 0));
+   const end = new Date(Date.UTC(parsedYear, parsedMonth, 0, 23, 59, 59, 999));
+ 
++  if (isNaN(start.getTime()) || isNaN(end.getTime())) {
++    throw ApiError.badRequest('Invalid date constructed');
++  }
++
+   const now = new Date();
+   if (start > now) {
+     throw ApiError.badRequest('Cannot generate report for future dates');
+   }
+ 
+   const rows = await prisma.$queryRaw`
+-    WITH daily_messages AS (
++    WITH calendar AS (
++      SELECT generate_series(${start}::date, ${end}::date, '1 day'::interval)::date as log_date
++    ),
++    daily_messages AS (
+       SELECT 
+-        DATE(m.created_at) as log_date,
++        DATE(m.created_at AT TIME ZONE 'UTC') as log_date,
+         COUNT(m.id)::int as total_mensajes,
+         COUNT(CASE WHEN m.sender_type = 'IA' THEN 1 END)::int as intervenciones_ia
+       FROM messages m
+@@ -152,33 +159,34 @@ const generateUsageReportCSV = async (tenantId, year, month) => {
+       WHERE c.tenant_id = ${tenantId}
+         AND m.created_at >= ${start}
+         AND m.created_at <= ${end}
+-      GROUP BY DATE(m.created_at)
++      GROUP BY DATE(m.created_at AT TIME ZONE 'UTC')
+     ),
+     daily_sessions AS (
+       SELECT 
+-        DATE(c.created_at) as log_date,
++        DATE(c.created_at AT TIME ZONE 'UTC') as log_date,
+         COUNT(c.id)::int as sesiones_activas
+       FROM conversations c
+       WHERE c.tenant_id = ${tenantId}
+         AND c.created_at >= ${start}
+         AND c.created_at <= ${end}
+-      GROUP BY DATE(c.created_at)
++      GROUP BY DATE(c.created_at AT TIME ZONE 'UTC')
+     )
+     SELECT 
+-      COALESCE(dm.log_date, ds.log_date) as log_date,
++      cal.log_date,
+       COALESCE(dm.total_mensajes, 0) as total_mensajes,
+       COALESCE(dm.intervenciones_ia, 0) as intervenciones_ia,
+       COALESCE(ds.sesiones_activas, 0) as sesiones_activas
+-    FROM daily_messages dm
+-    FULL OUTER JOIN daily_sessions ds ON dm.log_date = ds.log_date
+-    ORDER BY log_date ASC
++    FROM calendar cal
++    LEFT JOIN daily_messages dm ON cal.log_date = dm.log_date
++    LEFT JOIN daily_sessions ds ON cal.log_date = ds.log_date
++    ORDER BY cal.log_date ASC
+   `;
+ 
+-  const csvRows = ['Fecha,Total Mensajes,Intervenciones IA,Sesiones Activas'];
++  const csvRows = ['Fecha, Total Mensajes, Intervenciones IA, Sesiones Activas'];
+   
+   for (const row of rows) {
+     const dateStr = row.log_date ? new Date(row.log_date).toISOString().split('T')[0] : '';
+-    csvRows.push(`${dateStr},${row.total_mensajes},${row.intervenciones_ia},${row.sesiones_activas}`);
++    csvRows.push(`${dateStr}, ${row.total_mensajes}, ${row.intervenciones_ia}, ${row.sesiones_activas}`);
+   }
+ 
+   return '\uFEFF' + csvRows.join('\n');
+diff --git a/frontend/src/features/metrics/components/UsageReport.jsx b/frontend/src/features/metrics/components/UsageReport.jsx
+index 68cf76a..03ba1f7 100644
+--- a/frontend/src/features/metrics/components/UsageReport.jsx
++++ b/frontend/src/features/metrics/components/UsageReport.jsx
+@@ -2,8 +2,11 @@ import React, { useState } from 'react';
+ import { downloadUsageReport } from '../metricsService';
+ 
+ const UsageReport = () => {
+-  const [year, setYear] = useState(new Date().getFullYear());
+-  const [month, setMonth] = useState(new Date().getMonth() + 1); // 1-12
++  const currentYear = new Date().getFullYear();
++  const currentMonth = new Date().getMonth() + 1; // 1-12
++
++  const [year, setYear] = useState(currentYear);
++  const [month, setMonth] = useState(currentMonth);
+   const [isLoading, setIsLoading] = useState(false);
+   const [error, setError] = useState(null);
+ 
+@@ -11,8 +14,9 @@ const UsageReport = () => {
+     setIsLoading(true);
+     setError(null);
+     try {
+-      const blob = await downloadUsageReport(year, month);
++      const data = await downloadUsageReport(year, month);
+       
++      const blob = new Blob([data], { type: 'text/csv' });
+       const url = URL.createObjectURL(blob);
+       const a = document.createElement('a');
+       a.href = url;
+@@ -30,7 +34,7 @@ const UsageReport = () => {
+     }
+   };
+ 
+-  const years = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i);
++  const years = Array.from({ length: 5 }, (_, i) => currentYear - i);
+   const months = [
+     { value: 1, label: 'Enero' },
+     { value: 2, label: 'Febrero' },
+@@ -64,7 +68,13 @@ const UsageReport = () => {
+           <label className="block text-sm font-medium text-slate-700 mb-1">Año</label>
+           <select 
+             value={year}
+-            onChange={(e) => setYear(Number(e.target.value))}
++            onChange={(e) => {
++              const selectedYear = Number(e.target.value);
++              setYear(selectedYear);
++              if (selectedYear === currentYear && month > currentMonth) {
++                setMonth(currentMonth);
++              }
++            }}
+             className="w-full rounded-md border border-slate-300 p-2 text-sm focus:border-coral-500 focus:outline-none focus:ring-1 focus:ring-coral-500"
+           >
+             {years.map(y => (
+@@ -81,7 +91,13 @@ const UsageReport = () => {
+             className="w-full rounded-md border border-slate-300 p-2 text-sm focus:border-coral-500 focus:outline-none focus:ring-1 focus:ring-coral-500"
+           >
+             {months.map(m => (
+-              <option key={m.value} value={m.value}>{m.label}</option>
++              <option 
++                key={m.value} 
++                value={m.value}
++                disabled={year === currentYear && m.value > currentMonth}
++              >
++                {m.label}
++              </option>
+             ))}
+           </select>
+         </div>
+diff --git a/frontend/src/features/metrics/metricsService.js b/frontend/src/features/metrics/metricsService.js
+index 31a4166..583ce53 100644
+--- a/frontend/src/features/metrics/metricsService.js
++++ b/frontend/src/features/metrics/metricsService.js
+@@ -9,8 +9,20 @@ export const downloadUsageReport = async (year, month, config = {}) => {
+   const query = new URLSearchParams({ year, month }).toString();
+   const response = await get(`/metrics/reports/usage?${query}`, config);
+   if (!response.ok) {
+-    const errorData = await response.json().catch(() => ({}));
+-    throw new Error(errorData.error || 'Failed to download report');
++    let errorMessage = 'Failed to download report';
++    try {
++      const errorData = await response.json();
++      if (errorData.error) errorMessage = errorData.error;
++    } catch (e) {
++      // If it's an HTML proxy error, response.json() fails. We can grab text or fallback.
++      const textError = await response.text().catch(() => null);
++      if (textError && textError.length < 200) {
++        errorMessage = textError;
++      } else {
++        errorMessage = `Server Error (${response.status})`;
++      }
++    }
++    throw new Error(errorMessage);
+   }
+   return response.blob();
+ };

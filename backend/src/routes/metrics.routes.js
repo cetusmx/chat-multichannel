@@ -175,14 +175,22 @@ router.get('/reports/usage', authorize('ADMIN'), async (req, res, next) => {
   try {
     const { year, month } = req.query;
     
-    if (!year || !month) {
+    if (year === undefined || month === undefined) {
       throw new ApiError(400, 'year and month are required');
+    }
+
+    if (typeof year !== 'string' || typeof month !== 'string') {
+      throw new ApiError(400, 'year and month must be single string parameters');
+    }
+
+    if (!/^\d{4}$/.test(year) || !/^(0?[1-9]|1[0-2])$/.test(month)) {
+      throw new ApiError(400, 'Invalid year or month format. Year must be YYYY, month 1-12 or 01-12');
     }
 
     const csvData = await metricsService.generateUsageReportCSV(req.user.tenantId, year, month);
     
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="usage-report-${year}-${month.toString().padStart(2, '0')}.csv"`);
+    res.setHeader('Content-Disposition', `attachment; filename="usage-report-${year}-${month.padStart(2, '0')}.csv"`);
     res.status(200).send(csvData);
   } catch (error) {
     next(error);

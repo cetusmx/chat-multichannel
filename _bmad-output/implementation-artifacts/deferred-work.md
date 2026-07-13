@@ -166,10 +166,16 @@
 
 ## Deferred from: code review of 5-4-real-time-sla-alerts (2026-07-12)
 - Horizontal Scaling Issues (In-memory cache and monitor interval are incompatible with clustered deployments) [backend/src/services/sla.service.js]
-
 - Unscalable Full-Table Retrieval in Backend Monitor [backend/src/services/sla.service.js]
 - Inefficient FIFO Config Cache [backend/src/services/sla.service.js]
 - Fragile Event Listener Wiring [backend/src/socket/alerts.handler.js]
 - Missing Explicit Dashboard Modification [frontend/src/features/chat/components/CoordinatorDashboard.jsx]
+
 ## Deferred from: code review of 5-5-vendor-productivity-metrics.md (2026-07-12)
 - Browser-Crashing UI Rendering: No pagination in frontend/src/pages/Metrics.jsx
+
+## Deferred from: code review of 5-6-usage-and-activity-reports.md (2026-07-12)
+- "Sesiones Activas" Logic: Only counts sessions created on that day, ignoring ongoing multi-day sessions. [backend/src/services/metrics.service.js]
+- Unindexed DATE() Joins: `FULL OUTER JOIN` on unindexed DATE derivations isn't scalable. [backend/src/services/metrics.service.js]
+- Hardcoded 5-year Lookback: UI year dropdown locked to 5 years. [frontend/src/features/metrics/components/UsageReport.jsx]
+- Brittle CSV Concatenation: Manual string concatenation breaks if text columns are added. [backend/src/services/metrics.service.js]
