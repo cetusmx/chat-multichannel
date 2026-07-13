@@ -23,7 +23,7 @@ router.use(authenticate);
  *       401:
  *         description: Unauthorized.
  */
-router.get('/sla', async (req, res, next) => {
+router.get('/sla', authorize('ADMIN', 'COORDINATOR'), async (req, res, next) => {
   try {
     const config = await slaService.getSlaConfig(req.user.tenantId);
     res.json({ data: config });

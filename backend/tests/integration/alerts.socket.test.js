@@ -10,6 +10,7 @@ describe('Socket.IO Alerts Handler Integration', () => {
       handshake: { auth: {} },
       join: jest.fn(),
       emit: jest.fn(),
+      disconnect: jest.fn(),
       on: jest.fn((event, cb) => {
         if (event === 'join:tenant') {
           mockSocket.joinTenantCb = cb;

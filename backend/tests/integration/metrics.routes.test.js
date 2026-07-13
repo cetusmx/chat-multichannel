@@ -90,10 +90,9 @@ afterAll(async () => {
   });
 
   afterAll(async () => {
-    if (message1Id) await prisma.message.delete({ where: { id: message1Id } });
-    if (message2Id) await prisma.message.delete({ where: { id: message2Id } });
-    if (conversationId) await prisma.conversation.delete({ where: { id: conversationId } });
-    if (clientId) await prisma.client.delete({ where: { id: clientId } });
+    if (message1Id || message2Id) await prisma.message.deleteMany({ where: { id: { in: [message1Id, message2Id].filter(Boolean) } } });
+    if (conversationId) await prisma.conversation.deleteMany({ where: { id: conversationId } });
+    if (clientId) await prisma.client.deleteMany({ where: { id: clientId } });
   });
 
   it('should return 200 and metrics for COORDINATOR with correct calculations', async () => {

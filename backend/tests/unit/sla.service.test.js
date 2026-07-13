@@ -30,7 +30,7 @@ describe('SlaService', () => {
     it('should return default config if none exists', async () => {
       prisma.slaConfig.findUnique.mockResolvedValue(null);
       const config = await slaService.getSlaConfig('tenant-1');
-      expect(config).toEqual({ firstResponseMins: 15, resolutionMins: 60 });
+      expect(config).toEqual({ firstResponseMins: 15, resolutionMins: 60, tenantId: 'tenant-1' });
       expect(prisma.slaConfig.findUnique).toHaveBeenCalledWith({ where: { tenantId: 'tenant-1' } });
     });
 
