@@ -274,6 +274,36 @@ const whatsappService = {
               console.error('[WHATSAPP_SERVICE] No se pudo emitir por socket:', err.message);
             }
 
+            // --- PUSH NOTIFICATION INTEGRATION ---
+            try {
+              const updatedConv = await prisma.conversation.findUnique({
+                where: { id: conversation.id },
+                select: { vendorId: true }
+              });
+              if (updatedConv && updatedConv.vendorId) {
+                const pushService = require('./push.service');
+                const pushTitle = `Nuevo mensaje de ${finalClient.name || 'Cliente'}`;
+                let pushBody = text || 'Nuevo archivo adjunto';
+                if (text && text.length > 256) {
+                  const segmenter = new Intl.Segmenter('es', { granularity: 'grapheme' });
+                  const segments = Array.from(segmenter.segment(text)).map(s => s.segment);
+                  pushBody = segments.slice(0, 253).join('') + '...';
+                }
+                const pushPayload = {
+                  notification: { title: pushTitle, body: pushBody },
+                  android: { priority: 'high', notification: { channel_id: 'high_priority_chat', tag: conversation.id, sound: 'notification_sound' } },
+                  apns: { payload: { aps: { 'thread-id': conversation.id, sound: 'notification_sound.wav' } } },
+                  data: { chatId: conversation.id, type: 'new_message' }
+                };
+                pushService.sendPushToVendor(updatedConv.vendorId, pushPayload).catch(err => {
+                  console.error('[PUSH_SERVICE] Error trigger:', err.message);
+                });
+              }
+            } catch (err) {
+              console.error('[PUSH_SERVICE] Failed to process push notification:', err.message);
+            }
+            // ------------------------------------
+
             // AI Auto-Response Orchestration
             if (conversation.status === 'PENDING_ASSIGNMENT' && !mediaData && text && text.trim() !== '') {
               setImmediate(async () => {

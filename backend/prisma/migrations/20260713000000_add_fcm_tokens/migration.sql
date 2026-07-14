@@ -1,0 +1,1 @@
+ALTER TABLE "User" ADD COLUMN "fcm_tokens" TEXT[] DEFAULT ARRAY[]::TEXT[];

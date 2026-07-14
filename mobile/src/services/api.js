@@ -104,6 +104,8 @@ export async function postFormData(endpoint, formData, signal = null) {
   return request(endpoint, options, true);
 }
 
-export async function del(endpoint) {
-  return request(endpoint, { method: 'DELETE' });
+export async function del(endpoint, data = null) {
+  const options = { method: 'DELETE' };
+  if (data) options.body = JSON.stringify(data);
+  return request(endpoint, options);
 }

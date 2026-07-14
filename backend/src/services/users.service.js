@@ -325,4 +325,31 @@ async function updateUser(id, tenantId, actorRole, data) {
   return formatUser(updated);
 }
 
-module.exports = { createUser, listUsers, getUserById, updateUser };
+async function registerFcmToken(userId, token) {
+  if (!token) throw ApiError.badRequest('Token is required');
+
+  // CRITICAL SECURITY: prevent "Ghost Push" atomically via PostgreSQL array functions
+  await prisma.$executeRaw`UPDATE "User" SET fcm_tokens = array_remove(fcm_tokens, ${token}) WHERE ${token} = ANY(fcm_tokens) AND id != ${userId}`;
+
+  // Add to current user if not exists atomically
+  await prisma.$executeRaw`UPDATE "User" SET fcm_tokens = array_append(fcm_tokens, ${token}) WHERE id = ${userId} AND NOT (${token} = ANY(fcm_tokens))`;
+}
+
+async function removeFcmToken(userId, token) {
+  if (!token) throw ApiError.badRequest('Token is required');
+
+  // Remove atomically
+  await prisma.$executeRaw`UPDATE "User" SET fcm_tokens = array_remove(fcm_tokens, ${token}) WHERE id = ${userId}`;
+}
+
+async function testPushNotification(userId) {
+  const pushService = require('./push.service');
+  await pushService.sendPushToVendor(userId, {
+    notification: { title: 'Test Push', body: 'This is a test notification' },
+    android: { priority: 'high', notification: { tag: 'test_chat', sound: 'notification_sound' } },
+    apns: { payload: { aps: { 'thread-id': 'test_chat', sound: 'notification_sound.wav' } } },
+    data: { chatId: 'test_chat', type: 'test_message' }
+  });
+}
+
+module.exports = { createUser, listUsers, getUserById, updateUser, registerFcmToken, removeFcmToken, testPushNotification };

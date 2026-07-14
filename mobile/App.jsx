@@ -1,8 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Platform } from 'react-native';
+import messaging from '@react-native-firebase/messaging';
+import Toast from 'react-native-toast-message';
+import { registerFcmToken, removeFcmToken } from './src/services/push.service';
 
 // Screens
 import LoginScreen from './src/screens/LoginScreen';
@@ -25,6 +28,7 @@ const BASE_URL = Config.BACKEND_URL
 configureChatStore(api, BASE_URL);
 
 const Stack = createNativeStackNavigator();
+const navigationRef = createNavigationContainerRef();
 
 export default function App() {
   const token = useAuthStore((state) => state.token);
@@ -42,9 +46,86 @@ export default function App() {
 
   if (!isHydrated) return null; // Prevent UI flicker
 
+  useEffect(() => {
+    if (Platform.OS === 'ios') {
+      messaging().setBadge(0);
+    }
+    if (token) {
+      registerFcmToken().catch(err => console.error('[PUSH] Failed to register token', err));
+    }
+  }, [token]);
+
+  useEffect(() => {
+    const unsubscribeMsg = messaging().onMessage(async remoteMessage => {
+      // Foreground handler
+      const title = remoteMessage.notification?.title || 'Nuevo mensaje';
+      const body = remoteMessage.notification?.body || '';
+      
+      const currentRoute = navigationRef.isReady() ? navigationRef.getCurrentRoute() : null;
+      const isSameChat = currentRoute?.name === 'ChatDetail' && String(currentRoute?.params?.chatId) === String(remoteMessage.data?.chatId);
+      
+      if (!isSameChat) {
+        Toast.show({
+          type: 'info',
+          text1: title,
+          text2: body,
+          position: 'top',
+          onPress: () => navigateToChat(remoteMessage.data?.chatId)
+        });
+      }
+    });
+
+    const navigateToChat = (chatId) => {
+      if (!chatId) return;
+      if (Platform.OS === 'ios') messaging().setBadge(0);
+      let retries = 0;
+      const tryNav = () => {
+        if (navigationRef.isReady()) {
+          navigationRef.navigate('ChatDetail', { chatId });
+        } else if (retries < 20) {
+          retries++;
+          setTimeout(tryNav, 100);
+        }
+      };
+      tryNav();
+    };
+
+    const unsubscribeTokenRefresh = messaging().onTokenRefresh(async (newToken) => {
+      if (token) {
+        try {
+          const { post } = require('./src/services/api');
+          await post('/users/fcm-token', { token: newToken });
+          const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+          await AsyncStorage.setItem('fcm_token', newToken);
+        } catch (err) {
+          console.error('[PUSH] Token refresh failed', err);
+        }
+      }
+    });
+
+    // Handle background notification click
+    messaging().onNotificationOpenedApp(remoteMessage => {
+      if (remoteMessage.data?.chatId) {
+        navigateToChat(remoteMessage.data.chatId);
+      }
+    });
+
+    // Handle quit state notification click
+    messaging().getInitialNotification().then(remoteMessage => {
+      if (remoteMessage && remoteMessage.data?.chatId) {
+        navigateToChat(remoteMessage.data.chatId);
+      }
+    }).catch(err => console.error('[PUSH] getInitialNotification error', err));
+
+    return () => {
+      unsubscribeMsg();
+      unsubscribeTokenRefresh();
+    };
+  }, [token]);
+
   return (
     <SafeAreaProvider>
-      <NavigationContainer>
+      <NavigationContainer ref={navigationRef}>
         <Stack.Navigator>
           {token ? (
             <>
@@ -57,6 +138,7 @@ export default function App() {
           )}
         </Stack.Navigator>
       </NavigationContainer>
+      <Toast />
     </SafeAreaProvider>
   );
 }

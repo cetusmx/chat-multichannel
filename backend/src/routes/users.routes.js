@@ -3,6 +3,7 @@ const authenticate = require('../middleware/auth');
 const authorize = require('../middleware/rbac');
 const usersService = require('../services/users.service');
 const { success, created, list } = require('../utils/response');
+const { body, param, validationResult } = require('express-validator');
 
 const router = Router();
 
@@ -159,6 +160,93 @@ router.put('/:id', authorize('ADMIN', 'COORDINATOR'), async (req, res, next) => 
   try {
     const user = await usersService.updateUser(req.params.id, req.user.tenantId, req.user.role, req.body);
     success(res, user);
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * @openapi
+ * /users/fcm-token:
+ *   post:
+ *     tags: [Users]
+ *     summary: Register FCM token
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [token]
+ *             properties:
+ *               token: { type: string }
+ *     responses:
+ *       200:
+ *         description: Token registered
+ */
+router.post('/fcm-token', [
+  body('token').isString().notEmpty().withMessage('Token is required')
+], async (req, res, next) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+  try {
+    await usersService.registerFcmToken(req.user.id, req.body.token);
+    success(res, { message: 'Token registered' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * @openapi
+ * /users/fcm-token/{token}:
+ *   delete:
+ *     tags: [Users]
+ *     summary: Remove FCM token
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: token
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Token removed
+ */
+router.delete('/fcm-token/:token', [
+  param('token').isString().notEmpty().withMessage('Token is required')
+], async (req, res, next) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+  try {
+    await usersService.removeFcmToken(req.user.id, req.params.token);
+    success(res, { message: 'Token removed' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * @openapi
+ * /users/test-push:
+ *   post:
+ *     tags: [Users]
+ *     summary: Test push notification (Test only)
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Push triggered
+ */
+router.post('/test-push', async (req, res, next) => {
+  try {
+    await usersService.testPushNotification(req.user.id);
+    success(res, { message: 'Test push triggered' });
   } catch (err) {
     next(err);
   }
