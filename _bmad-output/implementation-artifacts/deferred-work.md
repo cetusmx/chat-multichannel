@@ -182,3 +182,9 @@
 
 ## Deferred from: code review of 6-1-react-native-project-scaffold.md (2026-07-13)
 - keychainStorage.js shoves entire state tree into password field [mobile/src/utils/keychainStorage.js] — deferred, pre-existing
+
+## Deferred from: code review of 6-3-mobile-chat-interface (2026-07-13)
+- Paginación en ChatListScreen — deferred, el endpoint del backend /api/conversations aún no soporta paginación
+- Mensajes fallidos se eliminan de la UI en vez de mostrar un estado "Fallido" — deferred, comportamiento de MVP
+- ChatListScreen no tiene socket en vivo y recarga ineficientemente en focus — deferred, comportamiento de MVP
+- KeyboardAvoidingView offset en iOS es frágil — deferred, comportamiento de MVP

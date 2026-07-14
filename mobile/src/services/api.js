@@ -11,7 +11,7 @@ async function request(endpoint, options = {}, isFormData = false) {
   const { token } = useAuthStore.getState();
   const headers = { ...options.headers };
   
-  if (!isFormData) {
+  if (!isFormData && !(options.body && options.body instanceof FormData)) {
     headers['Content-Type'] = 'application/json';
   }
 

@@ -1,0 +1,603 @@
+diff --git a/_bmad-output/implementation-artifacts/deferred-work.md b/_bmad-output/implementation-artifacts/deferred-work.md
+index 999ee24..b5b4df2 100644
+--- a/_bmad-output/implementation-artifacts/deferred-work.md
++++ b/_bmad-output/implementation-artifacts/deferred-work.md
+@@ -182,3 +182,9 @@
+ 
+ ## Deferred from: code review of 6-1-react-native-project-scaffold.md (2026-07-13)
+ - keychainStorage.js shoves entire state tree into password field [mobile/src/utils/keychainStorage.js] — deferred, pre-existing
++
++## Deferred from: code review of 6-3-mobile-chat-interface (2026-07-13)
++- Paginación en ChatListScreen — deferred, el endpoint del backend /api/conversations aún no soporta paginación
++- Mensajes fallidos se eliminan de la UI en vez de mostrar un estado "Fallido" — deferred, comportamiento de MVP
++- ChatListScreen no tiene socket en vivo y recarga ineficientemente en focus — deferred, comportamiento de MVP
++- KeyboardAvoidingView offset en iOS es frágil — deferred, comportamiento de MVP
+diff --git a/_bmad-output/implementation-artifacts/sprint-status.yaml b/_bmad-output/implementation-artifacts/sprint-status.yaml
+index ccfccad..943dd9f 100644
+--- a/_bmad-output/implementation-artifacts/sprint-status.yaml
++++ b/_bmad-output/implementation-artifacts/sprint-status.yaml
+@@ -93,7 +93,7 @@ development_status:
+   epic-5-retrospective: optional
+   epic-6: in-progress
+   6-1-react-native-project-scaffold: done
+-  6-2-push-notifications-system: in-progress
+-  6-3-mobile-chat-interface: backlog
+-  6-4-mobile-ai-assistance: backlog
++  6-2-push-notifications-system: done
++  6-3-mobile-chat-interface: done
++  6-4-mobile-ai-assistance: done
+   epic-6-retrospective: optional
+diff --git a/mobile/android/app/src/main/AndroidManifest.xml b/mobile/android/app/src/main/AndroidManifest.xml
+index 6eae2c0..af67506 100644
+--- a/mobile/android/app/src/main/AndroidManifest.xml
++++ b/mobile/android/app/src/main/AndroidManifest.xml
+@@ -2,6 +2,12 @@
+ 
+     <uses-permission android:name="android.permission.INTERNET" />
+     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
++    <uses-permission android:name="android.permission.CAMERA" />
++    <uses-permission android:name="android.permission.RECORD_AUDIO" />
++    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
++    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
++    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
++    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+ 
+     <application
+       android:name=".MainApplication"
+diff --git a/mobile/ios/mobile/Info.plist b/mobile/ios/mobile/Info.plist
+index 22a6b39..de60a9d 100644
+--- a/mobile/ios/mobile/Info.plist
++++ b/mobile/ios/mobile/Info.plist
+@@ -36,6 +36,12 @@
+ 	</dict>
+ 	<key>NSLocationWhenInUseUsageDescription</key>
+ 	<string></string>
++	<key>NSPhotoLibraryUsageDescription</key>
++	<string>Necesitamos acceso a tus fotos para enviarlas por chat.</string>
++	<key>NSCameraUsageDescription</key>
++	<string>Necesitamos acceso a la cámara para tomar fotos y enviarlas por chat.</string>
++	<key>NSMicrophoneUsageDescription</key>
++	<string>Necesitamos acceso al micrófono por si grabas videos con la cámara.</string>
+ 	<key>UILaunchStoryboardName</key>
+ 	<string>LaunchScreen</string>
+ 	<key>UIRequiredDeviceCapabilities</key>
+diff --git a/mobile/package-lock.json b/mobile/package-lock.json
+index ea7f682..5895aff 100644
+--- a/mobile/package-lock.json
++++ b/mobile/package-lock.json
+@@ -16,6 +16,7 @@
+         "react": "19.2.3",
+         "react-native": "0.86.0",
+         "react-native-config": "^1.6.1",
++        "react-native-image-picker": "^8.2.1",
+         "react-native-keychain": "^10.0.0",
+         "react-native-safe-area-context": "^5.8.0",
+         "react-native-screens": "^4.26.0",
+@@ -11466,6 +11467,16 @@
+         }
+       }
+     },
++    "node_modules/react-native-image-picker": {
++      "version": "8.2.1",
++      "resolved": "https://registry.npmjs.org/react-native-image-picker/-/react-native-image-picker-8.2.1.tgz",
++      "integrity": "sha512-FBeGYJGFDjMdGCcyubDJgBAPCQ4L1D3hwLXyUU91jY9ahOZMTbluceVvRmrEKqnDPFJ0gF1NVhJ0nr1nROFLdg==",
++      "license": "MIT",
++      "peerDependencies": {
++        "react": "*",
++        "react-native": "*"
++      }
++    },
+     "node_modules/react-native-keychain": {
+       "version": "10.0.0",
+       "resolved": "https://registry.npmjs.org/react-native-keychain/-/react-native-keychain-10.0.0.tgz",
+diff --git a/mobile/package.json b/mobile/package.json
+index 77c8d05..8260ed9 100644
+--- a/mobile/package.json
++++ b/mobile/package.json
+@@ -18,6 +18,7 @@
+     "react": "19.2.3",
+     "react-native": "0.86.0",
+     "react-native-config": "^1.6.1",
++    "react-native-image-picker": "^8.2.1",
+     "react-native-keychain": "^10.0.0",
+     "react-native-safe-area-context": "^5.8.0",
+     "react-native-screens": "^4.26.0",
+diff --git a/mobile/src/screens/ChatDetailScreen.jsx b/mobile/src/screens/ChatDetailScreen.jsx
+index 9f3b6cb..02ed3cb 100644
+--- a/mobile/src/screens/ChatDetailScreen.jsx
++++ b/mobile/src/screens/ChatDetailScreen.jsx
+@@ -1,23 +1,290 @@
+-import React from 'react';
+-import { View, Text, StyleSheet } from 'react-native';
++import React, { useState, useEffect, useCallback, useRef } from 'react';
++import { 
++  View, 
++  StyleSheet, 
++  FlatList, 
++  KeyboardAvoidingView, 
++  Platform,
++  Text,
++  ActivityIndicator,
++  Keyboard
++} from 'react-native';
++import { SafeAreaView } from 'react-native-safe-area-context';
++import { useRoute, useNavigation } from '@react-navigation/native';
++import Toast from 'react-native-toast-message';
++import { get, post, postFormData } from '../services/api';
+ import { theme } from '../utils/theme';
++import ChatInput from '../components/ChatInput';
++import MessageItem from '../components/MessageItem';
++import useMobileSocket from '../hooks/useMobileSocket';
+ 
+ export default function ChatDetailScreen() {
+-  return (
+-    <View style={styles.container}>
+-      <Text style={styles.text}>ChatDetailScreen Placeholder</Text>
++  const route = useRoute();
++  const navigation = useNavigation();
++  const { chatId, clientName } = route.params || {};
++
++  const [messages, setMessages] = useState([]);
++  const [loading, setLoading] = useState(true);
++  const [loadingMore, setLoadingMore] = useState(false);
++  const [hasMore, setHasMore] = useState(false);
++  const [nextCursor, setNextCursor] = useState(null);
++  const [isAiLoading, setIsAiLoading] = useState(false);
++  const chatInputRef = useRef(null);
++
++  // Set Header Title
++  useEffect(() => {
++    if (clientName) {
++      navigation.setOptions({ title: clientName });
++    }
++  }, [clientName, navigation]);
++
++  // Hook to handle socket connection and new messages
++  const handleNewMessage = useCallback((newMessage) => {
++    if (!newMessage || !newMessage.id) return;
++    setMessages((prevMessages) => {
++      // Deduplicate by message.id
++      if (prevMessages.some(m => m.id === newMessage.id)) {
++        return prevMessages;
++      }
++      return [newMessage, ...prevMessages];
++    });
++  }, []);
++
++  useMobileSocket(chatId, handleNewMessage);
++
++  useEffect(() => {
++    setMessages([]);
++    setNextCursor(null);
++    setHasMore(false);
++  }, [chatId]);
++
++  const fetchMessages = async (cursor = null) => {
++    if (!chatId) {
++      setLoading(false);
++      return;
++    }
++    try {
++      if (!cursor) setLoading(true);
++      else setLoadingMore(true);
++
++      let url = `/chat/${encodeURIComponent(chatId)}/messages?limit=50`;
++      if (cursor) url += `&cursor=${encodeURIComponent(cursor)}`;
++
++      const res = await get(url);
++      const data = await res.json();
++
++      if (res.ok && data.data) {
++        const payload = Array.isArray(data.data) ? data.data : [];
++        setMessages((prev) => {
++          // If we append payload to prev, we keep socket messages intact
++          const newArray = [...prev, ...payload];
++          // Deduplicate
++          const seen = new Set();
++          return newArray.filter(item => {
++            if (!item || !item.id) return false;
++            if (seen.has(item.id)) return false;
++            seen.add(item.id);
++            return true;
++          });
++        });
++        setHasMore(data.meta?.hasMore || false);
++        setNextCursor(data.meta?.nextCursor || null);
++      }
++    } catch (error) {
++      console.error('Failed to fetch messages:', error);
++    } finally {
++      setLoading(false);
++      setLoadingMore(false);
++    }
++  };
++
++  useEffect(() => {
++    fetchMessages();
++  }, [chatId]);
++
++  const handleEndReached = () => {
++    if (hasMore && !loadingMore && nextCursor) {
++      fetchMessages(nextCursor);
++    }
++  };
++
++  const handleSendText = async (text) => {
++    if (!chatId || !text.trim()) return;
++    const tempId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
++    try {
++      // Optimistic UI
++      const tempMsg = {
++        id: tempId,
++        content: text,
++        senderType: 'VENDOR',
++        status: 'sending',
++        createdAt: new Date().toISOString()
++      };
++      
++      setMessages(prev => [tempMsg, ...prev]);
++
++      const res = await post(`/chat/${encodeURIComponent(chatId)}/messages`, { content: text });
++      const data = await res.json();
++
++      if (res.ok && data.data) {
++        // Update temp to real, or remove if socket beat us to it
++        setMessages(prev => {
++          if (prev.some(m => m.id === data.data.id)) {
++            return prev.filter(m => m.id !== tempId);
++          }
++          return prev.map(m => m.id === tempId ? data.data : m);
++        });
++      } else {
++        // Handle error, remove temp
++        setMessages(prev => prev.filter(m => m.id !== tempId));
++        Toast.show({ type: 'error', text1: 'Error', text2: 'No se pudo enviar el mensaje' });
++      }
++    } catch (error) {
++      console.error('Send message error', error);
++      setMessages(prev => prev.filter(m => m.id !== tempId)); // Ensure it's removed on crash
++      Toast.show({ type: 'error', text1: 'Error', text2: 'Error de red al enviar mensaje' });
++    }
++  };
++
++  const handleSendMedia = async (file, caption = '') => {
++    if (!chatId || !file?.uri) return;
++    const tempId = `temp-media-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
++    try {
++      // Optimistic UI for Media
++      const tempMsg = {
++        id: tempId,
++        content: caption ? `[MEDIA] ${caption}` : '[MEDIA]',
++        senderType: 'VENDOR',
++        status: 'sending',
++        createdAt: new Date().toISOString(),
++        attachments: [{ type: 'IMAGE', url: file.uri }] // Local preview
++      };
++      setMessages(prev => [tempMsg, ...prev]);
++
++      const formData = new FormData();
++      formData.append('file', {
++        uri: file.uri,
++        type: file.type || 'image/jpeg',
++        name: file.fileName || `upload-${Date.now()}.jpg`
++      });
++      if (caption) {
++        formData.append('caption', caption);
++      }
++
++      const res = await postFormData(`/chat/${encodeURIComponent(chatId)}/media`, formData);
++      const data = await res.json();
++
++      if (res.ok && data.data) {
++        // Update temp to real, or remove if socket beat us to it
++        setMessages(prev => {
++          if (prev.some(m => m.id === data.data.id)) {
++            return prev.filter(m => m.id !== tempId);
++          }
++          return prev.map(m => m.id === tempId ? data.data : m);
++        });
++      } else {
++        setMessages(prev => prev.filter(m => m.id !== tempId));
++        Toast.show({ type: 'error', text1: 'Error', text2: 'No se pudo subir la imagen' });
++      }
++    } catch (error) {
++      console.error('Send media error', error);
++      setMessages(prev => prev.filter(m => m.id !== tempId));
++      Toast.show({ type: 'error', text1: 'Error', text2: 'Error de red al subir imagen' });
++    }
++  };
++
++  const handleRequestAi = async (prompt) => {
++    if (!chatId || !prompt.trim()) return;
++    try {
++      setIsAiLoading(true);
++      const res = await post(`/conversations/${encodeURIComponent(chatId)}/ai-assist`, { prompt: prompt.trim() });
++      const data = await res.json();
++
++      if (res.ok && data.data && data.data.suggestion) {
++        if (chatInputRef.current) {
++          chatInputRef.current.injectText(data.data.suggestion);
++        }
++      } else {
++        Toast.show({ type: 'error', text1: 'Error AI', text2: data.error?.message || 'No se pudo obtener sugerencia' });
++      }
++    } catch (error) {
++      console.error('AI Request Error:', error);
++      Toast.show({ type: 'error', text1: 'Error AI', text2: 'Fallo de red al contactar asistente' });
++    } finally {
++      setIsAiLoading(false);
++    }
++  };
++
++  const renderItem = useCallback(({ item }) => {
++    return <MessageItem message={item} />;
++  }, []);
++
++  const ListEmptyComponent = () => (
++    <View style={styles.emptyContainer}>
++      {loading ? (
++        <ActivityIndicator size="large" color={theme.colors.primary} />
++      ) : (
++        <Text style={styles.emptyText}>No hay mensajes en esta conversación.</Text>
++      )}
+     </View>
+   );
++
++  return (
++    <SafeAreaView style={styles.container} edges={['right', 'bottom', 'left']}>
++      <KeyboardAvoidingView 
++        style={styles.keyboardView} 
++        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
++        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
++      >
++        <FlatList
++          data={messages}
++          keyExtractor={(item) => item.id}
++          renderItem={renderItem}
++          inverted
++          keyboardShouldPersistTaps="handled"
++          keyboardDismissMode="on-drag"
++          ListEmptyComponent={ListEmptyComponent}
++          contentContainerStyle={styles.flexGrow}
++          onEndReached={handleEndReached}
++          onEndReachedThreshold={0.5}
++          initialNumToRender={20}
++          maxToRenderPerBatch={10}
++          windowSize={5}
++        />
++        <ChatInput 
++          ref={chatInputRef}
++          onSendText={handleSendText}
++          onSendMedia={handleSendMedia}
++          onRequestAi={handleRequestAi}
++          isAiLoading={isAiLoading}
++        />
++      </KeyboardAvoidingView>
++    </SafeAreaView>
++  );
+ }
+ 
+ const styles = StyleSheet.create({
+   container: {
+     flex: 1,
+     backgroundColor: theme.colors.background,
++  },
++  keyboardView: {
++    flex: 1,
++  },
++  flexGrow: {
++    flexGrow: 1,
++  },
++  listContent: {
++    padding: 10,
++  },
++  emptyContainer: {
++    flex: 1,
+     justifyContent: 'center',
+     alignItems: 'center',
++    transform: [{ scaleY: -1 }] // Because FlatList is inverted, we need to flip the empty component back
+   },
+-  text: {
+-    color: theme.colors.text,
+-  },
++  emptyText: {
++    color: '#aaa',
++    fontSize: 16,
++  }
+ });
+diff --git a/mobile/src/screens/ChatListScreen.jsx b/mobile/src/screens/ChatListScreen.jsx
+index a2870c8..d9bb38b 100644
+--- a/mobile/src/screens/ChatListScreen.jsx
++++ b/mobile/src/screens/ChatListScreen.jsx
+@@ -1,23 +1,171 @@
+-import React from 'react';
+-import { View, Text, StyleSheet } from 'react-native';
++import React, { useState, useCallback } from 'react';
++import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl } from 'react-native';
++import { SafeAreaView } from 'react-native-safe-area-context';
++import { useNavigation, useFocusEffect } from '@react-navigation/native';
++import Toast from 'react-native-toast-message';
++import { get } from '../services/api';
+ import { theme } from '../utils/theme';
+ 
+ export default function ChatListScreen() {
+-  return (
+-    <View style={styles.container}>
+-      <Text style={styles.text}>ChatListScreen Placeholder</Text>
++  const navigation = useNavigation();
++  const [conversations, setConversations] = useState([]);
++  const [loading, setLoading] = useState(true);
++  const [refreshing, setRefreshing] = useState(false);
++
++  const fetchConversations = async () => {
++    try {
++      const res = await get('/chat/conversations');
++      const data = await res.json();
++      if (res.ok && data.data) {
++        setConversations(Array.isArray(data.data) ? data.data : []);
++      } else {
++        Toast.show({ type: 'error', text1: 'Error', text2: 'No se pudieron cargar los chats' });
++      }
++    } catch (error) {
++      console.error('Failed to fetch conversations:', error);
++      Toast.show({ type: 'error', text1: 'Error', text2: 'Error de red' });
++    } finally {
++      setLoading(false);
++      setRefreshing(false);
++    }
++  };
++
++  useFocusEffect(
++    useCallback(() => {
++      fetchConversations();
++    }, [])
++  );
++
++  const onRefresh = useCallback(() => {
++    setRefreshing(true);
++    fetchConversations();
++  }, []);
++
++  const navigateToChat = (chatId, clientName) => {
++    if (!chatId) return;
++    navigation.navigate('ChatDetailScreen', { chatId, clientName });
++  };
++
++  const renderItem = ({ item }) => {
++    const clientName = item.client?.name || item.client?.phone || 'Unknown Client';
++    const lastMsgObj = item.messages?.[0];
++    
++    let lastMessage = 'No messages yet';
++    if (lastMsgObj) {
++      if (lastMsgObj.content) {
++        lastMessage = lastMsgObj.content;
++      } else if (lastMsgObj.attachments && lastMsgObj.attachments.length > 0) {
++        lastMessage = '[Media]';
++      }
++    }
++
++    const unreadCount = item.unreadCount || 0; // Backend might not send this yet, defaulting to 0
++
++    return (
++      <TouchableOpacity 
++        style={styles.chatItem} 
++        onPress={() => navigateToChat(item.id, clientName)}
++      >
++        <View style={styles.chatItemContent}>
++          <Text style={styles.clientName}>{clientName}</Text>
++          <Text style={styles.lastMessage} numberOfLines={1}>{lastMessage}</Text>
++        </View>
++        {unreadCount > 0 && (
++          <View style={styles.badge}>
++            <Text style={styles.badgeText}>{unreadCount}</Text>
++          </View>
++        )}
++      </TouchableOpacity>
++    );
++  };
++
++  const ListEmptyComponent = () => (
++    <View style={styles.emptyContainer}>
++      {loading ? (
++        <Text style={styles.emptyText}>Cargando chats...</Text>
++      ) : (
++        <Text style={styles.emptyText}>No tienes chats asignados.</Text>
++      )}
+     </View>
+   );
++
++  return (
++    <SafeAreaView style={styles.container} edges={['right', 'bottom', 'left']}>
++      <FlatList
++        data={conversations}
++        keyExtractor={(item) => item.id}
++        renderItem={renderItem}
++        contentContainerStyle={conversations.length === 0 ? styles.flexGrow : styles.listContent}
++        ListEmptyComponent={ListEmptyComponent}
++        refreshControl={
++          <RefreshControl
++            refreshing={refreshing}
++            onRefresh={onRefresh}
++            colors={[theme.colors.primary]}
++            tintColor={theme.colors.primary}
++          />
++        }
++      />
++    </SafeAreaView>
++  );
+ }
+ 
+ const styles = StyleSheet.create({
+   container: {
+     flex: 1,
+     backgroundColor: theme.colors.background,
+-    justifyContent: 'center',
++  },
++  flexGrow: {
++    flexGrow: 1,
++  },
++  listContent: {
++    paddingBottom: 20,
++  },
++  chatItem: {
++    flexDirection: 'row',
++    padding: 15,
++    borderBottomWidth: 1,
++    borderBottomColor: '#333',
+     alignItems: 'center',
++    justifyContent: 'space-between',
++  },
++  chatItemContent: {
++    flex: 1,
++    marginRight: 10,
+   },
+-  text: {
++  clientName: {
+     color: theme.colors.text,
++    fontSize: 16,
++    fontWeight: 'bold',
++    marginBottom: 5,
++  },
++  lastMessage: {
++    color: '#aaa',
++    fontSize: 14,
++  },
++  badge: {
++    backgroundColor: theme.colors.primary,
++    borderRadius: 12,
++    minWidth: 24,
++    height: 24,
++    justifyContent: 'center',
++    alignItems: 'center',
++    paddingHorizontal: 6,
++  },
++  badgeText: {
++    color: '#fff',
++    fontSize: 12,
++    fontWeight: 'bold',
++  },
++  emptyContainer: {
++    flex: 1,
++    justifyContent: 'center',
++    alignItems: 'center',
++    padding: 20,
++  },
++  emptyText: {
++    color: '#aaa',
++    fontSize: 16,
++    textAlign: 'center',
+   },
+ });
+diff --git a/mobile/src/services/api.js b/mobile/src/services/api.js
+index d65e207..5fd0911 100644
+--- a/mobile/src/services/api.js
++++ b/mobile/src/services/api.js
+@@ -11,7 +11,7 @@ async function request(endpoint, options = {}, isFormData = false) {
+   const { token } = useAuthStore.getState();
+   const headers = { ...options.headers };
+   
+-  if (!isFormData) {
++  if (!isFormData && !(options.body && options.body instanceof FormData)) {
+     headers['Content-Type'] = 'application/json';
+   }
+ 
