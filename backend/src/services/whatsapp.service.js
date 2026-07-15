@@ -427,11 +427,12 @@ const whatsappService = {
         throw new Error('Configuración de WhatsApp incompleta');
       }
 
+      const cleanPhoneNumber = conversation.client.phoneNumber.replace(/\D/g, '');
       const url = `https://graph.facebook.com/${env.metaApiVersion}/${config.phoneNumberId}/messages`;
       const payload = {
         messaging_product: 'whatsapp',
         recipient_type: 'individual',
-        to: conversation.client.phoneNumber,
+        to: cleanPhoneNumber,
         type: 'text',
         text: { preview_url: false, body: content }
       };
@@ -533,11 +534,12 @@ const whatsappService = {
       else if (file.mimetype.startsWith('audio/')) mediaType = 'audio';
       else if (file.mimetype.startsWith('video/')) mediaType = 'video';
 
+      const cleanPhoneNumber = conversation.client.phoneNumber.replace(/\D/g, '');
       const msgUrl = `https://graph.facebook.com/${env.metaApiVersion}/${config.phoneNumberId}/messages`;
       const payload = {
         messaging_product: 'whatsapp',
         recipient_type: 'individual',
-        to: conversation.client.phoneNumber,
+        to: cleanPhoneNumber,
         type: mediaType,
         [mediaType]: { id: mediaId }
       };
