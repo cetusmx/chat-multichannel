@@ -437,6 +437,8 @@ const whatsappService = {
         text: { preview_url: false, body: content }
       };
 
+      console.log('[WHATSAPP_SERVICE] Payload to Meta API (sendMessage):', JSON.stringify(payload, null, 2));
+
       const response = await fetch(url, {
         method: 'POST',
         headers: {
@@ -548,6 +550,8 @@ const whatsappService = {
         const trimmed = caption.trim();
         payload[mediaType].caption = trimmed.length > 1024 ? trimmed.substring(0, 1021) + '...' : trimmed;
       }
+
+      console.log('[WHATSAPP_SERVICE] Payload to Meta API (sendMedia):', JSON.stringify(payload, null, 2));
 
       const response = await fetch(msgUrl, {
         method: 'POST',
