@@ -426,6 +426,14 @@ const useChatStore = create((set, get) => ({
       if (user?.role === 'VENDOR') {
         newSocket.emit('join:vendor', user.id);
       }
+      if (user?.role === 'COORDINATOR' || user?.role === 'ADMIN') {
+        newSocket.emit('join:tenant_coordinators', user.tenantId);
+      }
+      
+      const { currentConversationId } = get();
+      if (currentConversationId) {
+        newSocket.emit('join:conversation', currentConversationId);
+      }
     });
 
     newSocket.on('disconnect', (reason) => {
