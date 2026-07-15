@@ -316,9 +316,10 @@ const whatsappService = {
                   });
                   if (lastMsg && lastMsg.id === msgRecord.id) {
                     const currentConv = await prisma.conversation.findUnique({
-                      where: { id: conversation.id }
+                      where: { id: conversation.id },
+                      select: { status: true, vendorId: true, aiPendingEscalation: true }
                     });
-                    if (currentConv && currentConv.status !== 'PENDING_ASSIGNMENT') return;
+                    if (currentConv && (currentConv.status !== 'PENDING_ASSIGNMENT' || currentConv.vendorId || currentConv.aiPendingEscalation)) return;
 
                     const tenant = await prisma.tenant.findUnique({
                       where: { id: tenantId }
