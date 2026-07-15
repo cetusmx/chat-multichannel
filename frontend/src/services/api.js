@@ -106,7 +106,8 @@ export async function getAiConfig() {
     let errMsg = typeof error.error === 'object' ? error.error.message : error.error;
     throw new Error(errMsg || 'Failed to fetch AI config');
   }
-  return res.json();
+  const json = await res.json();
+  return json.data;
 }
 
 /**
@@ -131,7 +132,8 @@ export async function updateAiConfig(data) {
     let errMsg = typeof error.error === 'object' ? error.error.message : error.error;
     throw new Error(errMsg || 'Failed to update AI config');
   }
-  return res.json();
+  const json = await res.json();
+  return json.data;
 }
 
 /**
