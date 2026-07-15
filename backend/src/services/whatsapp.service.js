@@ -427,7 +427,11 @@ const whatsappService = {
         throw new Error('Configuración de WhatsApp incompleta');
       }
 
-      const cleanPhoneNumber = conversation.client.phoneNumber.replace(/\D/g, '');
+      let cleanPhoneNumber = conversation.client.phoneNumber.replace(/\D/g, '');
+      if (cleanPhoneNumber.startsWith('521') && cleanPhoneNumber.length === 13) {
+        cleanPhoneNumber = '52' + cleanPhoneNumber.substring(3);
+      }
+      
       const url = `https://graph.facebook.com/${env.metaApiVersion}/${config.phoneNumberId}/messages`;
       const payload = {
         messaging_product: 'whatsapp',
@@ -536,7 +540,11 @@ const whatsappService = {
       else if (file.mimetype.startsWith('audio/')) mediaType = 'audio';
       else if (file.mimetype.startsWith('video/')) mediaType = 'video';
 
-      const cleanPhoneNumber = conversation.client.phoneNumber.replace(/\D/g, '');
+      let cleanPhoneNumber = conversation.client.phoneNumber.replace(/\D/g, '');
+      if (cleanPhoneNumber.startsWith('521') && cleanPhoneNumber.length === 13) {
+        cleanPhoneNumber = '52' + cleanPhoneNumber.substring(3);
+      }
+      
       const msgUrl = `https://graph.facebook.com/${env.metaApiVersion}/${config.phoneNumberId}/messages`;
       const payload = {
         messaging_product: 'whatsapp',
