@@ -60,7 +60,11 @@ const SecureMedia = ({ url, type, alt, className }) => {
   if (!src) return <div className="animate-pulse bg-sales-slate-700 h-20 w-32 rounded-md flex items-center justify-center text-xs text-sales-slate-400">Cargando...</div>;
 
   if (type === 'IMAGE') {
-    return <img src={src} alt={alt} className={`${className} max-h-64 object-contain`} onError={(e) => { e.target.onerror = null; e.target.src = '/assets/fallback-image.png'; }} />;
+    return (
+      <a href={src} target="_blank" rel="noopener noreferrer" className="block cursor-zoom-in">
+        <img src={src} alt={alt} className={`${className} max-h-64 object-contain rounded-md`} onError={(e) => { e.target.onerror = null; e.target.src = '/assets/fallback-image.png'; }} />
+      </a>
+    );
   }
   if (type === 'VIDEO') {
     return <video src={src} controls className={`${className} max-h-64`} />;

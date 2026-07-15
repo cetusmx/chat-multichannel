@@ -25,6 +25,8 @@ app.use(helmet({
     useDefaults: true,
     directives: {
       "upgrade-insecure-requests": null,
+      "img-src": ["'self'", "data:", "blob:"],
+      "media-src": ["'self'", "blob:"],
     },
   },
 }));
@@ -37,7 +39,7 @@ const authenticate = require('./middleware/auth');
 
 // Serve uploads securely
 app.use('/uploads', authenticate, (req, res, next) => {
-  res.setHeader('Content-Security-Policy', "default-src 'none'; img-src 'self'; media-src 'self'; style-src 'unsafe-inline'");
+  res.setHeader('Content-Security-Policy', "default-src 'none'; img-src 'self' data: blob:; media-src 'self' blob:; style-src 'unsafe-inline'");
   res.setHeader('X-Content-Type-Options', 'nosniff');
   next();
 }, express.static(path.join(__dirname, '../uploads')));
