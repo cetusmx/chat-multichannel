@@ -24,6 +24,16 @@ class GeminiProvider extends AIProvider {
       await model.generateContent('ping');
       return true;
     } catch (error) {
+      if (error.message.includes('404') || error.status === 404) {
+        try {
+          const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
+          const data = await res.json();
+          const models = data.models ? data.models.filter(m => m.supportedGenerationMethods.includes('generateContent')).map(m => m.name.replace('models/', '')).join(', ') : 'unknown';
+          throw new ApiError(400, `El modelo ${this.defaultModel} no está disponible. Modelos permitidos para tu llave: ` + models);
+        } catch (e) {
+          throw new ApiError(400, 'Invalid Gemini API Key: ' + error.message);
+        }
+      }
       throw new ApiError(400, 'Invalid Gemini API Key: ' + error.message);
     }
   }
