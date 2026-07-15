@@ -420,7 +420,8 @@ router.get('/:conversationId/messages', authenticate, authorize('ADMIN', 'COORDI
             ...(req.user.role === 'VENDOR' && { vendorId: req.user.id })
           }
         },
-        orderBy: { createdAt: 'desc' }
+        orderBy: { createdAt: 'desc' },
+        include: { attachments: true }
       };
 
       // Fetch 25 older (including the message itself)
@@ -460,7 +461,8 @@ router.get('/:conversationId/messages', authenticate, authorize('ADMIN', 'COORDI
         }
       },
       take: limit + 1,
-      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }]
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      include: { attachments: true }
     };
 
     if (cursor) {

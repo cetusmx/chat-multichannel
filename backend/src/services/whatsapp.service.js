@@ -495,7 +495,6 @@ const whatsappService = {
     let fileStream = null;
     try {
       const path = require('path');
-      const FormData = require('form-data');
       const mime = require('mime-types');
       
       const conversation = await prisma.conversation.findUnique({
@@ -513,18 +512,16 @@ const whatsappService = {
       // 1. Upload media to Meta
       const uploadUrl = `https://graph.facebook.com/${env.metaApiVersion}/${config.phoneNumberId}/media`;
       const formData = new FormData();
-      fileStream = fs.createReadStream(file.path);
-      formData.append('file', fileStream, { 
-        contentType: file.mimetype,
-        filename: file.originalname || 'media.file'
-      });
+      const fileBuffer = await fsp.readFile(file.path);
+      const blob = new Blob([fileBuffer], { type: file.mimetype });
+      
+      formData.append('file', blob, file.originalname || 'media.file');
       formData.append('messaging_product', 'whatsapp');
       
       const uploadRes = await fetch(uploadUrl, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${config.accessToken}`,
-          ...formData.getHeaders()
+          'Authorization': `Bearer ${config.accessToken}`
         },
         body: formData
       });
