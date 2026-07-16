@@ -170,7 +170,16 @@ router.post('/:conversationId/media', authenticate, authorize('ADMIN', 'COORDINA
       catch (e) { if (e.code !== 'EEXIST') throw e; }
       
       const filepath = path.join(tenantDir, filename);
-      await fsp.copyFile(file.path, filepath);
+      try {
+        await fsp.rename(file.path, filepath);
+      } catch (err) {
+        if (err.code === 'EXDEV') {
+          await fsp.copyFile(file.path, filepath);
+          fs.unlinkSync(file.path);
+        } else {
+          throw err;
+        }
+      }
       
       let mediaType = 'document';
       if (['image/jpeg', 'image/png', 'image/webp'].includes(file.mimetype)) mediaType = 'image';
@@ -207,14 +216,6 @@ router.post('/:conversationId/media', authenticate, authorize('ADMIN', 'COORDINA
         socket.getIo().of('/chat').to(`conversation:${conversationId}`).to(`tenant_${conversation.tenantId}_coordinators`).emit('new_message', result);
       } catch (err) {
         console.error('[CHAT_ROUTE] No se pudo emitir mensaje interno por socket:', err.message);
-      }
-
-      try {
-        if (fs.existsSync(file.path)) {
-          fs.unlinkSync(file.path);
-        }
-      } catch (e) {
-        console.error('Failed to unlink temp file:', e);
       }
     } else {
       result = await whatsappService.sendMedia(req.params.conversationId, req.file, caption, req.user.id, req.user.role, req.file.originalname);
