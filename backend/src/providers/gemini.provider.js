@@ -85,7 +85,7 @@ class GeminiProvider extends AIProvider {
       const genAI = new GoogleGenerativeAI(apiKey);
       
       // Use the recommended model for embeddings
-      const model = genAI.getGenerativeModel({ model: 'text-embedding-004' });
+      const model = genAI.getGenerativeModel({ model: 'embedding-001' });
       
       const result = await model.embedContent(text);
       const embedding = result.embedding;

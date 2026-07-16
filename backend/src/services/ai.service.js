@@ -105,7 +105,8 @@ class AIService {
         baseSystemInstruction += `\n\nIt is currently outside business hours. You must self-identify as an AI, inform the user that a human agent will contact them the next morning,${contextMsg} and include [[ESCALATE]] so a human agent is assigned.`;
       }
 
-      return await this.generateResponse(tenantId, formattedHistory, baseSystemInstruction);
+      const response = await this.generateResponse(tenantId, formattedHistory, baseSystemInstruction);
+      return response.content;
     } catch (error) {
       console.error('[AI_SERVICE] Error generating auto-response:', error.message);
       throw error;
