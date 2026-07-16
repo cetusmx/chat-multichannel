@@ -488,12 +488,16 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
                     />
                     {['ADMIN', 'COORDINATOR', 'VENDOR'].includes(user?.role) && (
                       <button 
-                        onClick={() => forwardMedia(msg.id)}
-                        className="absolute top-2 right-2 bg-black/40 hover:bg-sales-cyan-600 text-white text-xs font-semibold px-3 py-1.5 rounded-full shadow-lg backdrop-blur-md border border-white/30 opacity-0 group-hover:opacity-100 transition-all duration-300 flex items-center gap-1.5 cursor-pointer transform hover:scale-105"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          forwardMedia(msg.id);
+                        }}
+                        className="absolute -top-3 -right-3 z-10 bg-black/60 hover:bg-sales-cyan-600 text-white text-[10px] font-semibold px-2 py-1 rounded-full shadow-lg backdrop-blur-md border border-white/30 opacity-0 group-hover:opacity-100 transition-all duration-300 flex items-center gap-1 cursor-pointer transform hover:scale-105"
                         title="Reenviar archivo al cliente"
                         type="button"
                       >
-                        <span className="text-sm">📤</span> Reenviar
+                        <span className="text-xs">📤</span> Reenviar
                       </button>
                     )}
                   </div>
