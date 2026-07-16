@@ -44,4 +44,34 @@ router.get('/', async (req, res, next) => {
   }
 });
 
+router.get('/debug-file', (req, res) => {
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const tenantId = req.query.tenant;
+    if (!tenantId) return res.json({ error: 'Missing tenant param' });
+    
+    const uploadsPath = path.resolve(__dirname, '../../uploads');
+    const tenantPath = path.join(uploadsPath, tenantId);
+    
+    const uploadsExists = fs.existsSync(uploadsPath);
+    const tenantExists = fs.existsSync(tenantPath);
+    
+    let files = [];
+    if (tenantExists) {
+      files = fs.readdirSync(tenantPath);
+    }
+    
+    res.json({
+      uploadsPath,
+      tenantPath,
+      uploadsExists,
+      tenantExists,
+      files
+    });
+  } catch (err) {
+    res.json({ error: err.message });
+  }
+});
+
 module.exports = router;
