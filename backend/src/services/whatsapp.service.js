@@ -498,7 +498,7 @@ const whatsappService = {
   /**
    * Envía media al cliente vía Meta Graph API, opcionalmente con un texto (caption).
    */
-  async sendMedia(conversationId, file, caption = null, senderId = null, senderType = 'VENDOR') {
+  async sendMedia(conversationId, file, caption = null, senderId = null, senderType = 'VENDOR', originalName = null) {
     const fs = require('fs');
     const fsp = require('fs/promises');
     let fileStream = null;
@@ -522,10 +522,9 @@ const whatsappService = {
       const uploadUrl = `https://graph.facebook.com/${env.metaApiVersion}/${config.phoneNumberId}/media`;
       const formData = new FormData();
       const fileBuffer = await fsp.readFile(file.path);
-      const blob = new Blob([fileBuffer], { type: file.mimetype });
       
-      formData.append('file', blob, file.originalname || 'media.file');
       formData.append('messaging_product', 'whatsapp');
+      formData.append('file', new Blob([fileBuffer], { type: file.mimetype }), originalName || file.originalname);
       
       const uploadRes = await fetch(uploadUrl, {
         method: 'POST',
@@ -605,7 +604,8 @@ const whatsappService = {
               type: mediaType.toUpperCase(),
               url: `/uploads/${conversation.tenantId}/${filename}`,
               mimeType: file.mimetype,
-              size: file.size
+              size: file.size,
+              name: originalName || file.originalname
             }
           }
         },

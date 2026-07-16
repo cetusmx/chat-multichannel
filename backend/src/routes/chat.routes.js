@@ -190,7 +190,8 @@ router.post('/:conversationId/media', authenticate, authorize('ADMIN', 'COORDINA
               type: mediaType.toUpperCase(),
               url: `/uploads/${conversation.tenantId}/${filename}`,
               mimeType: file.mimetype,
-              size: file.size
+              size: file.size,
+              name: file.originalname
             }
           }
         },
@@ -216,7 +217,7 @@ router.post('/:conversationId/media', authenticate, authorize('ADMIN', 'COORDINA
         console.error('Failed to unlink temp file:', e);
       }
     } else {
-      result = await whatsappService.sendMedia(req.params.conversationId, req.file, caption, req.user.id, req.user.role);
+      result = await whatsappService.sendMedia(req.params.conversationId, req.file, caption, req.user.id, req.user.role, req.file.originalname);
       
       try {
         if (fs.existsSync(req.file.path)) {
