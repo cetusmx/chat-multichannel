@@ -16,22 +16,18 @@ import android.os.Build
 class MainActivity : ReactActivity() {
 
   override fun onCreate(savedInstanceState: Bundle?) {
-    super.onCreate(savedInstanceState)
+    super.onCreate(null)
     
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-      val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-      val channelId = "high_priority_chat"
-      val channelName = "Chat Notifications"
-      val channel = NotificationChannel(channelId, channelName, NotificationManager.IMPORTANCE_HIGH)
-      
-      val soundUri = Uri.parse("android.resource://" + packageName + "/raw/notification_sound")
-      val audioAttributes = AudioAttributes.Builder()
-        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-        .setUsage(AudioAttributes.USAGE_NOTIFICATION)
-        .build()
-        
-      channel.setSound(soundUri, audioAttributes)
-      notificationManager.createNotificationChannel(channel)
+      try {
+        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val channelId = "high_priority_chat"
+        val channelName = "Chat Notifications"
+        val channel = NotificationChannel(channelId, channelName, NotificationManager.IMPORTANCE_HIGH)
+        notificationManager.createNotificationChannel(channel)
+      } catch (e: Exception) {
+        e.printStackTrace()
+      }
     }
   }
 

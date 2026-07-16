@@ -41,6 +41,11 @@ jobs:
         working-directory: frontend
         run: npm ci
 
+      - name: Create Production Env
+        run: |
+          echo "APP_ENV=production" > .env
+          echo "BACKEND_URL=https://salesflow.algor.mx/api" >> .env
+
       - name: Build Android Release APK
         working-directory: mobile/android
         run: |
