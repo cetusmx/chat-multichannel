@@ -52,7 +52,7 @@ describe('AIService', () => {
         expect.any(Array), // Formatted history
         expect.stringContaining('Company info: we sell widgets.') // Context
       );
-      expect(result).toEqual({ content: 'Hello there! We sell widgets.' });
+      expect(result).toEqual('Hello there! We sell widgets.');
     });
   });
   describe('generateInlineSuggestion', () => {
