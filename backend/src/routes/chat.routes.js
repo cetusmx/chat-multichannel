@@ -276,11 +276,7 @@ router.post('/:conversationId/messages/:messageId/forward', authenticate, author
     const filename = attachment.url.split('/').pop();
     const safeTenantId = path.basename(String(message.conversation.tenantId));
     
-    const filePath = path.join(__dirname, '../../uploads', safeTenantId, filename);
-    if (!fs.existsSync(filePath)) {
-      console.error(`[FORWARD] Physical file not found. DB URL: ${attachment.url}, Resolved path: ${filePath}`);
-      return res.status(404).json({ error: `Physical file not found: ${filename}` });
-    }
+    const filePath = path.resolve(__dirname, '../../uploads', safeTenantId, filename);
     
     const mockFile = {
       path: filePath,
@@ -289,9 +285,13 @@ router.post('/:conversationId/messages/:messageId/forward', authenticate, author
       size: attachment.size
     };
     
-    const result = await whatsappService.sendMedia(conversationId, mockFile, null, req.user.id, req.user.role);
-    
-    res.status(201).json({ data: result });
+    try {
+      const result = await whatsappService.sendMedia(conversationId, mockFile, null, req.user.id, req.user.role);
+      res.status(201).json({ data: result });
+    } catch (e) {
+      console.error(`[FORWARD] Error forwarding media:`, e);
+      return res.status(500).json({ error: `Forward failed: ${e.message}` });
+    }
   } catch (error) {
     next(error);
   }
