@@ -24,7 +24,9 @@ async function request(endpoint, options = {}, isFormData = false) {
     const { refreshToken, setToken, clearAuth } = useAuthStore.getState();
     if (!refreshToken) {
       clearAuth();
-      window.location.href = '/login';
+      if (typeof window !== 'undefined' && window.location) {
+        window.location.href = '/login';
+      }
       throw new Error('Session expired');
     }
 
@@ -37,7 +39,9 @@ async function request(endpoint, options = {}, isFormData = false) {
         });
         if (!refreshRes.ok) {
           clearAuth();
-          window.location.href = '/login';
+          if (typeof window !== 'undefined' && window.location) {
+            window.location.href = '/login';
+          }
           throw new Error('Session expired');
         }
         const { token: newToken } = await refreshRes.json();
