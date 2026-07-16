@@ -267,7 +267,10 @@ const useChatStore = create((set, get) => ({
       if (newMsg?.data) {
         set((state) => {
           if (state.currentConversationId === currentConversationId) {
-            return { messages: [...state.messages, newMsg.data] };
+            const exists = state.messages.some(m => m.id === newMsg.data.id);
+            if (!exists) {
+              return { messages: [...state.messages, newMsg.data] };
+            }
           }
           return state;
         });
@@ -283,6 +286,41 @@ const useChatStore = create((set, get) => ({
         nextUploadIds[currentConversationId] = hasOthers;
         return { uploadingIds: nextUploadIds };
       });
+    }
+  },
+
+  forwardMedia: async (messageId) => {
+    const { currentConversationId } = get();
+    if (!currentConversationId || !messageId) return;
+
+    try {
+      const res = await config.api.post(`/chat/${currentConversationId}/messages/${messageId}/forward`);
+      if (!res.ok) {
+        let errorMessage = 'Fallo al reenviar archivo';
+        try {
+          const errorData = await res.json();
+          errorMessage = errorData.error || errorMessage;
+        } catch (e) {
+          errorMessage = `HTTP Error ${res.status}`;
+        }
+        throw new Error(errorMessage);
+      }
+      
+      const newMsg = await res.json();
+      if (newMsg?.data) {
+        set((state) => {
+          if (state.currentConversationId === currentConversationId) {
+            const exists = state.messages.some(m => m.id === newMsg.data.id);
+            if (!exists) {
+              return { messages: [...state.messages, newMsg.data] };
+            }
+          }
+          return state;
+        });
+      }
+    } catch (error) {
+      console.error('Error forwarding media:', error);
+      set({ errorMsg: `Error al reenviar archivo: ${error.message}` });
     }
   },
 

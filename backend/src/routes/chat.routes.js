@@ -259,6 +259,44 @@ router.get('/conversations', authenticate, authorize('ADMIN', 'COORDINATOR', 'VE
   }
 });
 
+router.post('/:conversationId/messages/:messageId/forward', authenticate, authorize('ADMIN', 'COORDINATOR', 'VENDOR'), async (req, res, next) => {
+  try {
+    const { conversationId, messageId } = req.params;
+    
+    const message = await prisma.message.findUnique({
+      where: { id: messageId },
+      include: { attachments: true }
+    });
+    
+    if (!message || message.attachments.length === 0) {
+      return res.status(404).json({ error: 'Message or attachment not found' });
+    }
+    
+    const attachment = message.attachments[0];
+    const urlParts = attachment.url.split('/');
+    const filename = urlParts.pop();
+    const tenantId = urlParts.pop();
+    
+    const filePath = path.join(__dirname, '../../uploads', tenantId, filename);
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ error: 'Physical file not found' });
+    }
+    
+    const mockFile = {
+      path: filePath,
+      mimetype: attachment.mimeType,
+      originalname: filename,
+      size: attachment.size
+    };
+    
+    const result = await whatsappService.sendMedia(conversationId, mockFile, null, req.user.id, req.user.role);
+    
+    res.status(201).json({ data: result });
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.post('/:conversationId/messages/:messageId/tags', authenticate, authorize('ADMIN', 'COORDINATOR', 'VENDOR'), async (req, res, next) => {
   try {
     const { conversationId, messageId } = req.params;

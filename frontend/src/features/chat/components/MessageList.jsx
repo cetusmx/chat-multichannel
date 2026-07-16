@@ -144,7 +144,7 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [aiPopoverOpen]);
 
-  const { highlightedMessageId, setHighlightedMessageId, addTag, removeTag } = useChatStore();
+  const { highlightedMessageId, setHighlightedMessageId, addTag, removeTag, forwardMedia } = useChatStore();
   const [addingTagTo, setAddingTagTo] = useState(null);
   const [tagInput, setTagInput] = useState('');
 
@@ -479,13 +479,23 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
                   </div>
                 )}
                 {msg.attachments && msg.attachments.length > 0 && (
-                  <div className="mb-2">
+                  <div className="mb-2 relative">
                     <SecureMedia 
                       url={msg.attachments[0].url} 
                       type={msg.attachments[0].type} 
                       alt="Attachment" 
                       className="max-w-full rounded-md" 
                     />
+                    {msg.isInternal && user?.role === 'VENDOR' && (
+                      <button 
+                        onClick={() => forwardMedia(msg.id)}
+                        className="absolute top-2 right-2 bg-sales-cyan-600 hover:bg-sales-cyan-500 text-white text-xs font-bold px-2 py-1 rounded shadow-md opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1"
+                        title="Reenviar al cliente"
+                        type="button"
+                      >
+                        <span>📤</span> Compartir al cliente
+                      </button>
+                    )}
                   </div>
                 )}
                 <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>
