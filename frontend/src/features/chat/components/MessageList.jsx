@@ -486,14 +486,14 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
                       alt="Attachment" 
                       className="max-w-full rounded-md" 
                     />
-                    {msg.isInternal && user?.role === 'VENDOR' && (
+                    {['ADMIN', 'COORDINATOR', 'VENDOR'].includes(user?.role) && (
                       <button 
                         onClick={() => forwardMedia(msg.id)}
-                        className="absolute top-2 right-2 bg-sales-cyan-600 hover:bg-sales-cyan-500 text-white text-xs font-bold px-2 py-1 rounded shadow-md opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1"
-                        title="Reenviar al cliente"
+                        className="absolute top-2 right-2 bg-black/40 hover:bg-sales-cyan-600 text-white text-xs font-semibold px-3 py-1.5 rounded-full shadow-lg backdrop-blur-md border border-white/30 opacity-0 group-hover:opacity-100 transition-all duration-300 flex items-center gap-1.5 cursor-pointer transform hover:scale-105"
+                        title="Reenviar archivo al cliente"
                         type="button"
                       >
-                        <span>📤</span> Compartir al cliente
+                        <span className="text-sm">📤</span> Reenviar
                       </button>
                     )}
                   </div>
