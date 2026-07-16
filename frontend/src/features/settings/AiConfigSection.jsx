@@ -43,8 +43,8 @@ export default function AiConfigSection() {
     setSuccess('');
     try {
       const result = await updateAiConfig({ provider, apiKey });
-      setIsConfigured(result.isConfigured);
-      setProvider(result.provider);
+      setIsConfigured(true);
+      setProvider(result.provider || provider);
       setApiKey(''); // Clear for security
       setSuccess('AI Configuration saved successfully');
     } catch (err) {
