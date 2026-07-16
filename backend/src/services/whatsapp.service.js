@@ -23,6 +23,14 @@ const whatsappService = {
       let config = await prisma.whatsAppConfig.findUnique({
         where: { tenantId }
       });
+      if (config && config.accessToken) {
+        const { decrypt } = require('../utils/encryption');
+        try {
+          config.accessToken = decrypt(config.accessToken);
+        } catch (e) {
+          console.error(`[WHATSAPP_SERVICE] Error decrypting token for tenant ${tenantId}`, e);
+        }
+      }
       return config;
     } catch (error) {
       console.error(`[WHATSAPP_SERVICE] Error fetching config for tenant ${tenantId}:`, error);
