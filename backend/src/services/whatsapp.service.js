@@ -535,7 +535,10 @@ const whatsappService = {
       });
       
       const uploadData = await uploadRes.json();
-      if (!uploadRes.ok) throw new Error(`Meta API Upload Error: ${uploadData.error?.message || 'Unknown error'}`);
+      if (!uploadRes.ok) {
+        console.error('[WHATSAPP_SERVICE] Meta API Upload Error Data:', JSON.stringify(uploadData, null, 2));
+        throw new Error(`Meta API Upload Error: ${uploadData.error?.message || 'Unknown error'}`);
+      }
       
       const mediaId = uploadData.id;
       
