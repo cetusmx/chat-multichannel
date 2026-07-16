@@ -488,7 +488,7 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
                     />
                   </div>
                 )}
-                <p className="text-sm">{msg.content}</p>
+                <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>
                 <span className="text-[10px] opacity-70 mt-1 block text-right">
                   {(() => {
                     const d = new Date(msg.createdAt);

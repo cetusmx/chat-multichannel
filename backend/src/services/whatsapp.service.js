@@ -148,7 +148,7 @@ const whatsappService = {
               where: { 
                 tenantId, 
                 clientId: finalClient.id, 
-                status: { in: ['ACTIVE', 'PENDING_ASSIGNMENT'] } 
+                status: { in: ['ACTIVE', 'PENDING_ASSIGNMENT', 'ESCALATED'] } 
               }
             });
             
