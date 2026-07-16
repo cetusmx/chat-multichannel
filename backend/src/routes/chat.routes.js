@@ -278,6 +278,15 @@ router.post('/:conversationId/messages/:messageId/forward', authenticate, author
     const safeTenantId = path.basename(String(message.conversation.tenantId));
     
     const filePath = path.resolve(__dirname, '../../uploads', safeTenantId, filename);
+    const tenantDir = path.resolve(__dirname, '../../uploads', safeTenantId);
+    
+    try {
+      const filesInDir = fs.existsSync(tenantDir) ? fs.readdirSync(tenantDir) : [];
+      console.log(`[FORWARD DEBUG] Files in ${tenantDir}:`, filesInDir);
+      console.log(`[FORWARD DEBUG] Looking for: ${filename}. Exists? ${fs.existsSync(filePath)}`);
+    } catch (e) {
+      console.error('[FORWARD DEBUG] Failed to read directory:', e);
+    }
     
     const mockFile = {
       path: filePath,
