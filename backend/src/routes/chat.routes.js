@@ -265,7 +265,7 @@ router.post('/:conversationId/messages/:messageId/forward', authenticate, author
     
     const message = await prisma.message.findUnique({
       where: { id: messageId },
-      include: { attachments: true }
+      include: { attachments: true, conversation: true }
     });
     
     if (!message || message.attachments.length === 0) {
@@ -273,13 +273,13 @@ router.post('/:conversationId/messages/:messageId/forward', authenticate, author
     }
     
     const attachment = message.attachments[0];
-    const urlParts = attachment.url.split('/');
-    const filename = urlParts.pop();
-    const tenantId = urlParts.pop();
+    const filename = attachment.url.split('/').pop();
+    const safeTenantId = path.basename(String(message.conversation.tenantId));
     
-    const filePath = path.join(__dirname, '../../uploads', tenantId, filename);
+    const filePath = path.join(__dirname, '../../uploads', safeTenantId, filename);
     if (!fs.existsSync(filePath)) {
-      return res.status(404).json({ error: 'Physical file not found' });
+      console.error(`[FORWARD] Physical file not found. DB URL: ${attachment.url}, Resolved path: ${filePath}`);
+      return res.status(404).json({ error: `Physical file not found: ${filename}` });
     }
     
     const mockFile = {
