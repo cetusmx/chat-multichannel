@@ -40,7 +40,11 @@ export default function App() {
       setIsHydrated(true);
     } else {
       const unsub = useAuthStore.persist.onFinishHydration(() => setIsHydrated(true));
-      return unsub;
+      const timeoutId = setTimeout(() => setIsHydrated(true), 1500);
+      return () => {
+        unsub();
+        clearTimeout(timeoutId);
+      };
     }
   }, []);
 
