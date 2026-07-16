@@ -290,8 +290,15 @@ const useChatStore = create((set, get) => ({
   },
 
   forwardMedia: async (messageId) => {
-    const { currentConversationId } = get();
+    const { currentConversationId, uploadingIds } = get();
     if (!currentConversationId || !messageId) return;
+    
+    if (uploadingIds[messageId]) return;
+
+    set((state) => ({ 
+      uploadingIds: { ...state.uploadingIds, [messageId]: true, [currentConversationId]: true }, 
+      errorMsg: null 
+    }));
 
     try {
       const res = await config.api.post(`/chat/${currentConversationId}/messages/${messageId}/forward`);
@@ -321,6 +328,14 @@ const useChatStore = create((set, get) => ({
     } catch (error) {
       console.error('Error forwarding media:', error);
       set({ errorMsg: `Error al reenviar archivo: ${error.message}` });
+    } finally {
+      set((state) => {
+        const nextUploadIds = { ...state.uploadingIds };
+        delete nextUploadIds[messageId];
+        const hasOthers = Object.keys(nextUploadIds).some(k => k !== currentConversationId && nextUploadIds[k]);
+        nextUploadIds[currentConversationId] = hasOthers;
+        return { uploadingIds: nextUploadIds };
+      });
     }
   },
 

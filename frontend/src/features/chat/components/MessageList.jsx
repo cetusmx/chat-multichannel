@@ -144,7 +144,7 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [aiPopoverOpen]);
 
-  const { highlightedMessageId, setHighlightedMessageId, addTag, removeTag, forwardMedia } = useChatStore();
+  const { highlightedMessageId, setHighlightedMessageId, addTag, removeTag, forwardMedia, uploadingIds } = useChatStore();
   const [addingTagTo, setAddingTagTo] = useState(null);
   const [tagInput, setTagInput] = useState('');
 
@@ -488,16 +488,13 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
                     />
                     {['ADMIN', 'COORDINATOR', 'VENDOR'].includes(user?.role) && (
                       <button 
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          forwardMedia(msg.id);
-                        }}
-                        className="absolute -top-3 -right-3 z-10 bg-black/60 hover:bg-sales-cyan-600 text-white text-[10px] font-semibold px-2 py-1 rounded-full shadow-lg backdrop-blur-md border border-white/30 opacity-0 group-hover:opacity-100 transition-all duration-300 flex items-center gap-1 cursor-pointer transform hover:scale-105"
-                        title="Reenviar archivo al cliente"
+                        onClick={() => forwardMedia(msg.id)}
+                        disabled={uploadingIds[msg.id]}
+                        className={`absolute -top-3 -right-3 z-10 bg-black/60 hover:bg-sales-cyan-600 text-white text-[10px] font-semibold px-2 py-1 rounded-full shadow-lg backdrop-blur-md border border-white/30 transition-all duration-300 flex items-center gap-1 transform hover:scale-105 ${uploadingIds[msg.id] ? 'opacity-100 cursor-wait bg-sales-cyan-600' : 'opacity-0 group-hover:opacity-100 cursor-pointer'}`}
+                        title="Compartir con cliente"
                         type="button"
                       >
-                        <span className="text-xs">📤</span> Reenviar
+                        <span className="text-xs">📤</span> {uploadingIds[msg.id] ? 'Enviando...' : 'Compartir con cliente'}
                       </button>
                     )}
                   </div>
@@ -544,7 +541,7 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
               </div>
             </div>
           );
-        }), [messages, highlightedMessageId, addingTagTo, tagInput])}
+        }), [messages, highlightedMessageId, addingTagTo, tagInput, uploadingIds])}
         <div ref={bottomRef} />
       </div>
 
