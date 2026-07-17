@@ -473,7 +473,7 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
               ref={isHighlighted ? highlightedRef : null}
             >
               <div 
-                className={`group max-w-[70%] rounded-lg p-3 shadow-sm ${
+                className={`group max-w-[70%] min-w-0 rounded-lg p-3 shadow-sm ${
                   isMyTeam 
                     ? msg.isInternal
                       ? 'bg-sales-orange-500/20 text-sales-orange-100 rounded-br-none border-l-4 border-sales-orange-500 backdrop-blur-md'
@@ -515,7 +515,7 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
                     )}
                   </div>
                 )}
-                <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>
+                <p className="text-sm whitespace-pre-wrap break-words break-all">{msg.content}</p>
                 <span className="text-[10px] opacity-70 mt-1 block text-right">
                   {(() => {
                     const d = new Date(msg.createdAt);
