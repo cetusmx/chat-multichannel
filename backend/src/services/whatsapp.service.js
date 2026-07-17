@@ -561,6 +561,10 @@ const whatsappService = {
         type: mediaType,
         [mediaType]: { id: mediaId }
       };
+
+      if (mediaType === 'document' && (originalName || file.originalname)) {
+        payload.document.filename = originalName || file.originalname;
+      }
       // Validate and truncate caption length to 1024 characters
       if (caption && caption.trim() !== '') {
         const trimmed = caption.trim();

@@ -297,7 +297,7 @@ router.post('/:conversationId/messages/:messageId/forward', authenticate, author
     };
     
     try {
-      const result = await whatsappService.sendMedia(conversationId, mockFile, null, req.user.id, req.user.role);
+      const result = await whatsappService.sendMedia(conversationId, mockFile, null, req.user.id, req.user.role, attachment.name);
       res.status(201).json({ data: result });
     } catch (e) {
       console.error(`[FORWARD] Error forwarding media:`, e);
