@@ -414,7 +414,7 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
 
   return (
     <div 
-      className={`flex flex-col h-full bg-sales-slate-900 border-l border-sales-slate-800 relative ${isDragging ? 'ring-2 ring-sales-cyan-500' : ''}`}
+      className={`flex flex-col h-full w-full min-w-0 bg-sales-slate-900 border-l border-sales-slate-800 relative ${isDragging ? 'ring-2 ring-sales-cyan-500' : ''}`}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
@@ -445,7 +445,7 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
       </div>
 
       {/* Messages */}
-      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto overflow-x-hidden w-full p-4 space-y-4">
         <div ref={observerTargetRef} className="h-4 w-full"></div>
         {isLoadingMore && (
           <div className="flex justify-center py-2">
@@ -469,7 +469,7 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
           return (
             <div 
               key={msg.id} 
-              className={`flex ${isMyTeam ? 'justify-end' : 'justify-start'} transition-all duration-1000 ${isHighlighted ? 'ring-4 ring-sales-cyan-500 rounded-lg bg-sales-cyan-500/20 p-2' : ''}`}
+              className={`flex w-full ${isMyTeam ? 'justify-end' : 'justify-start'} transition-all duration-1000 ${isHighlighted ? 'ring-4 ring-sales-cyan-500 rounded-lg bg-sales-cyan-500/20 p-2' : ''}`}
               ref={isHighlighted ? highlightedRef : null}
             >
               <div 
