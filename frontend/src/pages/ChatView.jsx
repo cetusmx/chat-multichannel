@@ -62,7 +62,7 @@ export default function ChatView() {
       </div>
 
       {/* Columna Derecha: Mensajes Activos */}
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {currentConversationId ? (
           <MessageList 
             messages={messages} 
