@@ -74,7 +74,7 @@ export default function CoordinatorDashboard() {
             </div>
           </div>
           {/* Right panel: Focus Panel */}
-          <div className="flex-1 h-full overflow-hidden bg-[#0A0F1A]">
+          <div className="flex-1 h-full min-w-0 overflow-hidden bg-[#0A0F1A]">
             <FocusPanel />
           </div>
         </motion.div>

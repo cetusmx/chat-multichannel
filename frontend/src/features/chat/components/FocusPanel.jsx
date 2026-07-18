@@ -298,7 +298,7 @@ export default function FocusPanel() {
   }
 
   return (
-    <div className="flex h-full w-full overflow-x-auto divide-x divide-sales-slate-800">
+    <div className="flex h-full w-full min-w-0 overflow-x-auto divide-x divide-sales-slate-800">
       {focusedChatIds.map(id => {
         const conv = conversations.find(c => c.id === id);
         const name = conv ? (conv.client?.name || conv.client?.phoneNumber) : 'Chat';
