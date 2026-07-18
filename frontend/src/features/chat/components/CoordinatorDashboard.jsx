@@ -27,7 +27,7 @@ export default function CoordinatorDashboard() {
   }, [socket, user]);
 
   return (
-    <div className="flex relative overflow-hidden w-full h-full bg-sales-slate-900 text-sales-slate-100">
+    <div className="flex relative overflow-hidden w-full h-full bg-sales-slate-900 text-sales-slate-100 rounded-lg border border-sales-slate-800 shadow-xl">
       {coordinatorViewMode === 'preview' ? (
         <motion.div 
           layout

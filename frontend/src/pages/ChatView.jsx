@@ -48,8 +48,8 @@ export default function ChatView() {
       <CommandPalette />
       <div className="flex h-full w-full min-w-0 bg-sales-slate-900 rounded-lg overflow-hidden border border-sales-slate-800 shadow-xl">
         {/* Columna Izquierda: Lista de Conversaciones */}
-        <div className="w-1/3 min-w-0 bg-sales-slate-900 flex flex-col">
-        <div className="p-4 border-b border-sales-slate-800 bg-sales-slate-900">
+        <div className="flex flex-col shrink-0 z-10 w-80 h-full bg-sales-slate-900/40 border-r border-sales-slate-800 shadow-lg backdrop-blur-md">
+        <div className="flex items-center justify-between p-4 bg-sales-slate-900/60 border-b border-sales-slate-800">
           <h2 className="text-xl font-bold text-sales-slate-100">Bandeja de Entrada</h2>
         </div>
         <div className="flex-1 overflow-y-auto">
