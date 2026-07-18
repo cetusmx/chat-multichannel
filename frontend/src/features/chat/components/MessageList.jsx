@@ -286,7 +286,7 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
       }
     } else if (text.trim()) {
       try {
-        await onSendMessage(text.trim(), isInternal);
+        await onSendMessage(text.replace(/[\r\n]+/g, ' ').trim(), isInternal);
         setText('');
         setIsInternal(false);
       } catch (error) {
@@ -645,7 +645,7 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
                 />
                 <div className="flex justify-end gap-2">
                   <button type="button" onClick={() => setAiDraft('')} className="px-3 py-1.5 bg-sales-slate-700 hover:bg-sales-slate-600 text-white rounded text-sm font-medium">Reintentar</button>
-                  <button type="button" onClick={() => { setText(text ? text + ' ' + aiDraft : aiDraft); closeAiPopover(); setTimeout(() => chatInputRef.current?.focus(), 0); }} className="px-3 py-1.5 bg-sales-cyan-600 hover:bg-sales-cyan-500 text-white rounded text-sm font-medium">Usar Borrador</button>
+                  <button type="button" onClick={() => { const sanitizedDraft = aiDraft.replace(/[\r\n]+/g, ' '); setText(text ? text + ' ' + sanitizedDraft : sanitizedDraft); closeAiPopover(); setTimeout(() => chatInputRef.current?.focus(), 0); }} className="px-3 py-1.5 bg-sales-cyan-600 hover:bg-sales-cyan-500 text-white rounded text-sm font-medium">Usar Borrador</button>
                 </div>
               </div>
             )}
@@ -713,7 +713,7 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
             className={`flex-1 bg-sales-slate-800 border border-sales-slate-700 rounded-lg px-4 py-2 text-sales-slate-200 focus:outline-none focus:border-sales-cyan-400 transition-all`}
             placeholder={isUploading ? "Enviando..." : (selectedFile ? "Añadir un comentario..." : (isInternal ? "Escribe un comentario interno..." : "Escribe un mensaje al cliente... (Usa / para IA)"))}
             value={text}
-            onChange={(e) => setText(e.target.value)}
+            onChange={(e) => setText(e.target.value.replace(/[\r\n]+/g, ' '))}
             onKeyDown={handleKeyDown}
             disabled={isUploading || isDrafting}
           />
