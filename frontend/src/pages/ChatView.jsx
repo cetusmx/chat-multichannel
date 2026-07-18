@@ -64,18 +64,22 @@ export default function ChatView() {
       {/* Columna Derecha: Mensajes Activos */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {currentConversationId ? (
-          <MessageList 
-            messages={messages} 
-            onSendMessage={sendMessage}
-            onSendMedia={sendMedia}
-            isUploading={!!uploadingIds[currentConversationId]}
-            errorMsg={errorMsg}
-            clearError={clearError}
-            clientName={activeConv?.client?.name || activeConv?.client?.phoneNumber}
-            hasMore={hasMore[currentConversationId] || false}
-            loadMoreMessages={() => loadMoreMessages(currentConversationId)}
-            isLoadingMore={isLoadingMore}
-          />
+          <div className="flex h-full w-full min-w-0 overflow-x-auto">
+            <div className="flex flex-col relative flex-1 h-full max-w-full bg-sales-slate-900/50">
+              <MessageList 
+                messages={messages} 
+                onSendMessage={sendMessage}
+                onSendMedia={sendMedia}
+                isUploading={!!uploadingIds[currentConversationId]}
+                errorMsg={errorMsg}
+                clearError={clearError}
+                clientName={activeConv?.client?.name || activeConv?.client?.phoneNumber}
+                hasMore={hasMore[currentConversationId] || false}
+                loadMoreMessages={() => loadMoreMessages(currentConversationId)}
+                isLoadingMore={isLoadingMore}
+              />
+            </div>
+          </div>
         ) : (
           <div className="flex-1 flex items-center justify-center bg-sales-slate-900 text-sales-slate-500">
             Selecciona una conversación para comenzar
