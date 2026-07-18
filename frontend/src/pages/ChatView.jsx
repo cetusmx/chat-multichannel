@@ -48,7 +48,7 @@ export default function ChatView() {
       <CommandPalette />
       <div className="flex h-full bg-sales-slate-900 rounded-lg overflow-hidden border border-sales-slate-800 shadow-xl">
         {/* Columna Izquierda: Lista de Conversaciones */}
-        <div className="w-1/3 bg-sales-slate-900 flex flex-col">
+        <div className="w-1/3 min-w-0 bg-sales-slate-900 flex flex-col">
         <div className="p-4 border-b border-sales-slate-800 bg-sales-slate-900">
           <h2 className="text-xl font-bold text-sales-slate-100">Bandeja de Entrada</h2>
         </div>
@@ -62,7 +62,7 @@ export default function ChatView() {
       </div>
 
       {/* Columna Derecha: Mensajes Activos */}
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col min-w-0">
         {currentConversationId ? (
           <MessageList 
             messages={messages} 
