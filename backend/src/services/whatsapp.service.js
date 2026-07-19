@@ -206,7 +206,7 @@ const whatsappService = {
                 try {
                   const metaResUrl = `https://graph.facebook.com/${env.metaApiVersion}/${mediaData.id}`;
                   const metaRes = await fetch(metaResUrl, {
-                    headers: { 'Authorization': `Bearer ${config.accessToken}` }
+                    headers: { 'Authorization': `Bearer ${config.accessToken.trim()}` }
                   });
                   if (metaRes.ok) {
                     const metaJson = await metaRes.json();
@@ -219,7 +219,7 @@ const whatsappService = {
                           method: 'GET',
                           responseType: 'stream',
                           headers: { 
-                            'Authorization': `Bearer ${config.accessToken}`,
+                            'Authorization': `Bearer ${config.accessToken.trim()}`,
                             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
                           },
                           timeout: 60000
