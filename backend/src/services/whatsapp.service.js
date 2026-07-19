@@ -208,21 +208,27 @@ const whatsappService = {
                   if (metaRes.ok) {
                     const metaJson = await metaRes.json();
                     if (metaJson.url) {
-                      const ac = new AbortController();
-                      const timeoutId = setTimeout(() => ac.abort(), 60000); // 60s timeout for streaming
+                      const axios = require('axios');
+                      let fileRes;
+                      try {
+                        fileRes = await axios({
+                          url: metaJson.url,
+                          method: 'GET',
+                          responseType: 'stream',
+                          headers: { 'Authorization': `Bearer ${config.accessToken}` },
+                          timeout: 60000
+                        });
+                      } catch (downloadErr) {
+                         console.error('Failed to download from Meta API:', downloadErr.message);
+                         throw new Error(`Meta API download failed: ${downloadErr.message}`);
+                      }
                       
-                      const fileRes = await fetch(metaJson.url, {
-                        headers: { 'Authorization': `Bearer ${config.accessToken}` },
-                        signal: ac.signal
-                      });
-                      
-                      if (fileRes.ok) {
+                      if (fileRes && fileRes.status === 200) {
                         const fs = require('fs');
                         const fsp = require('fs/promises');
                         const path = require('path');
                         const mime = require('mime-types');
                         const { pipeline } = require('stream/promises');
-                        const { Readable } = require('stream');
                         
                         const safeTenantId = path.basename(String(tenantId));
                         const tenantDir = path.join(__dirname, '../../uploads', safeTenantId);
@@ -237,19 +243,19 @@ const whatsappService = {
                         const filename = `${baseName}_${Date.now()}.${ext}`;
                         const filepath = path.join(tenantDir, filename);
                         
-                        
                         try {
-                          await pipeline(Readable.fromWeb(fileRes.body), fs.createWriteStream(filepath), { signal: ac.signal });
-                          const expectedSize = fileRes.headers.get('content-length');
+                          await pipeline(fileRes.data, fs.createWriteStream(filepath));
+                          const expectedSize = fileRes.headers['content-length'];
                           const fileStat = await fsp.stat(filepath).catch(() => ({ size: 0 }));
                           if (expectedSize && parseInt(expectedSize, 10) !== fileStat.size) {
                             throw new Error(`Downloaded size ${fileStat.size} does not match expected size ${expectedSize}`);
                           }
+                          if (fileStat.size === 0) {
+                            throw new Error('Downloaded file is 0 bytes');
+                          }
                         } catch (pipelineErr) {
                           await fsp.unlink(filepath).catch(() => {});
                           throw pipelineErr;
-                        } finally {
-                          clearTimeout(timeoutId);
                         }
                         
                         const fileStat = await fsp.stat(filepath).catch(() => ({ size: 0 }));
@@ -261,7 +267,7 @@ const whatsappService = {
                             url: `/uploads/${tenantId}/${filename}`,
                             mimeType: mediaData.mime_type,
                             size: fileStat.size,
-                            name: providedName
+                            name: providedName || filename
                           }
                         });
                         msgRecord.attachments = [attachment];
