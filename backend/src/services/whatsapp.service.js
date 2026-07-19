@@ -288,7 +288,7 @@ const whatsappService = {
                   } else {
                     const errText = await metaRes.text();
                     console.error(`Meta API error getting media URL. Status: ${metaRes.status}, Body: ${errText}`);
-                    throw new Error(`Meta API error getting media URL: ${metaRes.status}`);
+                    throw new Error(`Meta API error getting media URL: ${metaRes.status}. Body: ${errText}`);
                   }
                 } catch (mediaErr) {
                   console.error('[WHATSAPP_SERVICE] Error downloading media:', mediaErr);
