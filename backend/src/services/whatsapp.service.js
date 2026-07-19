@@ -118,7 +118,8 @@ const whatsappService = {
                 mediaData = {
                   id: mediaObj.id,
                   mime_type: mediaObj.mime_type,
-                  type: message.type.toUpperCase()
+                  type: message.type.toUpperCase(),
+                  filename: mediaObj.filename
                 };
               }
             }
@@ -259,7 +260,8 @@ const whatsappService = {
                             type: mediaData.type,
                             url: `/uploads/${tenantId}/${filename}`,
                             mimeType: mediaData.mime_type,
-                            size: fileStat.size
+                            size: fileStat.size,
+                            name: providedName
                           }
                         });
                         msgRecord.attachments = [attachment];

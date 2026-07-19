@@ -61,8 +61,13 @@ const SecureMedia = ({ url, className, type = 'IMAGE', alt, fallbackText }) => {
 
   if (type === 'IMAGE') {
     return (
-      <a href={src} target="_blank" rel="noopener noreferrer" className="block cursor-zoom-in">
+      <a href={src} target="_blank" rel="noopener noreferrer" className="block cursor-zoom-in group relative">
         <img src={src} alt={alt} className={`${className} max-h-64 object-contain rounded-md`} onError={(e) => { e.target.onerror = null; e.target.src = '/assets/fallback-image.png'; }} />
+        {fallbackText && (
+          <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-[10px] px-2 py-1 truncate rounded-b-md opacity-0 group-hover:opacity-100 transition-opacity">
+            {fallbackText}
+          </div>
+        )}
       </a>
     );
   }
