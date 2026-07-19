@@ -215,7 +215,10 @@ const whatsappService = {
                           url: metaJson.url,
                           method: 'GET',
                           responseType: 'stream',
-                          headers: { 'Authorization': `Bearer ${config.accessToken}` },
+                          headers: { 
+                            'Authorization': `Bearer ${config.accessToken}`,
+                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
+                          },
                           timeout: 60000
                         });
                       } catch (downloadErr) {
