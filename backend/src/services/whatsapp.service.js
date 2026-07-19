@@ -292,11 +292,11 @@ const whatsappService = {
                   }
                 } catch (mediaErr) {
                   console.error('[WHATSAPP_SERVICE] Error downloading media:', mediaErr);
-                  throw mediaErr; // Re-throw to fail the webhook and trigger Meta retry
+                  // We do NOT re-throw here. If media fails, we still want to emit the message bubble!
                 }
               } else {
                 console.error('[WHATSAPP_SERVICE] No config or accessToken found for tenant:', tenantId);
-                throw new Error('Missing config or accessToken for media download');
+                // We do NOT throw here either, for the same reason.
               }
             }
             
