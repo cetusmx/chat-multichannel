@@ -445,7 +445,11 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
       </div>
 
       {/* Messages */}
-      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto overflow-x-hidden w-full p-4 space-y-4">
+      <div 
+        ref={scrollContainerRef} 
+        className="flex-1 overflow-y-auto overflow-x-hidden w-full p-4 space-y-4 custom-scrollbar"
+        onScroll={handleScroll}
+      >
         <div ref={observerTargetRef} className="h-4 w-full"></div>
         {isLoadingMore && (
           <div className="flex justify-center py-2">

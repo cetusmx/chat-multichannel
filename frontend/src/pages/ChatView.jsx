@@ -52,7 +52,7 @@ export default function ChatView() {
         <div className="flex items-center justify-between p-4 bg-sales-slate-900/60 border-b border-sales-slate-800">
           <h2 className="text-xl font-bold text-sales-slate-100">Bandeja de Entrada</h2>
         </div>
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto custom-scrollbar">
           <ChatList 
             conversations={conversations} 
             currentConversationId={currentConversationId} 
