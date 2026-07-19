@@ -292,11 +292,22 @@ const whatsappService = {
                   }
                 } catch (mediaErr) {
                   console.error('[WHATSAPP_SERVICE] Error downloading media:', mediaErr);
-                  // We do NOT re-throw here. If media fails, we still want to emit the message bubble!
+                  // Inject error into the message content so the user can see it in the UI
+                  const errorMsg = `\n[Error de descarga: ${mediaErr.message}]`;
+                  msgRecord = await prisma.message.update({
+                    where: { id: msgRecord.id },
+                    data: { content: msgRecord.content + errorMsg },
+                    include: { attachments: true }
+                  });
                 }
               } else {
                 console.error('[WHATSAPP_SERVICE] No config or accessToken found for tenant:', tenantId);
-                // We do NOT throw here either, for the same reason.
+                const errorMsg = `\n[Error de descarga: Configuración o token faltante]`;
+                msgRecord = await prisma.message.update({
+                  where: { id: msgRecord.id },
+                  data: { content: msgRecord.content + errorMsg },
+                  include: { attachments: true }
+                });
               }
             }
             
