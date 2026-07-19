@@ -121,6 +121,8 @@ const whatsappService = {
                   type: message.type.toUpperCase(),
                   filename: mediaObj.filename
                 };
+              } else {
+                console.warn('[WHATSAPP_SERVICE] Webhook received media but no media ID found in payload:', JSON.stringify(message));
               }
             }
             
@@ -202,7 +204,8 @@ const whatsappService = {
               const config = await this.getConfig(tenantId);
               if (config && config.accessToken) {
                 try {
-                  const metaRes = await fetch(`https://graph.facebook.com/${env.metaApiVersion}/${mediaData.id}`, {
+                  const metaResUrl = `https://graph.facebook.com/${env.metaApiVersion}/${mediaData.id}`;
+                  const metaRes = await fetch(metaResUrl, {
                     headers: { 'Authorization': `Bearer ${config.accessToken}` }
                   });
                   if (metaRes.ok) {
@@ -275,15 +278,25 @@ const whatsappService = {
                         });
                         msgRecord.attachments = [attachment];
                       } else {
-                        console.error('Failed to download from Meta API:', fileRes.statusText);
-                        throw new Error(`Meta API download failed: ${fileRes.status}`);
+                        console.error('Failed to download from Meta API:', fileRes ? fileRes.statusText : 'Unknown');
+                        throw new Error(`Meta API download failed: ${fileRes ? fileRes.status : 'Unknown'}`);
                       }
+                    } else {
+                      console.error('Meta API returned JSON without url:', metaJson);
+                      throw new Error('Meta API returned JSON without url');
                     }
+                  } else {
+                    const errText = await metaRes.text();
+                    console.error(`Meta API error getting media URL. Status: ${metaRes.status}, Body: ${errText}`);
+                    throw new Error(`Meta API error getting media URL: ${metaRes.status}`);
                   }
                 } catch (mediaErr) {
                   console.error('[WHATSAPP_SERVICE] Error downloading media:', mediaErr);
                   throw mediaErr; // Re-throw to fail the webhook and trigger Meta retry
                 }
+              } else {
+                console.error('[WHATSAPP_SERVICE] No config or accessToken found for tenant:', tenantId);
+                throw new Error('Missing config or accessToken for media download');
               }
             }
             
