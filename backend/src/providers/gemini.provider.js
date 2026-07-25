@@ -38,7 +38,7 @@ class GeminiProvider extends AIProvider {
     }
   }
 
-  async generateResponse({ messages, context, tenantId }) {
+  async generateResponse({ messages, context, tenantId, tools, toolHandlers }) {
     try {
       if (!messages || messages.length === 0) {
         throw new ApiError(400, 'Messages array cannot be empty');
@@ -57,6 +57,9 @@ class GeminiProvider extends AIProvider {
       if (context) {
         modelOptions.systemInstruction = typeof context === 'string' ? context : JSON.stringify(context);
       }
+      if (tools) {
+        modelOptions.tools = tools;
+      }
       
       const configuredModel = genAI.getGenerativeModel(modelOptions);
       
@@ -65,7 +68,37 @@ class GeminiProvider extends AIProvider {
       });
 
       const lastMessage = formattedMessages[formattedMessages.length - 1];
-      const result = await chat.sendMessage(lastMessage.parts[0].text);
+      let result = await chat.sendMessage(lastMessage.parts[0].text);
+
+      let calls = result.response.functionCalls();
+      // Handle tool calls iteratively
+      while (calls && calls.length > 0) {
+        const call = calls[0];
+        let apiResponse;
+        
+        console.log(`[GEMINI TOOL] Llamando herramienta: ${call.name} con args:`, call.args);
+        
+        try {
+          if (toolHandlers && toolHandlers[call.name]) {
+            apiResponse = await toolHandlers[call.name](call.args);
+          } else {
+            apiResponse = { error: `La herramienta ${call.name} no está implementada.` };
+          }
+        } catch (err) {
+          apiResponse = { error: `Error ejecutando ${call.name}: ${err.message}` };
+        }
+
+        // Enviar el resultado de la función de vuelta a Gemini
+        result = await chat.sendMessage([{
+          functionResponse: {
+            name: call.name,
+            response: apiResponse
+          }
+        }]);
+        
+        calls = result.response.functionCalls();
+      }
+
       return { content: result.response.text() };
     } catch (error) {
       if (error.message.includes('404') || error.status === 404) {

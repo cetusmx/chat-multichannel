@@ -37,11 +37,11 @@ class AIService {
     return formatted;
   }
 
-  async generateResponse(tenantId, messages, context = '') {
+  async generateResponse(tenantId, messages, context = '', tools = undefined, toolHandlers = undefined) {
     try {
       const providerName = process.env.AI_PROVIDER || 'gemini';
       const provider = getProvider(providerName);
-      return await provider.generateResponse({ messages, context, tenantId });
+      return await provider.generateResponse({ messages, context, tenantId, tools, toolHandlers });
     } catch (error) {
       if (error instanceof ApiError) throw error;
       throw ApiError.internal('AI Service Error: ' + error.message);
@@ -119,7 +119,75 @@ class AIService {
         baseSystemInstruction += `\nAl estar fuera de horario laboral, preséntate brevemente como Inteligencia Artificial, resuelve la duda si puedes usar el Contexto, infórmale que los humanos regresarán al siguiente día hábil e incluye siempre [[ESCALATE]].`;
       }
 
-      const response = await this.generateResponse(tenantId, formattedHistory, baseSystemInstruction);
+      // ----------------------------------------------------
+      // DEFINICIÓN DE HERRAMIENTAS GENÉRICAS (AGNOSTICAS)
+      // ----------------------------------------------------
+      const tools = [{
+        functionDeclarations: [
+          {
+            name: "consultar_catalogo",
+            description: "Busca productos en el catálogo externo de la empresa. Extrae los parámetros de búsqueda que el cliente mencionó y pásalos en formato JSON. Consulta la regla 'Búsqueda de Productos' en tu contexto para saber exactamente qué campos JSON están permitidos para esta empresa. NUNCA inventes campos que no estén en tu contexto.",
+            parameters: {
+              type: "OBJECT",
+              properties: {
+                query_params: {
+                  type: "STRING",
+                  description: "Un string en formato JSON válido con las claves y valores a buscar. Ejemplo: '{\"familia\": \"LLANTAS\", \"diam_int\": 16}'"
+                }
+              },
+              required: ["query_params"]
+            }
+          }
+        ]
+      }];
+
+      const toolHandlers = {
+        consultar_catalogo: async (args) => {
+          try {
+            console.log('[AI TOOL] consultar_catalogo invocado con args:', args);
+            const paramsStr = args.query_params;
+            const parsedParams = JSON.parse(paramsStr);
+            
+            const searchParams = new URLSearchParams(parsedParams);
+            // TODO: En el futuro esto debe leerse de la base de datos (Tenant.catalogApiUrl)
+            const apiUrl = process.env.VITE_API_BASE_URL || 'http://75.119.150.222:3010';
+            const apiKey = process.env.VITE_INTERNAL_SECRET || 'sm_ecommerce_x2ve9yFf0aiDxh1HelezpVeyRAcngGwgEg3ZnSZwhGg2SaZrd2gQiysiVo86R3LcUZFFxZDSMADepof1jMLSumIbiqBRcbjyhvA78haaxnLrrbOuU3zqCi0kQXJf1gSc';
+            
+            const endpoint = `${apiUrl}/api/clavesalternas/filter-v2?${searchParams.toString()}`;
+            console.log('[AI TOOL] Fetching API:', endpoint);
+            
+            const fetchRes = await fetch(endpoint, {
+              method: 'GET',
+              headers: {
+                'Content-Type': 'application/json',
+                'x-api-key': apiKey
+              }
+            });
+            
+            if (!fetchRes.ok) {
+              console.error('[AI TOOL] API HTTP Error:', fetchRes.status);
+              return { error: `El catálogo devolvió un error: ${fetchRes.statusText}` };
+            }
+            
+            const data = await fetchRes.json();
+            
+            if (data && data.data && Array.isArray(data.data)) {
+               // Limitar los resultados a 5 para no reventar la memoria de contexto de Gemini
+               return { 
+                 resultados: data.data.slice(0, 5), 
+                 total_encontrados: data.pagination?.totalRecords || data.data.length,
+                 nota: "Se están mostrando máximo 5 resultados. Si hay más, pide al cliente que sea más específico." 
+               };
+            }
+            return data;
+          } catch (e) {
+            console.error('[AI TOOL] Excepción:', e.message);
+            return { error: `Hubo un fallo al leer los parámetros o conectar con el catálogo: ${e.message}` };
+          }
+        }
+      };
+
+      const response = await this.generateResponse(tenantId, formattedHistory, baseSystemInstruction, tools, toolHandlers);
       return response.content;
     } catch (error) {
       console.error('[AI_SERVICE] Error generating auto-response:', error.message);
