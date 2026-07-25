@@ -12,6 +12,7 @@ const badgeColors = {
 
 function EditUserModal({ user, onClose, onSaved }) {
   const [form, setForm] = useState({ name: user.name, email: user.email, phone: user.phone || '' });
+  const [isActive, setIsActive] = useState(user.isActive !== false);
   const [groupIds, setGroupIds] = useState([]);
   const [allGroups, setAllGroups] = useState([]);
   const [role, setRole] = useState(user.role);
@@ -35,6 +36,7 @@ function EditUserModal({ user, onClose, onSaved }) {
           email: userBody.data.email,
           phone: userBody.data.phone || '',
         }));
+        setIsActive(userBody.data.isActive !== false);
         setRole(userBody.data.role);
         setVendorCount(userBody.data.vendorCount || 0);
         if (userBody.data.groups) {
@@ -54,7 +56,7 @@ function EditUserModal({ user, onClose, onSaved }) {
     setError('');
     setLoading(true);
     try {
-      const payload = { name: form.name, email: form.email, phone: form.phone };
+      const payload = { name: form.name, email: form.email, phone: form.phone, isActive };
       if (user.role !== 'ADMIN') {
         payload.groupIds = groupIds;
       }
@@ -127,6 +129,20 @@ function EditUserModal({ user, onClose, onSaved }) {
               className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-sales-slate-100 focus:outline-none focus:ring-2 focus:ring-sales-coral/50"
             />
           </div>
+
+          <div className="flex items-center gap-3">
+            <input
+              type="checkbox"
+              id="isActiveToggle"
+              checked={isActive}
+              onChange={(e) => setIsActive(e.target.checked)}
+              className="h-4 w-4 rounded border-slate-700 bg-slate-800 text-sales-coral focus:ring-sales-coral/50"
+            />
+            <label htmlFor="isActiveToggle" className="text-sm text-sales-slate-100">
+              Usuario Activo
+            </label>
+          </div>
+
           {user.role === 'VENDOR' && (
             <p className="text-xs text-sales-slate-500">
               El coordinador se asigna automáticamente según el grupo seleccionado.

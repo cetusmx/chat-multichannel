@@ -250,6 +250,7 @@ async function updateUser(id, tenantId, actorRole, data) {
     email: data.email !== undefined ? data.email : undefined,
     phone: data.phone !== undefined ? data.phone : undefined,
     coordinatorId: coordinatorValue !== undefined ? coordinatorValue : undefined,
+    isActive: data.isActive !== undefined ? data.isActive : undefined,
   };
 
   if (data.groupIds !== undefined) {
