@@ -67,6 +67,8 @@ const VendorAssignmentSelect = ({ conversation }) => {
         message={`¿Estás seguro de reasignar esta conversación a "${confirmVendor?.name || confirmVendor?.email}"?`}
         onConfirm={executeAssign}
         onCancel={() => setConfirmVendor(null)}
+        confirmText="Asignar"
+        confirmVariant="primary"
       />
     </>
   );

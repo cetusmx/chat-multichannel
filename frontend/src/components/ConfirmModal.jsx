@@ -1,5 +1,9 @@
-export default function ConfirmModal({ open, title, message, onConfirm, onCancel }) {
+export default function ConfirmModal({ open, title, message, onConfirm, onCancel, confirmText = "Eliminar", confirmVariant = "danger" }) {
   if (!open) return null;
+
+  const btnClasses = confirmVariant === "danger"
+    ? "bg-red-500 hover:bg-red-600"
+    : "bg-sales-cyan-600 hover:bg-sales-cyan-700";
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
@@ -15,9 +19,9 @@ export default function ConfirmModal({ open, title, message, onConfirm, onCancel
           </button>
           <button
             onClick={onConfirm}
-            className="rounded-lg bg-red-500 px-4 py-2 text-sm font-medium text-white hover:bg-red-600 transition-colors"
+            className={`rounded-lg px-4 py-2 text-sm font-medium text-white transition-colors ${btnClasses}`}
           >
-            Eliminar
+            {confirmText}
           </button>
         </div>
       </div>
