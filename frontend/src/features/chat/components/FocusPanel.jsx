@@ -11,6 +11,7 @@ const VendorAssignmentSelect = ({ conversation }) => {
   const [isAssigning, setIsAssigning] = useState(false);
   const [confirmVendor, setConfirmVendor] = useState(null);
   const user = useAuthStore(s => s.user);
+  const fetchConversations = useChatStore(s => s.fetchConversations);
 
   useEffect(() => {
     if (user?.role === 'COORDINATOR' || user?.role === 'ADMIN') {
@@ -38,6 +39,7 @@ const VendorAssignmentSelect = ({ conversation }) => {
     try {
        const res = await patch(`/chat/${conversation.id}/assign`, { vendorId: confirmVendor.id });
        if (!res.ok) throw new Error('Error asignando');
+       await fetchConversations();
     } catch (err) {
        console.error(err);
     } finally {
