@@ -1,6 +1,14 @@
 const http = require('http');
 const { Server } = require('socket.io');
 
+// Override console methods to prepend timestamps
+['log', 'info', 'warn', 'error'].forEach(method => {
+  const original = console[method];
+  console[method] = function (...args) {
+    original.apply(console, [`[${new Date().toISOString()}]`, ...args]);
+  };
+});
+
 const app = require('./app');
 const env = require('./config/env');
 const logger = require('./utils/logger');

@@ -7,7 +7,7 @@ const { decrypt } = require('../utils/encryption');
 class GeminiProvider extends AIProvider {
   constructor() {
     super();
-    this.defaultModel = 'gemini-2.5-flash';
+    this.defaultModel = 'gemini-flash-latest';
   }
 
   async _getApiKey(tenantId) {
