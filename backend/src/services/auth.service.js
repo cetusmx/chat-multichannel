@@ -5,8 +5,16 @@ const env = require('../config/env');
 const ApiError = require('../utils/ApiError');
 
 function generateTokens(payload) {
-  const token = jwt.sign(payload, env.jwtSecret, { expiresIn: env.jwtExpiresIn });
-  const refreshToken = jwt.sign(payload, env.jwtRefreshSecret, { expiresIn: env.jwtRefreshExpiresIn });
+  let expiresIn = env.jwtExpiresIn;
+  let refreshExpiresIn = env.jwtRefreshExpiresIn;
+  
+  if (payload.role === 'VENDOR' || payload.role === 'COORDINATOR') {
+    expiresIn = '14d'; // Extended session duration
+    refreshExpiresIn = '30d'; // Extended refresh duration
+  }
+
+  const token = jwt.sign(payload, env.jwtSecret, { expiresIn });
+  const refreshToken = jwt.sign(payload, env.jwtRefreshSecret, { expiresIn: refreshExpiresIn });
   return { token, refreshToken };
 }
 
@@ -72,7 +80,11 @@ async function refresh(token) {
   }
 
   const payload = { id: user.id, tenantId: user.tenantId, role: user.role };
-  const newToken = jwt.sign(payload, env.jwtSecret, { expiresIn: env.jwtExpiresIn });
+  let expiresIn = env.jwtExpiresIn;
+  if (payload.role === 'VENDOR' || payload.role === 'COORDINATOR') {
+    expiresIn = '14d';
+  }
+  const newToken = jwt.sign(payload, env.jwtSecret, { expiresIn });
 
   return { token: newToken };
 }

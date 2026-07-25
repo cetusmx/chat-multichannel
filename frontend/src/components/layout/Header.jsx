@@ -28,7 +28,7 @@ export default function Header() {
   }
 
   return (
-    <header className="flex h-14 items-center justify-between border-b border-slate-800 bg-slate-900/50 px-6 backdrop-blur-sm">
+    <header className="relative z-50 flex h-14 items-center justify-between border-b border-slate-800 bg-slate-900/50 px-6 backdrop-blur-sm">
       <div className="flex items-center gap-4">
         <span className="text-sm font-semibold text-sales-slate-100">{user?.tenantName}</span>
         <div className="h-4 w-px bg-slate-700" />
