@@ -88,9 +88,7 @@ describe('AIService', () => {
       expect(aiService.generateResponse).toHaveBeenCalledWith(
         'tenant1',
         expect.any(Array), // Formatted history
-        expect.stringMatching(/Company info: we sell widgets/), // Context
-        undefined, // tools not passed by inline suggestion
-        undefined  // toolHandlers not passed by inline suggestion
+        expect.stringMatching(/Company info: we sell widgets/) // Context
       );
       expect(result).toBe('Suggested reply: We sell widgets.');
     });
