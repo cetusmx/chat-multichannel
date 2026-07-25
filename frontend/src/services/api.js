@@ -166,6 +166,23 @@ export async function uploadKnowledgeBaseDocument(file) {
 }
 
 /**
+ * Deletes a document from the knowledge base.
+ * @param {string} documentId - Document ID to delete
+ * @returns {Promise<Object>} Response object
+ */
+export async function deleteKnowledgeBaseDocument(documentId) {
+  const res = await fetch(`${API_URL}/tenant/knowledge-base/${documentId}`, {
+    method: 'DELETE',
+    headers: getHeaders()
+  });
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({}));
+    throw new Error(error.error || 'Failed to delete document');
+  }
+  return res.json();
+}
+
+/**
  * Retrieves the knowledge base documents for the tenant.
  * @returns {Promise<Object>} List of documents
  */

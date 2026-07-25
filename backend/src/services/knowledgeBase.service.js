@@ -111,6 +111,27 @@ class KnowledgeBaseService {
     }
   }
 
-}
+  async deleteDocument(tenantId, documentId) {
+    const document = await prisma.document.findFirst({
+      where: { id: documentId, tenantId }
+    });
+    
+    if (!document) {
+      throw new ApiError(404, 'Document not found or does not belong to this tenant');
+    }
 
+    // Prisma relation handles deleting document_chunks (onDelete: Cascade) or we do it manually.
+    // Let's explicitly delete chunks just in case, though Prisma usually handles it.
+    await prisma.documentChunk.deleteMany({
+      where: { documentId }
+    });
+
+    await prisma.document.delete({
+      where: { id: documentId }
+    });
+
+    return { message: 'Document deleted successfully' };
+  }
+
+}
 module.exports = new KnowledgeBaseService();

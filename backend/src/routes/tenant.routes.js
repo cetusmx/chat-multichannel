@@ -142,6 +142,33 @@ router.post(
 
 /**
  * @swagger
+ * /tenant/knowledge-base/{id}:
+ *   delete:
+ *     summary: Delete a document from the knowledge base
+ *     tags: [Tenant, KnowledgeBase]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Document deleted successfully
+ */
+router.delete('/knowledge-base/:id', authorize('ADMIN'), async (req, res, next) => {
+  try {
+    const result = await knowledgeBaseService.deleteDocument(req.user.tenantId, req.params.id);
+    success(res, result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * @swagger
  * /tenant/assignment-config:
  *   get:
  *     summary: Retrieve client assignment configuration

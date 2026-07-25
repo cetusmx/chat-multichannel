@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { uploadKnowledgeBaseDocument, getKnowledgeBaseDocuments } from '../../services/api';
+import { uploadKnowledgeBaseDocument, getKnowledgeBaseDocuments, deleteKnowledgeBaseDocument } from '../../services/api';
 
 export default function KnowledgeBaseSection() {
   const [documents, setDocuments] = useState([]);
@@ -59,6 +59,20 @@ export default function KnowledgeBaseSection() {
       setError(err.message);
     } finally {
       setUploading(false);
+    }
+  };
+  
+  const handleDelete = async (id) => {
+    if (!window.confirm('¿Seguro que deseas eliminar este documento? Esta acción no se puede deshacer.')) return;
+    
+    try {
+      setLoading(true);
+      setError('');
+      await deleteKnowledgeBaseDocument(id);
+      await fetchDocuments();
+    } catch (err) {
+      setError(err.message);
+      setLoading(false);
     }
   };
   
@@ -132,6 +146,7 @@ export default function KnowledgeBaseSection() {
                 <th className="px-4 py-3">Tamaño</th>
                 <th className="px-4 py-3">Estado</th>
                 <th className="px-4 py-3">Fecha</th>
+                <th className="px-4 py-3">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800">
@@ -143,7 +158,7 @@ export default function KnowledgeBaseSection() {
                 </tr>
               ) : documents.length === 0 ? (
                 <tr>
-                  <td colSpan="4" className="px-4 py-6 text-center text-sales-slate-500">
+                  <td colSpan="5" className="px-4 py-6 text-center text-sales-slate-500">
                     No hay documentos subidos a la base de conocimiento.
                   </td>
                 </tr>
@@ -156,6 +171,15 @@ export default function KnowledgeBaseSection() {
                     <td className="px-4 py-3">{formatSize(doc.size)}</td>
                     <td className="px-4 py-3">{getStatusBadge(doc.status)}</td>
                     <td className="px-4 py-3">{new Date(doc.createdAt).toLocaleDateString()}</td>
+                    <td className="px-4 py-3">
+                      <button
+                        onClick={() => handleDelete(doc.id)}
+                        className="text-red-400 hover:text-red-300 transition-colors"
+                        title="Eliminar documento"
+                      >
+                        Eliminar
+                      </button>
+                    </td>
                   </tr>
                 ))
               )}
