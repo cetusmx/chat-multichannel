@@ -7,7 +7,7 @@ const { decrypt } = require('../utils/encryption');
 class GeminiProvider extends AIProvider {
   constructor() {
     super();
-    this.defaultModel = 'gemini-1.5-flash';
+    this.defaultModel = 'gemini-2.5-flash';
   }
 
   async _getApiKey(tenantId) {
@@ -98,7 +98,7 @@ class GeminiProvider extends AIProvider {
       const genAI = new GoogleGenerativeAI(apiKey);
       
       // Use the recommended model for embeddings
-      const model = genAI.getGenerativeModel({ model: 'text-embedding-004' });
+      const model = genAI.getGenerativeModel({ model: 'gemini-embedding-2' });
       
       const result = await model.embedContent(text);
       const embedding = result.embedding;
