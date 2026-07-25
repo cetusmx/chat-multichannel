@@ -68,6 +68,19 @@ class GeminiProvider extends AIProvider {
       const result = await chat.sendMessage(lastMessage.parts[0].text);
       return { content: result.response.text() };
     } catch (error) {
+      if (error.message.includes('404') || error.status === 404) {
+        try {
+          const apiKey = await this._getApiKey(tenantId);
+          const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
+          const data = await res.json();
+          const models = data.models ? data.models.filter(m => Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent')).map(m => m.name.replace('models/', '')).join(', ') : 'unknown';
+          const errMsg = `El modelo ${this.defaultModel} devolvió 404. Modelos disponibles para tu llave: ${models}`;
+          console.error('[GEMINI DIAGNOSTICS]', errMsg);
+          throw new ApiError(502, errMsg);
+        } catch (e) {
+          throw new ApiError(502, 'Gemini Provider Error: ' + error.message);
+        }
+      }
       if (error instanceof ApiError) throw error;
       throw new ApiError(502, 'Gemini Provider Error: ' + error.message);
     }
@@ -91,6 +104,19 @@ class GeminiProvider extends AIProvider {
       const embedding = result.embedding;
       return embedding.values; // Returns Array of numbers
     } catch (error) {
+      if (error.message.includes('404') || error.status === 404) {
+        try {
+          const apiKey = await this._getApiKey(tenantId);
+          const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
+          const data = await res.json();
+          const models = data.models ? data.models.filter(m => Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes('embedContent')).map(m => m.name.replace('models/', '')).join(', ') : 'unknown';
+          const errMsg = `El modelo de embeddings devolvió 404. Modelos de embedding disponibles: ${models}`;
+          console.error('[GEMINI DIAGNOSTICS]', errMsg);
+          throw new ApiError(502, errMsg);
+        } catch (e) {
+          throw new ApiError(502, 'Gemini Provider Embed Error: ' + error.message);
+        }
+      }
       if (error instanceof ApiError) throw error;
       throw new ApiError(502, 'Gemini Provider Embed Error: ' + error.message);
     }
