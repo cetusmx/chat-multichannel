@@ -319,7 +319,7 @@ model Document {
 model DocumentChunk {
   id         String                     @id @default(uuid())
   text       String                     @db.Text
-  embedding  Unsupported("vector(768)")
+  embedding  Unsupported("vector")
   documentId String                     @map("document_id")
   tenantId   String                     @map("tenant_id")
   createdAt  DateTime                   @default(now()) @map("created_at")
