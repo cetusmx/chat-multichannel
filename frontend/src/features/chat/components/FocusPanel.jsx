@@ -9,7 +9,6 @@ import ConfirmModal from '../../../components/ConfirmModal';
 const VendorAssignmentSelect = ({ conversation }) => {
   const [vendors, setVendors] = useState([]);
   const [isAssigning, setIsAssigning] = useState(false);
-  const [isAssigning, setIsAssigning] = useState(false);
   const [confirmVendor, setConfirmVendor] = useState(null);
   const user = useAuthStore(s => s.user);
 
