@@ -93,16 +93,30 @@ class AIService {
         console.warn('RAG search failed, continuing without context:', err.message);
       }
 
+      // Fetch active vendors dynamically
+      const activeVendorsList = await prisma.user.findMany({
+        where: { tenantId, role: 'VENDOR', isActive: true },
+        select: { name: true }
+      });
+      const vendorNames = activeVendorsList.map(v => v.name).join(', ') || 'Ninguno disponible';
+
+      const dynamicContext = `
+[DATOS EN TIEMPO REAL DEL SISTEMA]
+- ¿Fuera de horario laboral?: ${isOffHours ? 'SÍ (Estamos cerrados)' : 'NO (Estamos abiertos)'}
+- Equipo de vendedores: ${vendorNames}
+- Instrucción dinámica: Si el cliente pregunta por un vendedor específico que esté en el equipo, indícale si estamos dentro o fuera de horario e incluye [[ESCALATE]] para asignarle el chat a esa persona.
+[FIN DE DATOS]
+`;
+
       let baseSystemInstruction = '';
       if (!contextString) {
-        baseSystemInstruction = `You are a helpful sales assistant. However, I currently do not have access to the knowledge base. You MUST include the exact string [[ESCALATE]] anywhere in your reply.`;
+        baseSystemInstruction = `Eres un asistente de ventas de esta empresa. Actualmente no tienes documentos en tu base de conocimientos. Sé amable, responde de forma general y DEBES incluir la cadena exacta [[ESCALATE]] en cualquier parte de tu respuesta para que un humano tome el chat.\n${dynamicContext}`;
       } else {
-        baseSystemInstruction = `You are a helpful sales assistant for this company. Use ONLY the following context to answer the user's questions. If the user explicitly asks to speak to a human, or if you cannot confidently answer their question based on the provided context, you MUST include the exact string [[ESCALATE]] anywhere in your reply.\n\nContext:\n${contextString}`;
+        baseSystemInstruction = `Eres un asistente de ventas de esta empresa. Usa ÚNICAMENTE el siguiente contexto de la base de conocimientos para responder. Si el cliente pide explícitamente hablar con un humano, pregunta por un vendedor específico, o si no sabes la respuesta basada en el contexto, DEBES incluir la cadena exacta [[ESCALATE]] en cualquier parte de tu respuesta.\n\nContexto:\n${contextString}\n${dynamicContext}`;
       }
 
       if (isOffHours) {
-        const contextMsg = contextString ? ' answer their question if possible using context,' : ' answer their question if possible,';
-        baseSystemInstruction += `\n\nIt is currently outside business hours. You must self-identify as an AI, inform the user that a human agent will contact them the next morning,${contextMsg} and include [[ESCALATE]] so a human agent is assigned.`;
+        baseSystemInstruction += `\nAl estar fuera de horario laboral, preséntate brevemente como Inteligencia Artificial, resuelve la duda si puedes usar el Contexto, infórmale que los humanos regresarán al siguiente día hábil e incluye siempre [[ESCALATE]].`;
       }
 
       const response = await this.generateResponse(tenantId, formattedHistory, baseSystemInstruction);
