@@ -98,7 +98,48 @@ const whatsappService = {
         const changes = entry.changes || [];
         for (const change of changes) {
           const value = change.value;
-          // Ignoramos statuses (leídos, entregados) por ahora en este MVP.
+          
+          // Process delivery statuses (capturing asynchronous failures from Meta, e.g. 24h window or unsupported codecs)
+          if (value && value.statuses && value.statuses.length > 0) {
+            for (const st of value.statuses) {
+              if (st.status === 'failed' && st.id) {
+                console.error(`[WHATSAPP_SERVICE] Delivery failure status from Meta for waMessageId ${st.id}:`, JSON.stringify(st));
+                try {
+                  const errObj = st.errors && st.errors[0];
+                  const errCode = errObj ? errObj.code : 'Desconocido';
+                  const errTitle = errObj ? (errObj.title || errObj.message || '') : '';
+                  const errDetails = errObj && errObj.error_data ? errObj.error_data.details : '';
+                  const fullErrText = `[Error de entrega de Meta (Code: ${errCode}): ${errTitle} ${errDetails}]`.trim();
+
+                  const msgRecord = await prisma.message.findFirst({
+                    where: { waMessageId: st.id },
+                    include: { attachments: true, conversation: true }
+                  });
+
+                  if (msgRecord && !msgRecord.content.includes('Error de entrega de Meta')) {
+                    const updatedMsg = await prisma.message.update({
+                      where: { id: msgRecord.id },
+                      data: {
+                        status: 'FAILED',
+                        content: `${msgRecord.content}\n\n⚠️ ${fullErrText}`
+                      },
+                      include: { attachments: true }
+                    });
+                    
+                    try {
+                      const socket = require('../socket');
+                      socket.getIo().of('/chat').to(`conversation:${msgRecord.conversationId}`).to(`tenant_${msgRecord.conversation.tenantId}_coordinators`).emit('message_updated', updatedMsg);
+                    } catch (socErr) {
+                      console.error('[WHATSAPP_SERVICE] Error emitting message_updated socket:', socErr.message);
+                    }
+                  }
+                } catch (e) {
+                  console.error('[WHATSAPP_SERVICE] Error processing status update:', e.message);
+                }
+              }
+            }
+          }
+
           if (value && value.messages && value.messages.length > 0) {
             const message = value.messages[0];
             const contact = value.contacts && value.contacts[0];
