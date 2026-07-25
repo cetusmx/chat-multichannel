@@ -8,6 +8,9 @@ const ApiError = require('../../src/utils/ApiError');
 jest.mock('../../src/config/database', () => ({
   message: {
     findMany: jest.fn()
+  },
+  user: {
+    findMany: jest.fn()
   }
 }));
 
@@ -21,6 +24,7 @@ jest.spyOn(aiService, 'generateResponse').mockImplementation();
 describe('AIService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    prisma.user.findMany.mockResolvedValue([{ name: 'Test Vendor' }]);
   });
 
   describe('generateAutoResponse', () => {
