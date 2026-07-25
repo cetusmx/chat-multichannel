@@ -4,10 +4,13 @@ import useChatStore from '../../../stores/useChatStore';
 import MessageList from './MessageList';
 import useAuthStore from '../../../stores/useAuthStore';
 import { get, post, postFormData, patch } from '../../../services/api';
+import ConfirmModal from '../../../components/ConfirmModal';
 
 const VendorAssignmentSelect = ({ conversation }) => {
   const [vendors, setVendors] = useState([]);
   const [isAssigning, setIsAssigning] = useState(false);
+  const [isAssigning, setIsAssigning] = useState(false);
+  const [confirmVendor, setConfirmVendor] = useState(null);
   const user = useAuthStore(s => s.user);
 
   useEffect(() => {
@@ -24,35 +27,49 @@ const VendorAssignmentSelect = ({ conversation }) => {
   if (user?.role !== 'COORDINATOR' && user?.role !== 'ADMIN') return null;
   if (!conversation?.id) return null;
 
-  const handleAssign = async (e) => {
+  const handleAssignClick = (e) => {
     const newVendorId = e.target.value;
+    const vendor = vendors.find(v => v.id === newVendorId);
+    setConfirmVendor(vendor || { id: '', name: 'Sin Asignar' });
+  };
+
+  const executeAssign = async () => {
+    if (!confirmVendor) return;
     setIsAssigning(true);
     try {
-       const res = await patch(`/chat/${conversation.id}/assign`, { vendorId: newVendorId });
+       const res = await patch(`/chat/${conversation.id}/assign`, { vendorId: confirmVendor.id });
        if (!res.ok) throw new Error('Error asignando');
-       // Success feedback
-       alert('Conversación reasignada exitosamente');
     } catch (err) {
        console.error(err);
-       alert('Error reasignando conversación');
     } finally {
        setIsAssigning(false);
+       setConfirmVendor(null);
     }
   };
 
   return (
-    <select 
-      value={conversation?.vendorId || ''} 
-      onChange={handleAssign}
-      disabled={isAssigning}
-      className="mr-8 px-2 py-1 bg-sales-slate-800 text-sales-slate-300 text-sm border border-sales-slate-700 rounded focus:outline-none focus:border-sales-cyan-500"
-      title="Asignar Asesor"
-    >
-      <option value="">Sin Asignar</option>
-      {vendors.map(v => (
-        <option key={v.id} value={v.id}>{v.name || v.email}</option>
-      ))}
-    </select>
+    <>
+      <select 
+        value={conversation?.vendorId || ''} 
+        onChange={handleAssignClick}
+        disabled={isAssigning}
+        className="mr-8 px-2 py-1 bg-sales-slate-800 text-sales-slate-300 text-sm border border-sales-slate-700 rounded focus:outline-none focus:border-sales-cyan-500"
+        title="Asignar Asesor"
+      >
+        <option value="">Sin Asignar</option>
+        {vendors.map(v => (
+          <option key={v.id} value={v.id}>{v.name || v.email}</option>
+        ))}
+      </select>
+
+      <ConfirmModal
+        open={!!confirmVendor}
+        title="Reasignar Conversación"
+        message={`¿Estás seguro de reasignar esta conversación a "${confirmVendor?.name || confirmVendor?.email}"?`}
+        onConfirm={executeAssign}
+        onCancel={() => setConfirmVendor(null)}
+      />
+    </>
   );
 };
 const ClientBlockToggle = ({ conversation }) => {
