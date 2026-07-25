@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { uploadKnowledgeBaseDocument, getKnowledgeBaseDocuments, deleteKnowledgeBaseDocument } from '../../services/api';
+import ConfirmModal from '../../components/ConfirmModal.jsx';
 
 export default function KnowledgeBaseSection() {
   const [documents, setDocuments] = useState([]);
@@ -7,6 +8,7 @@ export default function KnowledgeBaseSection() {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
   const [file, setFile] = useState(null);
+  const [confirmDelete, setConfirmDelete] = useState(null);
   
   useEffect(() => {
     fetchDocuments();
@@ -62,17 +64,17 @@ export default function KnowledgeBaseSection() {
     }
   };
   
-  const handleDelete = async (id) => {
-    if (!window.confirm('¿Seguro que deseas eliminar este documento? Esta acción no se puede deshacer.')) return;
-    
+  const executeDelete = async (id) => {
     try {
       setLoading(true);
       setError('');
       await deleteKnowledgeBaseDocument(id);
+      setConfirmDelete(null);
       await fetchDocuments();
     } catch (err) {
       setError(err.message);
       setLoading(false);
+      setConfirmDelete(null);
     }
   };
   
@@ -173,7 +175,7 @@ export default function KnowledgeBaseSection() {
                     <td className="px-4 py-3">{new Date(doc.createdAt).toLocaleDateString()}</td>
                     <td className="px-4 py-3">
                       <button
-                        onClick={() => handleDelete(doc.id)}
+                        onClick={() => setConfirmDelete(doc)}
                         className="text-red-400 hover:text-red-300 transition-colors"
                         title="Eliminar documento"
                       >
@@ -187,6 +189,14 @@ export default function KnowledgeBaseSection() {
           </table>
         </div>
       </div>
+      
+      <ConfirmModal
+        open={!!confirmDelete}
+        title="Eliminar Documento"
+        message={`¿Seguro que deseas eliminar el documento "${confirmDelete?.filename}"? Esta acción no se puede deshacer.`}
+        onConfirm={() => executeDelete(confirmDelete?.id)}
+        onCancel={() => setConfirmDelete(null)}
+      />
     </div>
   );
 }
