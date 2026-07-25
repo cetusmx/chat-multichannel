@@ -171,12 +171,17 @@ export async function uploadKnowledgeBaseDocument(file) {
  * @returns {Promise<Object>} Response object
  */
 export async function deleteKnowledgeBaseDocument(documentId) {
-  const res = await fetch(`${API_URL}/tenant/knowledge-base/${documentId}`, {
-    method: 'DELETE',
-    headers: getHeaders()
-  });
+  const res = await del(`/tenant/knowledge-base/${documentId}`);
   if (!res.ok) {
-    const error = await res.json().catch(() => ({}));
+    const text = await res.text();
+    let error = {};
+    if (text) {
+      try {
+        error = text.startsWith('{') ? JSON.parse(text) : { error: text };
+      } catch (e) {
+        error = { error: text };
+      }
+    }
     throw new Error(error.error || 'Failed to delete document');
   }
   return res.json();
