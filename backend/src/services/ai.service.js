@@ -329,7 +329,14 @@ class AIService {
             if (data && data.data && data.data.length > 0) {
               const cliente = data.data[0];
               if (cliente.STATUS === 'A') {
-                return { status: "success", cliente };
+                const calle = cliente.CALLE || '';
+                const num = cliente.NUMEXT || '';
+                const col = cliente.COLONIA ? `Col. ${cliente.COLONIA}` : '';
+                const cp = cliente.CODIGO ? `C.P. ${cliente.CODIGO}` : '';
+                const mun = cliente.MUNICIPIO || '';
+                const est = cliente.ESTADO || '';
+                const direccion = `${calle} ${num}, ${col}, ${cp}, ${mun}, ${est}`.trim().replace(/,\s*,/g, ',');
+                return { status: "success", razon_social: cliente.NOMBRE, rfc: cliente.RFC, direccion };
               } else {
                 return { status: "inactive", message: "El cliente existe pero no está activo en el sistema." };
               }

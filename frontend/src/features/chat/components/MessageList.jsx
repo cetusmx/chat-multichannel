@@ -472,7 +472,7 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
         )}
         
         {useMemo(() => messages.map((msg) => {
-          const isMyTeam = ['VENDOR', 'SYSTEM', 'COORDINATOR', 'ADMIN'].includes(msg.senderType);
+          const isMyTeam = ['VENDOR', 'SYSTEM', 'COORDINATOR', 'ADMIN', 'IA'].includes(msg.senderType);
           const isHighlighted = msg.id === highlightedMessageId;
           return (
             <div 
