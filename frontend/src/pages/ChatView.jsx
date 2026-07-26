@@ -4,6 +4,7 @@ import MessageList from '../features/chat/components/MessageList';
 import useChatStore from '../stores/useChatStore';
 
 import CommandPalette from '../features/chat/components/CommandPalette';
+import CartViewer from '../features/chat/components/CartViewer';
 
 /**
  * ChatView - Vista principal para la gestión de mensajería (WhatsApp MVP)
@@ -79,6 +80,13 @@ export default function ChatView() {
                 isLoadingMore={isLoadingMore}
               />
             </div>
+            {/* Columna Opcional: Visor del Carrito del Cliente */}
+            {activeConv?.client?.cartData && Array.isArray(activeConv.client.cartData) && activeConv.client.cartData.length > 0 && (
+              <CartViewer 
+                cartData={activeConv.client.cartData} 
+                client={activeConv.client}
+              />
+            )}
           </div>
         ) : (
           <div className="flex-1 flex items-center justify-center bg-sales-slate-900 text-sales-slate-500">
