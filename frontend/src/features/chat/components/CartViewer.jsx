@@ -4,12 +4,14 @@ import { ShoppingCart, Package, Info } from 'lucide-react';
 export default function CartViewer({ cartData, client }) {
   let cartItems = [];
   let shippingAddress = null;
+  let razonSocial = null;
 
   if (Array.isArray(cartData)) {
     cartItems = cartData;
   } else if (cartData && cartData.items) {
     cartItems = cartData.items;
     shippingAddress = cartData.shippingAddress;
+    razonSocial = cartData.razonSocial;
   }
 
   if (!cartItems || cartItems.length === 0) {
@@ -20,10 +22,6 @@ export default function CartViewer({ cartData, client }) {
   const total = cartItems.reduce((sum, item) => sum + ((item.precio || 0) * (item.cantidad || 1)), 0);
   const subtotal = total / 1.16;
   const iva = total - subtotal;
-  
-  const cData = activeConv?.client?.cartData || (Array.isArray(cartData) ? null : cartData);
-  const shippingAddress = Array.isArray(cData) ? null : cData?.shippingAddress;
-  const razonSocial = Array.isArray(cData) ? null : cData?.razonSocial;
 
   return (
     <div className="flex flex-col h-full bg-sales-slate-900/95 overflow-hidden rounded-l-2xl shadow-2xl border-l border-sales-slate-700/50">
