@@ -130,6 +130,7 @@ export default function CartViewer({ cartData, client }) {
 
   const handleInjectProduct = (product) => {
     const newItems = [...cartItems];
+    const desc = product.DESC_ECOMM || product.DESCR || product.NOMBRE;
     // Check if already in cart
     const existingIdx = newItems.findIndex(i => i.clave === product.CVE_ART);
     if (existingIdx >= 0) {
@@ -137,12 +138,16 @@ export default function CartViewer({ cartData, client }) {
     } else {
       newItems.push({
         clave: product.CVE_ART,
-        descripcion: product.DESC_ECOMM || product.DESCR || product.NOMBRE,
+        descripcion: desc,
         precio: (product.PRECIO || 0) * 1.16, // Guardamos el precio Neto
         cantidad: 1
       });
     }
     saveCart(newItems);
+    
+    // Send auto-confirmation message to chat
+    sendMessage(`✅ *Agregado al carrito:*\n1x ${product.CVE_ART} - ${desc}`, false);
+
     // Optional: Auto-switch back to cart to show the added item
     setActiveTab('current');
   };
