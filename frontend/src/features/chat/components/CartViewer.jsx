@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { ShoppingCart, Package, Info, Plus, Minus, Trash2, Trash, Search, Database, Loader2, ArrowRight, Filter } from 'lucide-react';
+import { ShoppingCart, Package, Info, Plus, Minus, Trash2, Trash, Search, Database, Loader2, ArrowRight, Filter, Send } from 'lucide-react';
 import { updateClientCart, searchSealMarketCatalog, getSealMarketFamilias } from '../../../services/api';
+import useChatStore from '../../../stores/useChatStore';
 
 export default function CartViewer({ cartData, client }) {
   const [activeTab, setActiveTab] = useState('current'); // 'current' or 'catalog'
   const [isUpdating, setIsUpdating] = useState(false);
+  const { sendMessage } = useChatStore();
   
   // Catalog state
   const [familias, setFamilias] = useState([]);
@@ -117,6 +119,32 @@ export default function CartViewer({ cartData, client }) {
     saveCart(newItems);
     // Optional: Auto-switch back to cart to show the added item
     setActiveTab('current');
+  };
+
+  const handleSendSummary = () => {
+    if (cartItems.length === 0) return;
+    
+    let text = '*🛒 RESUMEN DE CARRITO*\n';
+    text += '----------------------------------------\n';
+    
+    cartItems.forEach(item => {
+      const lineTotal = (item.precio || 0) * (item.cantidad || 1);
+      text += `${item.cantidad}x ${item.clave}\n`;
+      text += `_${item.descripcion}_\n`;
+      text += `$${(item.precio || 0).toFixed(2)} c/u  ->  $${lineTotal.toFixed(2)}\n`;
+      text += '----------------------------------------\n';
+    });
+    
+    text += `*Subtotal:* $${subtotal.toFixed(2)}\n`;
+    text += `*IVA (16%):* $${iva.toFixed(2)}\n`;
+    text += `*Total Neto:* $${total.toFixed(2)}\n`;
+
+    if (shippingAddress) {
+      text += `\n*Dirección de Envío:*\n${shippingAddress}`;
+    }
+
+    // Enviar el mensaje como el vendedor (isInternal = false)
+    sendMessage(text, false);
   };
 
   // Calculate totals for current cart
@@ -409,12 +437,23 @@ export default function CartViewer({ cartData, client }) {
               <span className="text-sales-blue-400">${total.toFixed(2)}</span>
             </div>
           </div>
-          <button 
-            className="w-full py-2.5 px-4 bg-sales-blue-600 hover:bg-sales-blue-500 text-white rounded-lg font-medium transition-colors shadow-lg shadow-sales-blue-900/20 flex justify-center items-center gap-2"
-            onClick={() => alert("Función de generar cotización PDF en desarrollo")}
-          >
-            Generar Cotización PDF
-          </button>
+          <div className="flex gap-2">
+            <button 
+              className="flex-1 py-2.5 px-3 bg-sales-slate-800 hover:bg-sales-slate-700 border border-sales-slate-700 text-sales-blue-400 rounded-lg font-medium transition-colors shadow-lg flex justify-center items-center gap-2"
+              onClick={handleSendSummary}
+              disabled={cartItems.length === 0}
+              title="Enviar resumen al chat"
+            >
+              <Send className="w-4 h-4" />
+              Enviar al Chat
+            </button>
+            <button 
+              className="flex-1 py-2.5 px-3 bg-sales-blue-600 hover:bg-sales-blue-500 text-white rounded-lg font-medium transition-colors shadow-lg shadow-sales-blue-900/20 flex justify-center items-center gap-2"
+              onClick={() => alert("Función de generar cotización PDF en desarrollo")}
+            >
+              Cotización PDF
+            </button>
+          </div>
         </div>
       )}
     </div>
