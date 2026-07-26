@@ -1,0 +1,1 @@
+const { PrismaClient } = require('@prisma/client'); const prisma = new PrismaClient(); async function run() { await prisma.conversation.updateMany({ data: { status: 'PENDING_ASSIGNMENT', vendorId: null, aiPendingEscalation: false } }); console.log('All chats reset'); } run().finally(() => prisma.$disconnect());

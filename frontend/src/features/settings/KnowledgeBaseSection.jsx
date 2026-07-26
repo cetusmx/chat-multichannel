@@ -12,17 +12,29 @@ export default function KnowledgeBaseSection() {
   
   useEffect(() => {
     fetchDocuments();
+    
+    // Poll every 3 seconds if there are processing documents
+    const intervalId = setInterval(() => {
+      setDocuments(currentDocs => {
+        if (currentDocs.some(doc => doc.status === 'PROCESSING')) {
+          fetchDocuments(true);
+        }
+        return currentDocs;
+      });
+    }, 3000);
+
+    return () => clearInterval(intervalId);
   }, []);
   
-  const fetchDocuments = async () => {
+  const fetchDocuments = async (silent = false) => {
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       const res = await getKnowledgeBaseDocuments();
       setDocuments(res.data);
     } catch (err) {
-      setError(err.message);
+      if (!silent) setError(err.message);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
   

@@ -252,3 +252,17 @@ export async function updateSlaConfig(data) {
   });
   return res.data;
 }
+
+export async function updateClientCart(clientId, cartData) {
+  const res = await patch(`/clients/${clientId}/cart`, { cartData });
+  return res.json();
+}
+
+export async function searchSealMarketCatalog(params) {
+  const query = new URLSearchParams(params).toString();
+  const res = await get(`/sealmarket/catalog/search?${query}`);
+  if (!res.ok) {
+    throw new Error('Error buscando en catálogo');
+  }
+  return res.json();
+}

@@ -620,6 +620,25 @@ const useChatStore = create((set, get) => ({
     newSocket.on('chat:assigned', handleStatusChange('ACTIVE'));
     newSocket.on('chat:resolved', handleStatusChange('CLOSED'));
 
+    newSocket.on('cart_updated', (payload) => {
+      set((state) => {
+        const { clientId, cartData } = payload;
+        const nextConversations = state.conversations.map(c => {
+          if (c.client?.id === clientId) {
+            return {
+              ...c,
+              client: {
+                ...c.client,
+                cartData: cartData
+              }
+            };
+          }
+          return c;
+        });
+        return { conversations: nextConversations };
+      });
+    });
+
     newSocket.on('client_blocked', (updatedClient) => {
       set((state) => {
         // Also remove any closed conversations from the store if the client is blocked

@@ -65,4 +65,43 @@ router.patch('/:id/block', authenticate, authorize('ADMIN', 'COORDINATOR'), asyn
   }
 });
 
+router.patch('/:id/cart', authenticate, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { cartData } = req.body;
+
+    const client = await prisma.client.findUnique({ where: { id } });
+
+    if (!client || client.tenantId !== req.user.tenantId) {
+      return res.status(404).json({ error: 'Client not found' });
+    }
+
+    const updatedClient = await prisma.client.update({
+      where: { id },
+      data: { cartData }
+    });
+
+    try {
+      const io = getIo();
+      // Emit to vendor and coordinator rooms just in case
+      io.of('/chat').to(`tenant_${client.tenantId}_coordinators`).emit('cart_updated', { clientId: id, cartData });
+      
+      const conversations = await prisma.conversation.findMany({
+        where: { clientId: id, status: 'ACTIVE' }
+      });
+      conversations.forEach(c => {
+        if (c.vendorId) {
+          io.of('/chat').to(`vendor_${c.vendorId}`).emit('cart_updated', { clientId: id, cartData });
+        }
+      });
+    } catch (socketErr) {
+      console.error('Failed to emit cart_updated', socketErr);
+    }
+
+    res.json({ data: updatedClient });
+  } catch (error) {
+    next(error);
+  }
+});
+
 module.exports = router;

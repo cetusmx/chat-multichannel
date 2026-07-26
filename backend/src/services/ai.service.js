@@ -130,7 +130,7 @@ class AIService {
 9. PEDIDOS Y CARRITO: Tu rol incluye TOMAR EL PEDIDO. Ve recordando internamente qué productos y cantidades confirma el cliente. SIEMPRE usa la herramienta 'actualizar_carrito' para guardar este estado.
 10. FORMATO DE RESULTADOS Y PRECIOS: Cuando muestres productos, NO satures el chat. Muestra ÚNICAMENTE la clave del artículo, la descripción breve, el precio neto (ya con el 16% de IVA incluido) y el total global de existencias. TODOS los precios que devuelva el catálogo están antes de impuestos. DEBES multiplicar siempre el precio por 1.16 y mostrar el resultado final indicando explícitamente "Precio Neto (IVA Incluido)". Haz lo mismo para la suma total de cotizaciones.
 11. COTIZACIONES Y RFC: Si el cliente solicita explícitamente una cotización formal, primero pregúntale su RFC. Si responde que no tiene, asume que es un cliente genérico (Mostrador). Si proporciona un RFC, usa la herramienta 'consultar_cliente_rfc'. Si el resultado es 'success', CONFÍRMALE AL CLIENTE que encontraste sus datos (menciónale su Razón Social / NOMBRE) y dile que con esos datos se elaborará la cotización. MUY IMPORTANTE: Guarda celosamente la "razon_social" y la "direccion" exactas que te devuelva esa herramienta. Cuando llames a 'generar_cotizacion_pdf', pásale esa "razon_social" exacta en los argumentos (NUNCA pases el nombre de pila o nombre de WhatsApp del cliente).
-12. DATOS DE ENVÍO Y ESCALAMIENTO: Cuando el cliente confirme el pedido, te solicite datos bancarios y llegue el momento de coordinar el envío (lo cual requiere escalar el chat a un humano), ANTES de transferirlo, solicítale su Código Postal y Dirección de Envío completa. Si previamente le pediste el RFC y obtuviste sus datos fiscales, PREGÚNTALE si la dirección de envío es la misma que su dirección fiscal, MOSTRÁNDOSELA explícitamente para que la confirme. Una vez que tengas la dirección de envío confirmada, despídete amablemente indicando que un asesor humano retomará la conversación para afinar detalles de pago y envío.
+12. DATOS DE ENVÍO Y ESCALAMIENTO: Cuando el cliente confirme el pedido, te solicite datos bancarios y llegue el momento de coordinar el envío, ANTES de transferirlo a un humano, solicítale su Código Postal y Dirección de Envío completa. Si previamente obtuviste sus datos fiscales, PREGÚNTALE si la dirección de envío es la misma que su dirección fiscal, MOSTRÁNDOSELA explícitamente. Una vez que te confirme su dirección de envío, DEBES invocar OBLIGATORIAMENTE la herramienta 'actualizar_carrito' para inyectar y guardar esa dirección. Finalmente, despídete indicando que un asesor humano retomará el chat.
 `;
 
       let baseSystemInstruction = '';
@@ -411,12 +411,13 @@ class AIService {
             
             const cData = conversation.client.cartData;
             const fallbackRazonSocial = Array.isArray(cData) ? null : cData?.razonSocial;
+            const fallbackDireccion = Array.isArray(cData) ? null : cData?.shippingAddress;
             
             // Generate pseudo clientData for the PDF from args
             const clientDataForPdf = {
               name: args.razon_social || fallbackRazonSocial || conversation.client.name || 'Cliente General',
               RFC: args.rfc || '',
-              address: args.direccion || '',
+              address: args.direccion || fallbackDireccion || '',
               phone: conversation.client.phoneNumber || ''
             };
 
