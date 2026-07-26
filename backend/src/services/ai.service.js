@@ -165,13 +165,17 @@ class AIService {
           },
           {
             name: "actualizar_carrito",
-            description: "Actualiza el estado persistente del carrito de compras del cliente. Úsala CADA VEZ que el cliente confirme que quiere agregar un producto o modificar cantidades. Envía el array COMPLETO de productos que deben quedar en el carrito.",
+            description: "Actualiza el estado persistente del carrito de compras del cliente. Úsala CADA VEZ que el cliente confirme que quiere agregar un producto o modificar cantidades, o cuando confirme su dirección de envío.",
             parameters: {
               type: "OBJECT",
               properties: {
                 cart_items: {
                   type: "STRING",
                   description: "Un string JSON que representa un array de objetos con los productos del pedido actual. Ejemplo: '[{\"clave\": \"OR-050\", \"descripcion\": \"Oring 50mm\", \"cantidad\": 2, \"precio_unitario\": 150}]'"
+                },
+                shipping_address: {
+                  type: "STRING",
+                  description: "Opcional. La dirección de envío completa que el cliente ha confirmado para este pedido."
                 }
               },
               required: ["cart_items"]
@@ -286,13 +290,30 @@ class AIService {
         actualizar_carrito: async (args) => {
           try {
             console.log('[AI TOOL] actualizar_carrito invocado con args:', args);
-            const parsedCart = JSON.parse(args.cart_items);
+            let parsedItems = [];
+            try {
+              parsedItems = JSON.parse(args.cart_items);
+            } catch (e) {
+              return { error: "El formato de cart_items no es un JSON válido." };
+            }
+            
+            // Handle legacy format (if db has array) or new format (if db has object)
+            let existingCart = conversation.client?.cartData || { items: [] };
+            if (Array.isArray(existingCart)) {
+              existingCart = { items: existingCart };
+            }
+            
+            const newCartData = {
+              items: parsedItems,
+              shippingAddress: args.shipping_address || existingCart.shippingAddress || null
+            };
+
             if (conversation?.clientId) {
               await prisma.client.update({
                 where: { id: conversation.clientId },
-                data: { cartData: parsedCart }
+                data: { cartData: newCartData }
               });
-              return { status: "success", message: "Carrito guardado exitosamente en la base de datos.", cart: parsedCart };
+              return { status: "success", cartData: newCartData };
             }
             return { error: "No se encontró el cliente asociado a esta conversación para guardar el carrito." };
           } catch (e) {
@@ -355,8 +376,15 @@ class AIService {
               return { status: 'error', message: 'No hay datos del cliente disponibles para generar la cotización.' };
             }
             
-            const cartData = conversation.client.cartData;
-            if (!cartData || !Array.isArray(cartData) || cartData.length === 0) {
+            let cartDataObj = conversation.client.cartData;
+            let cartItems = [];
+            if (Array.isArray(cartDataObj)) {
+              cartItems = cartDataObj;
+            } else if (cartDataObj && cartDataObj.items) {
+              cartItems = cartDataObj.items;
+            }
+
+            if (!cartItems || cartItems.length === 0) {
               return { status: 'error', message: 'El carrito está vacío. Agrega productos primero.' };
             }
 
@@ -382,7 +410,7 @@ class AIService {
             const filePath = path.join(tempDir, fileName);
 
             // Generate PDF
-            await PdfGeneratorService.generateQuote(clientDataForPdf, cartData, filePath);
+            await PdfGeneratorService.generateQuote(clientDataForPdf, cartItems, filePath);
 
             // Send via WhatsApp
             const fileObj = {

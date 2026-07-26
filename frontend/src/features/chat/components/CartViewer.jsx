@@ -2,12 +2,22 @@ import React from 'react';
 import { ShoppingCart, Package, Info } from 'lucide-react';
 
 export default function CartViewer({ cartData, client }) {
-  if (!cartData || !Array.isArray(cartData) || cartData.length === 0) {
+  let cartItems = [];
+  let shippingAddress = null;
+
+  if (Array.isArray(cartData)) {
+    cartItems = cartData;
+  } else if (cartData && cartData.items) {
+    cartItems = cartData.items;
+    shippingAddress = cartData.shippingAddress;
+  }
+
+  if (!cartItems || cartItems.length === 0) {
     return null;
   }
 
   // Calculate totals
-  const subtotal = cartData.reduce((sum, item) => sum + ((item.precio || 0) * (item.cantidad || 1)), 0);
+  const subtotal = cartItems.reduce((sum, item) => sum + ((item.precio || 0) * (item.cantidad || 1)), 0);
   const iva = subtotal * 0.16;
   const total = subtotal + iva;
 
@@ -26,11 +36,17 @@ export default function CartViewer({ cartData, client }) {
             </h3>
             <p className="text-sm text-sales-slate-100 font-medium truncate">{client.name}</p>
             {client.phone && <p className="text-xs text-sales-slate-400 mt-1">{client.phone}</p>}
+            {shippingAddress && (
+              <div className="mt-2 pt-2 border-t border-sales-slate-700/50">
+                <p className="text-xs font-semibold text-sales-slate-400 mb-1">Dirección de Envío:</p>
+                <p className="text-xs text-sales-slate-300 line-clamp-2">{shippingAddress}</p>
+              </div>
+            )}
           </div>
         )}
 
         <div className="space-y-3">
-          {cartData.map((item, idx) => (
+          {cartItems.map((item, idx) => (
             <div key={idx} className="bg-sales-slate-800/40 rounded-lg p-3 border border-sales-slate-700/30 hover:border-sales-slate-600/50 transition-colors">
               <div className="flex justify-between items-start mb-2">
                 <div className="flex-1 min-w-0 pr-2">
