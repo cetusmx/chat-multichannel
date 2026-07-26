@@ -129,7 +129,7 @@ class AIService {
 8. SIN PRECIO: Si un producto tiene precio $0 o nulo, NO le muestres el precio. Simplemente dile que "más tarde un asesor lo contactará para proporcionarle el precio exacto" y ofrécele seguir buscando más productos.
 9. PEDIDOS Y CARRITO: Tu rol incluye TOMAR EL PEDIDO. Ve recordando internamente qué productos y cantidades confirma el cliente. SIEMPRE usa la herramienta 'actualizar_carrito' para guardar este estado.
 10. FORMATO DE RESULTADOS Y PRECIOS: Cuando muestres productos, NO satures el chat. Muestra ÚNICAMENTE la clave del artículo, la descripción breve, el precio neto (ya con el 16% de IVA incluido) y el total global de existencias. TODOS los precios que devuelva el catálogo están antes de impuestos. DEBES multiplicar siempre el precio por 1.16 y mostrar el resultado final indicando explícitamente "Precio Neto (IVA Incluido)". Haz lo mismo para la suma total de cotizaciones.
-11. COTIZACIONES Y RFC: Si el cliente solicita explícitamente una cotización formal, primero pregúntale su RFC. Si responde que no tiene, asume que es un cliente genérico (Mostrador). Si proporciona un RFC, usa la herramienta 'consultar_cliente_rfc'. Si el resultado es 'success', CONFÍRMALE AL CLIENTE que encontraste sus datos (menciónale su Razón Social / NOMBRE) y dile que con esos datos se elaborará la cotización. Si la herramienta responde 'not_found' o 'inactive', infórmale que no se encontró un cliente activo con ese RFC y trátalo como cliente genérico.
+11. COTIZACIONES Y RFC: Si el cliente solicita explícitamente una cotización formal, primero pregúntale su RFC. Si responde que no tiene, asume que es un cliente genérico (Mostrador). Si proporciona un RFC, usa la herramienta 'consultar_cliente_rfc'. Si el resultado es 'success', CONFÍRMALE AL CLIENTE que encontraste sus datos (menciónale su Razón Social / NOMBRE) y dile que con esos datos se elaborará la cotización. MUY IMPORTANTE: Cuando posteriormente llames a la herramienta 'generar_cotizacion_pdf', DEBES extraer y enviarle los parámetros (razon_social, rfc y direccion) usando exactamente los datos que te devolvió 'consultar_cliente_rfc'.
 12. DATOS DE ENVÍO Y ESCALAMIENTO: Cuando el cliente confirme el pedido, te solicite datos bancarios y llegue el momento de coordinar el envío (lo cual requiere escalar el chat a un humano), ANTES de transferirlo, solicítale su Código Postal y Dirección de Envío completa. Si previamente le pediste el RFC y obtuviste sus datos fiscales, PREGÚNTALE si la dirección de envío es la misma que su dirección fiscal, MOSTRÁNDOSELA explícitamente para que la confirme. Una vez que tengas la dirección de envío confirmada, despídete amablemente indicando que un asesor humano retomará la conversación para afinar detalles de pago y envío.
 `;
 
@@ -196,8 +196,21 @@ class AIService {
             description: "Genera un PDF con la cotización formal de los artículos en el carrito y lo envía al cliente. Úsala SOLAMENTE cuando el cliente te pida explícitamente generar o enviarle la cotización formal en PDF.",
             parameters: {
               type: "OBJECT",
-              properties: {},
-              required: []
+              properties: {
+                razon_social: {
+                  type: "STRING",
+                  description: "Razón Social o nombre del cliente"
+                },
+                rfc: {
+                  type: "STRING",
+                  description: "RFC del cliente"
+                },
+                direccion: {
+                  type: "STRING",
+                  description: "Dirección completa del cliente (Calle, número, colonia, CP)"
+                }
+              },
+              required: ["razon_social"]
             }
           }
         ]
@@ -328,9 +341,9 @@ class AIService {
             return { error: `Error al consultar el RFC: ${e.message}` };
           }
         },
-        generar_cotizacion_pdf: async () => {
+        generar_cotizacion_pdf: async (args) => {
           try {
-            console.log('[AI TOOL] generar_cotizacion_pdf invocado');
+            console.log('[AI TOOL] generar_cotizacion_pdf invocado con args:', args);
             if (!conversation || !conversation.client) {
               return { status: 'error', message: 'No hay datos del cliente disponibles para generar la cotización.' };
             }
@@ -345,6 +358,14 @@ class AIService {
             const PdfGeneratorService = require('./pdf.service');
             const whatsappService = require('./whatsapp.service');
             
+            // Generate pseudo clientData for the PDF from args
+            const clientDataForPdf = {
+              name: args.razon_social || conversation.client.name || 'Cliente General',
+              RFC: args.rfc || '',
+              address: args.direccion || '',
+              phone: conversation.client.phoneNumber || ''
+            };
+
             // Create a temp file path
             const tempDir = path.join(__dirname, '..', '..', 'uploads');
             if (!fs.existsSync(tempDir)) {
@@ -354,7 +375,7 @@ class AIService {
             const filePath = path.join(tempDir, fileName);
 
             // Generate PDF
-            await PdfGeneratorService.generateQuote(conversation.client, cartData, filePath);
+            await PdfGeneratorService.generateQuote(clientDataForPdf, cartData, filePath);
 
             // Send via WhatsApp
             const fileObj = {
