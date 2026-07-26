@@ -108,11 +108,18 @@ class AIService {
 [FIN DE DATOS]
 `;
 
+      const aiRules = `
+[REGLAS ESTRICTAS DE COMPORTAMIENTO]
+1. NUNCA inventes familias de productos. Si el cliente menciona una familia ambigua (ej. "sello") o que no existe explícitamente en tu contexto, NO USES LA HERRAMIENTA. En su lugar, DETENTE y pídele al cliente que aclare dándole ejemplos de las familias válidas que tienes en tu Base de Conocimiento.
+2. Si el cliente menciona una unidad de medida en una dimensión (ej. "interior de 50 mm") y luego da otras dimensiones sin unidad (ej. "exterior 60 y altura 6"), ASUME SIEMPRE que todas comparten la misma unidad (mm).
+3. Asegúrate de mapear los parámetros tal y como los espera la API según el contexto (ej. diam_int, diam_ext, altura, sist_med).
+`;
+
       let baseSystemInstruction = '';
       if (!contextString) {
         baseSystemInstruction = `Eres un asistente de ventas de esta empresa. Actualmente no tienes documentos en tu base de conocimientos. Sé amable, responde de forma general y DEBES incluir la cadena exacta [[ESCALATE]] en cualquier parte de tu respuesta para que un humano tome el chat.\n${dynamicContext}`;
       } else {
-        baseSystemInstruction = `Eres un asistente de ventas de esta empresa. Usa ÚNICAMENTE el siguiente contexto de la base de conocimientos para responder. Si el cliente pide explícitamente hablar con un humano, pregunta por un vendedor específico, o si no sabes la respuesta basada en el contexto, DEBES incluir la cadena exacta [[ESCALATE]] en cualquier parte de tu respuesta.\n\nContexto:\n${contextString}\n${dynamicContext}`;
+        baseSystemInstruction = `Eres un asistente de ventas de esta empresa. Usa ÚNICAMENTE el siguiente contexto de la base de conocimientos para responder. Si el cliente pide explícitamente hablar con un humano, pregunta por un vendedor específico, o si no sabes la respuesta basada en el contexto, DEBES incluir la cadena exacta [[ESCALATE]] en cualquier parte de tu respuesta.\n${aiRules}\n\nContexto:\n${contextString}\n${dynamicContext}`;
       }
 
       if (isOffHours) {
@@ -126,13 +133,13 @@ class AIService {
         functionDeclarations: [
           {
             name: "consultar_catalogo",
-            description: "Busca productos en el catálogo externo de la empresa. Extrae los parámetros de búsqueda que el cliente mencionó y pásalos en formato JSON. Consulta la regla 'Búsqueda de Productos' en tu contexto para saber exactamente qué campos JSON están permitidos para esta empresa. NUNCA inventes campos que no estén en tu contexto.",
+            description: "Busca productos en el catálogo. Extrae los parámetros de búsqueda en JSON. REGLA DE ORO: NO inventes la clave 'familia'. Si es ambigua, NO uses la herramienta y pregúntale al usuario. Si menciona una unidad (ej. mm), asume la misma para las demás medidas (sist_med).",
             parameters: {
               type: "OBJECT",
               properties: {
                 query_params: {
                   type: "STRING",
-                  description: "Un string en formato JSON válido con las claves y valores a buscar. Ejemplo: '{\"familia\": \"LLANTAS\", \"diam_int\": 16}'"
+                  description: "Un string en formato JSON válido con las claves y valores a buscar. Ejemplo: '{\"familia\": \"ORINGS\", \"diam_int\": \"50\", \"diam_ext\": \"60\", \"altura\": \"6\", \"sist_med\": \"mm\"}'"
                 }
               },
               required: ["query_params"]
