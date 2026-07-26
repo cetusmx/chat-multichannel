@@ -190,17 +190,17 @@ class AIService {
               },
               required: ["rfc"]
             }
+          },
+          {
+            name: "generar_cotizacion_pdf",
+            description: "Genera un PDF con la cotización formal de los artículos en el carrito y lo envía al cliente. Úsala SOLAMENTE cuando el cliente te pida explícitamente generar o enviarle la cotización formal en PDF.",
+            parameters: {
+              type: "OBJECT",
+              properties: {},
+              required: []
+            }
           }
         ]
-      },
-      {
-        name: "generar_cotizacion_pdf",
-        description: "Genera un PDF con la cotización formal de los artículos en el carrito y lo envía al cliente. Úsala SOLAMENTE cuando el cliente te pida explícitamente generar o enviarle la cotización formal en PDF.",
-        parameters: {
-          type: "object",
-          properties: {},
-          required: []
-        }
       }];
 
       const toolHandlers = {
