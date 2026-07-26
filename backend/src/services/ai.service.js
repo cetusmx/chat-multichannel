@@ -192,6 +192,15 @@ class AIService {
             }
           }
         ]
+      },
+      {
+        name: "generar_cotizacion_pdf",
+        description: "Genera un PDF con la cotización formal de los artículos en el carrito y lo envía al cliente. Úsala SOLAMENTE cuando el cliente te pida explícitamente generar o enviarle la cotización formal en PDF.",
+        parameters: {
+          type: "object",
+          properties: {},
+          required: []
+        }
       }];
 
       const toolHandlers = {
@@ -317,6 +326,63 @@ class AIService {
           } catch (e) {
             console.error('[AI TOOL] Excepción en consultar_cliente_rfc:', e.message);
             return { error: `Error al consultar el RFC: ${e.message}` };
+          }
+        },
+        generar_cotizacion_pdf: async () => {
+          try {
+            console.log('[AI TOOL] generar_cotizacion_pdf invocado');
+            if (!conversation || !conversation.client) {
+              return { status: 'error', message: 'No hay datos del cliente disponibles para generar la cotización.' };
+            }
+            
+            const cartData = conversation.client.cartData;
+            if (!cartData || !Array.isArray(cartData) || cartData.length === 0) {
+              return { status: 'error', message: 'El carrito está vacío. Agrega productos primero.' };
+            }
+
+            const path = require('path');
+            const fs = require('fs');
+            const PdfGeneratorService = require('./pdf.service');
+            const whatsappService = require('./whatsapp.service');
+            
+            // Create a temp file path
+            const tempDir = path.join(__dirname, '..', '..', 'uploads');
+            if (!fs.existsSync(tempDir)) {
+              fs.mkdirSync(tempDir, { recursive: true });
+            }
+            const fileName = `Cotizacion_${conversation.client.id}_${Date.now()}.pdf`;
+            const filePath = path.join(tempDir, fileName);
+
+            // Generate PDF
+            await PdfGeneratorService.generateQuote(conversation.client, cartData, filePath);
+
+            // Send via WhatsApp
+            const fileObj = {
+              path: filePath,
+              mimetype: 'application/pdf',
+              originalname: 'Cotizacion.pdf'
+            };
+            
+            await whatsappService.sendMedia(
+              conversationId,
+              fileObj,
+              '📄 *Aquí tienes tu Cotización Formal.*\nSi estás de acuerdo con ella, confírmame para proceder con los datos de envío y pago.',
+              'IA',
+              'IA',
+              'Cotizacion.pdf'
+            );
+
+            // Cleanup local file after sending
+            setTimeout(() => {
+              fs.unlink(filePath, (err) => {
+                if (err) console.error('Error deleting temp PDF:', err);
+              });
+            }, 10000);
+
+            return { status: 'success', message: 'Cotización en PDF generada y enviada correctamente al chat del cliente.' };
+          } catch (e) {
+            console.error('[AI TOOL] Excepción en generar_cotizacion_pdf:', e);
+            return { status: 'error', message: `Error al generar el PDF: ${e.message}` };
           }
         }
       };
