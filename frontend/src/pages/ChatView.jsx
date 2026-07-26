@@ -89,7 +89,7 @@ export default function ChatView() {
                       title="Ver Carrito"
                     >
                       <ShoppingCart className="w-5 h-5" />
-                      <span className="absolute top-0 right-0 transform translate-x-1/4 -translate-y-1/4 bg-sales-coral-500 text-[10px] font-bold w-4 h-4 flex items-center justify-center rounded-full shadow-sm border border-sales-cyan-600">
+                      <span className="absolute top-1.5 right-1.5 bg-sales-coral-500 text-[9px] font-bold min-w-[14px] h-[14px] px-1 flex items-center justify-center rounded-full shadow-sm">
                         {(() => {
                           const cData = activeConv.client.cartData;
                           const items = Array.isArray(cData) ? cData : (cData?.items || []);
