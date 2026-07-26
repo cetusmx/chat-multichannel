@@ -238,8 +238,12 @@ class AIService {
                   const totalExt = Object.values(item.existencias || {}).reduce((a, b) => a + (b || 0), 0);
                   return totalExt > 0;
                 });
+                
                 if (conExistencia.length > 0) {
                   results = conExistencia;
+                } else {
+                  // Si TODOS están agotados, solo mostrar los que tienen fecha de última compra (FCH_ULTCOM != null)
+                  results = results.filter(item => item.FCH_ULTCOM);
                 }
               }
 
