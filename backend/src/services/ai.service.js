@@ -281,13 +281,11 @@ class AIService {
             const data = await fetchRes.json();
             
             if (data && data.data && data.data.length > 0) {
-              const cliente = data.data.find(c => c.RFC && c.RFC.toUpperCase() === rfc.toUpperCase());
-              if (cliente) {
-                if (cliente.STATUS === 'A') {
-                  return { status: "success", cliente };
-                } else {
-                  return { status: "inactive", message: "El cliente existe pero no está activo en el sistema." };
-                }
+              const cliente = data.data[0];
+              if (cliente.STATUS === 'A') {
+                return { status: "success", cliente };
+              } else {
+                return { status: "inactive", message: "El cliente existe pero no está activo en el sistema." };
               }
             }
             
