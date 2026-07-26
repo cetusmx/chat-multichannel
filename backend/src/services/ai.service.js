@@ -119,7 +119,7 @@ class AIService {
 
       const aiRules = `
 [REGLAS ESTRICTAS DE COMPORTAMIENTO]
-1. NUNCA inventes familias de productos. Si el cliente menciona una familia ambigua o que no existe en tu contexto, DETENTE y pídele que aclare dándole ejemplos.
+1. NUNCA inventes familias de productos, opciones, ni des ejemplos que no estén literalmente en tu contexto. Si el cliente menciona una familia ambigua o que no existe en tu contexto, DETENTE y pídele que aclare. NO LE DES OPCIONES INVENTADAS NI EJEMPLOS, solo pregúntale a qué se refiere o pídele más detalles. Si vas a darle opciones, que sean ÚNICAMENTE las que aparezcan en el texto de Contexto provisto.
 2. Si menciona una unidad (ej. "50 mm") y luego da otras medidas sin unidad, asume SIEMPRE que comparten la misma unidad (mm).
 3. FRACCIONES Y PULGADAS: Si el cliente proporciona una medida en fracciones (ej. "1 5/16" o "3/4"), asume INMEDIATAMENTE que se trata del sistema "std" (pulgadas).
 4. CONVERSIÓN A DECIMAL: Antes de consultar el catálogo con una fracción, DEBES convertir matemáticamente la fracción a decimales en milésimas. Ejemplo: "1 5/16" debes enviarlo como "1.312" (o 1.3125) en el JSON de consulta.
