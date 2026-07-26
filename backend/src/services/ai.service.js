@@ -302,14 +302,13 @@ class AIService {
             }
             
             // Handle legacy format (if db has array) or new format (if db has object)
-            let existingCart = conversation.client?.cartData || { items: [] };
-            if (Array.isArray(existingCart)) {
-              existingCart = { items: existingCart };
-            }
-            
+            const currentClient = await prisma.client.findUnique({ where: { id: conversation.clientId } });
+            const currentCart = currentClient.cartData || {};
+            const razonSocial = Array.isArray(currentCart) ? null : currentCart.razonSocial;
             const newCartData = {
               items: parsedItems,
-              shippingAddress: args.shipping_address || existingCart.shippingAddress || null
+              shippingAddress: args.shipping_address || (Array.isArray(currentCart) ? null : currentCart.shippingAddress),
+              razonSocial: razonSocial
             };
 
             if (conversation?.clientId) {
@@ -362,11 +361,15 @@ class AIService {
                 const est = cliente.ESTADO || '';
                 const direccion = `${calle} ${num}, ${col}, ${cp}, ${mun}, ${est}`.trim().replace(/,\s*,/g, ',');
                 
-                // Update client name to the fiscal reason
+                // Save fiscal name to cartData instead of overwriting Client name
                 if (conversation?.clientId) {
+                  const client = await prisma.client.findUnique({ where: { id: conversation.clientId } });
+                  const cartData = client.cartData || {};
+                  const newCartData = Array.isArray(cartData) ? { items: cartData, razonSocial: cliente.NOMBRE } : { ...cartData, razonSocial: cliente.NOMBRE };
+                  
                   await prisma.client.update({
                     where: { id: conversation.clientId },
-                    data: { name: cliente.NOMBRE }
+                    data: { cartData: newCartData }
                   });
                 }
                 
@@ -406,9 +409,12 @@ class AIService {
             const PdfGeneratorService = require('./pdf.service');
             const whatsappService = require('./whatsapp.service');
             
+            const cData = conversation.client.cartData;
+            const fallbackRazonSocial = Array.isArray(cData) ? null : cData?.razonSocial;
+            
             // Generate pseudo clientData for the PDF from args
             const clientDataForPdf = {
-              name: args.razon_social || conversation.client.name || 'Cliente General',
+              name: args.razon_social || fallbackRazonSocial || conversation.client.name || 'Cliente General',
               RFC: args.rfc || '',
               address: args.direccion || '',
               phone: conversation.client.phoneNumber || ''

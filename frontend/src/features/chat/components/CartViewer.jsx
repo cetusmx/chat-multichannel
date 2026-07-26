@@ -17,15 +17,24 @@ export default function CartViewer({ cartData, client }) {
   }
 
   // Calculate totals
-  const subtotal = cartItems.reduce((sum, item) => sum + ((item.precio || 0) * (item.cantidad || 1)), 0);
-  const iva = subtotal * 0.16;
-  const total = subtotal + iva;
+  const total = cartItems.reduce((sum, item) => sum + ((item.precio || 0) * (item.cantidad || 1)), 0);
+  const subtotal = total / 1.16;
+  const iva = total - subtotal;
+  
+  const cData = activeConv?.client?.cartData || (Array.isArray(cartData) ? null : cartData);
+  const shippingAddress = Array.isArray(cData) ? null : cData?.shippingAddress;
+  const razonSocial = Array.isArray(cData) ? null : cData?.razonSocial;
 
   return (
-    <div className="w-80 h-full flex flex-col bg-sales-slate-900 border-l border-sales-slate-800 shadow-xl overflow-hidden shrink-0">
-      <div className="p-4 bg-sales-slate-900/80 border-b border-sales-slate-800 flex items-center gap-2">
-        <ShoppingCart className="text-sales-blue-500 w-5 h-5" />
-        <h2 className="text-lg font-bold text-sales-slate-100">Carrito Activo</h2>
+    <div className="flex flex-col h-full bg-sales-slate-900/95 overflow-hidden rounded-l-2xl shadow-2xl border-l border-sales-slate-700/50">
+      <div className="p-4 border-b border-sales-slate-700/50 bg-sales-slate-800/80 flex items-center justify-between shrink-0">
+        <h2 className="text-lg font-bold text-white flex items-center gap-2">
+          <ShoppingCart className="text-sales-blue-400" />
+          Carrito Actual
+        </h2>
+        <span className="bg-sales-blue-600 text-white text-xs font-bold px-2.5 py-1 rounded-full shadow-sm">
+          {cartItems.length} {cartItems.length === 1 ? 'artículo' : 'artículos'}
+        </span>
       </div>
       
       <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
@@ -36,6 +45,14 @@ export default function CartViewer({ cartData, client }) {
             </h3>
             <p className="text-sm text-sales-slate-100 font-medium truncate">{client.name}</p>
             {client.phone && <p className="text-xs text-sales-slate-400 mt-1">{client.phone}</p>}
+            
+            {razonSocial && (
+              <div className="mt-2 pt-2 border-t border-sales-slate-700/50">
+                <p className="text-xs font-semibold text-sales-slate-400 mb-1">Razón Social (Facturación):</p>
+                <p className="text-xs text-sales-slate-300 line-clamp-2">{razonSocial}</p>
+              </div>
+            )}
+            
             {shippingAddress && (
               <div className="mt-2 pt-2 border-t border-sales-slate-700/50">
                 <p className="text-xs font-semibold text-sales-slate-400 mb-1">Dirección de Envío:</p>
@@ -82,7 +99,7 @@ export default function CartViewer({ cartData, client }) {
             <span>${iva.toFixed(2)}</span>
           </div>
           <div className="flex justify-between text-base font-bold text-sales-slate-100 pt-2 border-t border-sales-slate-700/50">
-            <span>Total</span>
+            <span>Total (Neto)</span>
             <span className="text-sales-blue-400">${total.toFixed(2)}</span>
           </div>
         </div>
