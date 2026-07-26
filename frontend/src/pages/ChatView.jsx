@@ -87,7 +87,7 @@ export default function ChatView() {
               ((Array.isArray(activeConv.client.cartData) ? activeConv.client.cartData : (activeConv.client.cartData.items || [])).length > 0) && (
               <button
                 onClick={() => setIsCartOpen(true)}
-                className="absolute top-4 right-4 z-40 bg-sales-cyan-600 hover:bg-sales-cyan-500 text-white p-3 rounded-full shadow-lg transition-transform hover:scale-105"
+                className="absolute top-4 right-4 z-40 cursor-pointer bg-gradient-to-r from-sales-cyan-600 to-sales-blue-600 hover:from-sales-cyan-500 hover:to-sales-blue-500 text-white p-3 rounded-full shadow-[0_0_15px_rgba(6,182,212,0.5)] border border-sales-cyan-400/50 transition-all duration-300 hover:scale-110 active:scale-95"
                 title="Ver Carrito"
               >
                 <ShoppingCart className="w-6 h-6" />
