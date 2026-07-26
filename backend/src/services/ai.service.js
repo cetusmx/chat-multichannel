@@ -119,7 +119,7 @@ class AIService {
 
       const aiRules = `
 [REGLAS ESTRICTAS DE COMPORTAMIENTO]
-1. NUNCA inventes familias de productos, opciones, ni des ejemplos que no estén literalmente en tu contexto. Si el cliente menciona una familia ambigua o que no existe en tu contexto, DETENTE y pídele que aclare. NO LE DES OPCIONES INVENTADAS NI EJEMPLOS, solo pregúntale a qué se refiere o pídele más detalles. Si vas a darle opciones, que sean ÚNICAMENTE las que aparezcan en el texto de Contexto provisto.
+1. NUNCA inventes familias de productos, opciones, ni des ejemplos que no estén literalmente listados en tu texto de Contexto provisto. Si el cliente menciona un término genérico (ej. "guías", "tapas") y en tu contexto no se detallan las clasificaciones o familias de ese término, BAJO NINGUNA CIRCUNSTANCIA uses tu conocimiento previo (pre-entrenamiento) para sugerir variantes inventadas (ej. "anillos guía", "cintas guía"). Si no está textualmente en el Contexto, NO EXISTE. Simplemente indícale al cliente que necesitas que especifique la familia correcta o bríndale únicamente las opciones que SÍ aparecen en tu contexto.
 2. Si menciona una unidad (ej. "50 mm") y luego da otras medidas sin unidad, asume SIEMPRE que comparten la misma unidad (mm).
 3. FRACCIONES Y PULGADAS: Si el cliente proporciona una medida en fracciones (ej. "1 5/16" o "3/4"), asume INMEDIATAMENTE que se trata del sistema "std" (pulgadas).
 4. CONVERSIÓN A DECIMAL: Antes de consultar el catálogo con una fracción, DEBES convertir matemáticamente la fracción a decimales en milésimas. Ejemplo: "1 5/16" debes enviarlo como "1.312" (o 1.3125) en el JSON de consulta.
@@ -151,7 +151,7 @@ class AIService {
         functionDeclarations: [
           {
             name: "consultar_catalogo",
-            description: "Busca productos en el catálogo. Extrae los parámetros de búsqueda en JSON. REGLA DE ORO: El parámetro 'familia' es ESTRICTAMENTE OBLIGATORIO en TODAS las consultas. Si no sabes la familia, o si es ambigua, NO uses esta herramienta y pregúntale al usuario. Si menciona una unidad (ej. mm), asume la misma para las demás (sist_med).",
+            description: "Busca productos en el catálogo. Extrae los parámetros de búsqueda en JSON. REGLA DE ORO: El parámetro 'familia' es ESTRICTAMENTE OBLIGATORIO en TODAS las consultas. Si no tienes la certeza de cuál es el nombre EXACTO de la familia según el Contexto, NO inventes nombres (ej. no inventes 'ANILLOS GUIA' ni 'CINTA GUIA') y mejor pregúntale al usuario a qué se refiere. Si menciona una unidad (ej. mm), asume la misma para las demás (sist_med).",
             parameters: {
               type: "OBJECT",
               properties: {
@@ -228,6 +228,7 @@ class AIService {
             const parsedParams = JSON.parse(paramsStr);
             
             const searchParams = new URLSearchParams(parsedParams);
+            searchParams.set('limit', '100'); // Solicitar suficientes registros para no perder vivos en páginas posteriores
             // TODO: En el futuro esto debe leerse de la base de datos (Tenant.catalogApiUrl)
             const apiUrl = process.env.VITE_API_BASE_URL || 'http://75.119.150.222:3010';
             const apiKey = process.env.VITE_INTERNAL_SECRET || 'sm_ecommerce_x2ve9yFf0aiDxh1HelezpVeyRAcngGwgEg3ZnSZwhGg2SaZrd2gQiysiVo86R3LcUZFFxZDSMADepof1jMLSumIbiqBRcbjyhvA78haaxnLrrbOuU3zqCi0kQXJf1gSc';

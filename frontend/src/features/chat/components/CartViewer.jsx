@@ -1,16 +1,32 @@
-import React, { useState } from 'react';
-import { ShoppingCart, Package, Info, Plus, Minus, Trash2, Trash, Search, Database, Loader2, ArrowRight } from 'lucide-react';
-import { updateClientCart, searchSealMarketCatalog } from '../../../services/api';
+import React, { useState, useEffect } from 'react';
+import { ShoppingCart, Package, Info, Plus, Minus, Trash2, Trash, Search, Database, Loader2, ArrowRight, Filter } from 'lucide-react';
+import { updateClientCart, searchSealMarketCatalog, getSealMarketFamilias } from '../../../services/api';
 
 export default function CartViewer({ cartData, client }) {
   const [activeTab, setActiveTab] = useState('current'); // 'current' or 'catalog'
   const [isUpdating, setIsUpdating] = useState(false);
   
   // Catalog state
-  const [searchQuery, setSearchQuery] = useState('');
+  const [familias, setFamilias] = useState([]);
+  const [searchForm, setSearchForm] = useState({
+    familia: '',
+    sist_med: 'std',
+    diam_int: '',
+    diam_ext: '',
+    altura: '',
+    seccion: ''
+  });
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState([]);
   const [searchError, setSearchError] = useState(null);
+
+  useEffect(() => {
+    if (activeTab === 'catalog' && familias.length === 0) {
+      getSealMarketFamilias()
+        .then(data => setFamilias(data))
+        .catch(err => console.error("Error al cargar familias:", err));
+    }
+  }, [activeTab, familias.length]);
 
   let cartItems = [];
   let shippingAddress = null;
@@ -67,12 +83,15 @@ export default function CartViewer({ cartData, client }) {
 
   const handleSearch = async (e) => {
     e.preventDefault();
-    if (!searchQuery.trim()) return;
+    if (!searchForm.familia) {
+      setSearchError('Por favor selecciona una familia principal.');
+      return;
+    }
     
     setIsSearching(true);
     setSearchError(null);
     try {
-      const res = await searchSealMarketCatalog({ descripcion: searchQuery });
+      const res = await searchSealMarketCatalog(searchForm);
       setSearchResults(res.data || []);
     } catch (err) {
       setSearchError(err.message || 'Error buscando en el catálogo');
@@ -239,23 +258,85 @@ export default function CartViewer({ cartData, client }) {
         ) : (
           /* ================= CATALOG SEARCH TAB ================= */
           <div className="flex flex-col h-full">
-            <form onSubmit={handleSearch} className="mb-4 flex gap-2">
-              <div className="relative flex-1">
-                <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-sales-slate-400" />
-                <input 
-                  type="text" 
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Buscar por descripción..."
-                  className="w-full bg-sales-slate-800 border border-sales-slate-700 text-sales-slate-200 text-sm rounded-lg focus:ring-sales-blue-500 focus:border-sales-blue-500 block pl-9 p-2.5"
-                />
+            <form onSubmit={handleSearch} className="mb-4 bg-sales-slate-800/50 p-3 rounded-lg border border-sales-slate-700/50 space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-sales-slate-400 mb-1">Familia *</label>
+                <select 
+                  value={searchForm.familia}
+                  onChange={(e) => setSearchForm({...searchForm, familia: e.target.value})}
+                  className="w-full bg-sales-slate-900 border border-sales-slate-700 text-sales-slate-200 text-sm rounded-lg focus:ring-sales-blue-500 focus:border-sales-blue-500 block p-2"
+                >
+                  <option value="">-- Seleccionar Familia --</option>
+                  {familias.map((f, i) => (
+                    <option key={i} value={f.FAMILIA}>{f.FAMILIA}</option>
+                  ))}
+                </select>
               </div>
+              
+              <div className="flex gap-3">
+                <div className="flex-1">
+                  <label className="block text-xs font-semibold text-sales-slate-400 mb-1">Sistema Medición</label>
+                  <select 
+                    value={searchForm.sist_med}
+                    onChange={(e) => setSearchForm({...searchForm, sist_med: e.target.value})}
+                    className="w-full bg-sales-slate-900 border border-sales-slate-700 text-sales-slate-200 text-sm rounded-lg focus:ring-sales-blue-500 focus:border-sales-blue-500 block p-2"
+                  >
+                    <option value="std">STD (Pulgadas)</option>
+                    <option value="mm">Milímetros (mm)</option>
+                  </select>
+                </div>
+                <div className="flex-1">
+                  <label className="block text-xs font-semibold text-sales-slate-400 mb-1">Diam. Interior</label>
+                  <input 
+                    type="text" 
+                    value={searchForm.diam_int}
+                    onChange={(e) => setSearchForm({...searchForm, diam_int: e.target.value})}
+                    placeholder="Ej. 1.25"
+                    className="w-full bg-sales-slate-900 border border-sales-slate-700 text-sales-slate-200 text-sm rounded-lg focus:ring-sales-blue-500 focus:border-sales-blue-500 block p-2"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-3">
+                <div className="flex-1">
+                  <label className="block text-xs font-semibold text-sales-slate-400 mb-1">Diam. Exterior</label>
+                  <input 
+                    type="text" 
+                    value={searchForm.diam_ext}
+                    onChange={(e) => setSearchForm({...searchForm, diam_ext: e.target.value})}
+                    placeholder="Ej. 2.5"
+                    className="w-full bg-sales-slate-900 border border-sales-slate-700 text-sales-slate-200 text-sm rounded-lg focus:ring-sales-blue-500 focus:border-sales-blue-500 block p-2"
+                  />
+                </div>
+                <div className="flex-1">
+                  <label className="block text-xs font-semibold text-sales-slate-400 mb-1">Altura</label>
+                  <input 
+                    type="text" 
+                    value={searchForm.altura}
+                    onChange={(e) => setSearchForm({...searchForm, altura: e.target.value})}
+                    placeholder="Ej. 0.25"
+                    className="w-full bg-sales-slate-900 border border-sales-slate-700 text-sales-slate-200 text-sm rounded-lg focus:ring-sales-blue-500 focus:border-sales-blue-500 block p-2"
+                  />
+                </div>
+                <div className="flex-1">
+                  <label className="block text-xs font-semibold text-sales-slate-400 mb-1">Sección</label>
+                  <input 
+                    type="text" 
+                    value={searchForm.seccion}
+                    onChange={(e) => setSearchForm({...searchForm, seccion: e.target.value})}
+                    placeholder="Ej. 139"
+                    className="w-full bg-sales-slate-900 border border-sales-slate-700 text-sales-slate-200 text-sm rounded-lg focus:ring-sales-blue-500 focus:border-sales-blue-500 block p-2"
+                  />
+                </div>
+              </div>
+
               <button 
                 type="submit" 
-                disabled={isSearching}
-                className="bg-sales-blue-600 hover:bg-sales-blue-500 text-white font-medium rounded-lg text-sm px-4 py-2 disabled:opacity-50 transition-colors"
+                disabled={isSearching || !searchForm.familia}
+                className="w-full bg-sales-blue-600 hover:bg-sales-blue-500 text-white font-medium rounded-lg text-sm px-4 py-2 mt-2 disabled:opacity-50 transition-colors flex justify-center items-center gap-2"
               >
-                {isSearching ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Buscar'}
+                {isSearching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Filter className="w-4 h-4" />}
+                Filtrar Catálogo
               </button>
             </form>
 
@@ -266,10 +347,10 @@ export default function CartViewer({ cartData, client }) {
             )}
 
             <div className="flex-1 overflow-y-auto space-y-3 custom-scrollbar">
-              {!isSearching && searchResults.length === 0 && searchQuery && !searchError && (
+              {!isSearching && searchResults.length === 0 && searchForm.familia && !searchError && (
                 <div className="text-center text-sales-slate-500 mt-10">
                   <Database className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                  <p>No se encontraron productos.</p>
+                  <p>Aplica filtros para ver resultados.</p>
                 </div>
               )}
               

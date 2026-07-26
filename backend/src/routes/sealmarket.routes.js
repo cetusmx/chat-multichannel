@@ -5,6 +5,7 @@ const authenticate = require('../middleware/auth');
 router.get('/catalog/search', authenticate, async (req, res, next) => {
   try {
     const searchParams = new URLSearchParams(req.query);
+    searchParams.set('limit', '100'); // Traer más registros para que el filtrado de muertos no vacíe la página
     
     // Config values
     const apiUrl = process.env.VITE_API_BASE_URL || 'http://75.119.150.222:3010';
@@ -60,6 +61,35 @@ router.get('/catalog/search', authenticate, async (req, res, next) => {
   } catch (error) {
     console.error('[SEALMARKET] Excepción:', error.message);
     res.status(500).json({ error: 'Hubo un fallo al leer los parámetros o conectar con el catálogo' });
+  }
+});
+
+router.get('/catalog/familias', authenticate, async (req, res, next) => {
+  try {
+    const apiUrl = process.env.VITE_API_BASE_URL || 'http://75.119.150.222:3010';
+    const apiKey = process.env.VITE_INTERNAL_SECRET || 'sm_ecommerce_x2ve9yFf0aiDxh1HelezpVeyRAcngGwgEg3ZnSZwhGg2SaZrd2gQiysiVo86R3LcUZFFxZDSMADepof1jMLSumIbiqBRcbjyhvA78haaxnLrrbOuU3zqCi0kQXJf1gSc';
+    
+    const endpoint = `${apiUrl}/familias`;
+    console.log('[SEALMARKET] Fetching Familias API:', endpoint);
+    
+    const fetchRes = await fetch(endpoint, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey
+      }
+    });
+    
+    if (!fetchRes.ok) {
+      console.error('[SEALMARKET] API HTTP Error fetching familias:', fetchRes.status);
+      return res.status(fetchRes.status).json({ error: `La API de familias devolvió un error: ${fetchRes.statusText}` });
+    }
+    
+    const data = await fetchRes.json();
+    res.json(data); // Returns the array of families
+  } catch (error) {
+    console.error('[SEALMARKET] Excepción al obtener familias:', error.message);
+    res.status(500).json({ error: 'Hubo un fallo al obtener las familias' });
   }
 });
 
