@@ -1,5 +1,5 @@
 import React from 'react';
-import { FiShoppingCart, FiPackage, FiInfo } from 'react-icons/fi';
+import { ShoppingCart, Package, Info } from 'lucide-react';
 
 export default function CartViewer({ cartData, client }) {
   if (!cartData || !Array.isArray(cartData) || cartData.length === 0) {
@@ -14,7 +14,7 @@ export default function CartViewer({ cartData, client }) {
   return (
     <div className="w-80 h-full flex flex-col bg-sales-slate-900 border-l border-sales-slate-800 shadow-xl overflow-hidden shrink-0">
       <div className="p-4 bg-sales-slate-900/80 border-b border-sales-slate-800 flex items-center gap-2">
-        <FiShoppingCart className="text-sales-blue-500 w-5 h-5" />
+        <ShoppingCart className="text-sales-blue-500 w-5 h-5" />
         <h2 className="text-lg font-bold text-sales-slate-100">Carrito Activo</h2>
       </div>
       
@@ -22,7 +22,7 @@ export default function CartViewer({ cartData, client }) {
         {client?.name && (
           <div className="mb-4 p-3 bg-sales-slate-800/50 rounded-lg border border-sales-slate-700/50">
             <h3 className="text-sm font-semibold text-sales-slate-300 mb-1 flex items-center gap-2">
-              <FiInfo className="text-sales-blue-400" /> Datos del Cliente
+              <Info className="text-sales-blue-400 w-4 h-4" /> Datos del Cliente
             </h3>
             <p className="text-sm text-sales-slate-100 font-medium truncate">{client.name}</p>
             {client.phone && <p className="text-xs text-sales-slate-400 mt-1">{client.phone}</p>}
@@ -44,7 +44,7 @@ export default function CartViewer({ cartData, client }) {
               </div>
               <div className="flex justify-between items-center mt-3 pt-3 border-t border-sales-slate-700/50">
                 <span className="text-xs font-medium bg-sales-blue-900/30 text-sales-blue-400 px-2 py-1 rounded-md flex items-center gap-1">
-                  <FiPackage /> Cant: {item.cantidad}
+                  <Package className="w-4 h-4" /> Cant: {item.cantidad}
                 </span>
                 <span className="text-sm font-bold text-sales-slate-100">
                   ${(item.precio * item.cantidad).toFixed(2)}
