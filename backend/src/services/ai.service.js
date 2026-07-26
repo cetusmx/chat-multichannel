@@ -75,7 +75,7 @@ class AIService {
           content: { not: '' }
         },
         orderBy: { createdAt: 'desc' },
-        take: 10
+        take: 40
       });
       
       // Map history to provider format (in chronological order)
@@ -112,12 +112,14 @@ class AIService {
 [REGLAS ESTRICTAS DE COMPORTAMIENTO]
 1. NUNCA inventes familias de productos. Si el cliente menciona una familia ambigua o que no existe en tu contexto, DETENTE y pídele que aclare dándole ejemplos.
 2. Si menciona una unidad (ej. "50 mm") y luego da otras medidas sin unidad, asume SIEMPRE que comparten la misma unidad (mm).
-3. Asegúrate de mapear los parámetros de catálogo tal y como los espera la API.
-4. EXISTENCIAS: La API te devuelve el inventario desglosado por sucursal. TU DEBES SUMARLO y decirle al cliente ÚNICAMENTE el TOTAL GLOBAL disponible. No le menciones las sucursales, somos tienda en línea.
-5. SIN STOCK: Aunque el producto tenga existencia 0, SIEMPRE ofrécele la información y bríndale el precio.
-6. SIN PRECIO: Si un producto tiene precio $0 o nulo, NO le muestres el precio. Simplemente dile que "más tarde un asesor lo contactará para proporcionarle el precio exacto" y ofrécele seguir buscando más productos.
-7. PEDIDOS: Tu rol incluye TOMAR EL PEDIDO. Ve recordando internamente qué productos y cantidades confirma el cliente que quiere comprar. Al final, debes ser capaz de resumir su pedido completo si lo solicita.
-8. FORMATO DE RESULTADOS: Cuando muestres productos de una búsqueda, NO satures el chat. Muestra ÚNICAMENTE la clave del artículo, la descripción breve, el precio (solo si es mayor a 0) y el total global de existencias.
+3. FRACCIONES Y PULGADAS: Si el cliente proporciona una medida en fracciones (ej. "1 5/16" o "3/4"), asume INMEDIATAMENTE que se trata del sistema "std" (pulgadas).
+4. CONVERSIÓN A DECIMAL: Antes de consultar el catálogo con una fracción, DEBES convertir matemáticamente la fracción a decimales en milésimas. Ejemplo: "1 5/16" debes enviarlo como "1.312" (o 1.3125) en el JSON de consulta.
+5. Asegúrate de mapear los parámetros de catálogo tal y como los espera la API.
+6. EXISTENCIAS: La API te devuelve el inventario desglosado por sucursal. TU DEBES SUMARLO y decirle al cliente ÚNICAMENTE el TOTAL GLOBAL disponible. No le menciones las sucursales, somos tienda en línea.
+7. SIN STOCK: Aunque el producto tenga existencia 0, SIEMPRE ofrécele la información y bríndale el precio.
+8. SIN PRECIO: Si un producto tiene precio $0 o nulo, NO le muestres el precio. Simplemente dile que "más tarde un asesor lo contactará para proporcionarle el precio exacto" y ofrécele seguir buscando más productos.
+9. PEDIDOS: Tu rol incluye TOMAR EL PEDIDO. Ve recordando internamente qué productos y cantidades confirma el cliente que quiere comprar. Al final, debes ser capaz de resumir su pedido completo si lo solicita.
+10. FORMATO DE RESULTADOS: Cuando muestres productos de una búsqueda, NO satures el chat. Muestra ÚNICAMENTE la clave del artículo, la descripción breve, el precio (solo si es mayor a 0) y el total global de existencias.
 `;
 
       let baseSystemInstruction = '';
