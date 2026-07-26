@@ -84,11 +84,8 @@ class GeminiProvider extends AIProvider {
           apiResponse = { error: `Error ejecutando ${call.name}: ${err.message}` };
         }
 
-        // Add the model's function call to history
-        contents.push({
-          role: 'model',
-          parts: [{ functionCall: { name: call.name, args: call.args } }]
-        });
+        // Add the model's exact response to history (preserves thought_signatures and other parts)
+        contents.push(result.response.candidates[0].content);
 
         // Add the function response as 'user' to history
         contents.push({
