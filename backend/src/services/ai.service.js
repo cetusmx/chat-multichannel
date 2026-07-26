@@ -93,6 +93,13 @@ class AIService {
         console.warn('RAG search failed, continuing without context:', err.message);
       }
 
+      // Fetch conversation to get Client and Cart Data
+      const conversation = await prisma.conversation.findUnique({
+        where: { id: conversationId },
+        include: { client: true }
+      });
+      const clientCart = conversation?.client?.cartData || [];
+
       // Fetch active vendors dynamically
       const activeVendorsList = await prisma.user.findMany({
         where: { tenantId, role: 'VENDOR', isActive: true },
@@ -104,6 +111,8 @@ class AIService {
 [DATOS EN TIEMPO REAL DEL SISTEMA]
 - ¿Fuera de horario laboral?: ${isOffHours ? 'SÍ (Estamos cerrados)' : 'NO (Estamos abiertos)'}
 - Equipo de vendedores: ${vendorNames}
+- CARRITO DE COMPRAS DEL CLIENTE: ${JSON.stringify(clientCart)}
+- Instrucción de Carrito: Este es el estado persistente del carrito. Usa la herramienta 'actualizar_carrito' para modificarlo si el cliente pide agregar o quitar algo.
 - Instrucción dinámica: Si el cliente pregunta por un vendedor específico que esté en el equipo, indícale si estamos dentro o fuera de horario e incluye [[ESCALATE]] para asignarle el chat a esa persona.
 [FIN DE DATOS]
 `;
@@ -118,8 +127,9 @@ class AIService {
 6. EXISTENCIAS: La API te devuelve el inventario desglosado por sucursal. TU DEBES SUMARLO y decirle al cliente ÚNICAMENTE el TOTAL GLOBAL disponible. No le menciones las sucursales, somos tienda en línea.
 7. SIN STOCK: Aunque el producto tenga existencia 0, SIEMPRE ofrécele la información y bríndale el precio.
 8. SIN PRECIO: Si un producto tiene precio $0 o nulo, NO le muestres el precio. Simplemente dile que "más tarde un asesor lo contactará para proporcionarle el precio exacto" y ofrécele seguir buscando más productos.
-9. PEDIDOS: Tu rol incluye TOMAR EL PEDIDO. Ve recordando internamente qué productos y cantidades confirma el cliente que quiere comprar. Al final, debes ser capaz de resumir su pedido completo si lo solicita.
+9. PEDIDOS Y CARRITO: Tu rol incluye TOMAR EL PEDIDO. Ve recordando internamente qué productos y cantidades confirma el cliente. SIEMPRE usa la herramienta 'actualizar_carrito' para guardar este estado.
 10. FORMATO DE RESULTADOS: Cuando muestres productos de una búsqueda, NO satures el chat. Muestra ÚNICAMENTE la clave del artículo, la descripción breve, el precio (solo si es mayor a 0) y el total global de existencias.
+11. COTIZACIONES Y RFC: Si el cliente solicita explícitamente una cotización formal, primero pregúntale su RFC. Si responde que no tiene, asume que es un cliente genérico (Mostrador). Si proporciona un RFC, usa la herramienta 'consultar_cliente_rfc' para obtener sus datos. Si la herramienta no devuelve un cliente activo, trátalo como cliente genérico.
 `;
 
       let baseSystemInstruction = '';
@@ -150,6 +160,34 @@ class AIService {
                 }
               },
               required: ["query_params"]
+            }
+          },
+          {
+            name: "actualizar_carrito",
+            description: "Actualiza el estado persistente del carrito de compras del cliente. Úsala CADA VEZ que el cliente confirme que quiere agregar un producto o modificar cantidades. Envía el array COMPLETO de productos que deben quedar en el carrito.",
+            parameters: {
+              type: "OBJECT",
+              properties: {
+                cart_items: {
+                  type: "STRING",
+                  description: "Un string JSON que representa un array de objetos con los productos del pedido actual. Ejemplo: '[{\"clave\": \"OR-050\", \"descripcion\": \"Oring 50mm\", \"cantidad\": 2, \"precio_unitario\": 150}]'"
+                }
+              },
+              required: ["cart_items"]
+            }
+          },
+          {
+            name: "consultar_cliente_rfc",
+            description: "Busca los datos fiscales y comerciales de un cliente a partir de su RFC. Úsala cuando el cliente te proporcione su RFC para una cotización.",
+            parameters: {
+              type: "OBJECT",
+              properties: {
+                rfc: {
+                  type: "STRING",
+                  description: "El RFC proporcionado por el cliente. Ejemplo: 'XAXX010101000'"
+                }
+              },
+              required: ["rfc"]
             }
           }
         ]
@@ -197,6 +235,64 @@ class AIService {
           } catch (e) {
             console.error('[AI TOOL] Excepción:', e.message);
             return { error: `Hubo un fallo al leer los parámetros o conectar con el catálogo: ${e.message}` };
+          }
+        },
+        actualizar_carrito: async (args) => {
+          try {
+            console.log('[AI TOOL] actualizar_carrito invocado con args:', args);
+            const parsedCart = JSON.parse(args.cart_items);
+            if (conversation?.clientId) {
+              await prisma.client.update({
+                where: { id: conversation.clientId },
+                data: { cartData: parsedCart }
+              });
+              return { status: "success", message: "Carrito guardado exitosamente en la base de datos.", cart: parsedCart };
+            }
+            return { error: "No se encontró el cliente asociado a esta conversación para guardar el carrito." };
+          } catch (e) {
+            console.error('[AI TOOL] Error en actualizar_carrito:', e.message);
+            return { error: `Error al intentar guardar el carrito: ${e.message}` };
+          }
+        },
+        consultar_cliente_rfc: async (args) => {
+          try {
+            console.log('[AI TOOL] consultar_cliente_rfc invocado con args:', args);
+            const rfc = args.rfc;
+            
+            const apiUrl = process.env.VITE_API_BASE_URL || 'http://75.119.150.222:3010';
+            const apiKey = process.env.VITE_INTERNAL_SECRET || 'sm_ecommerce_x2ve9yFf0aiDxh1HelezpVeyRAcngGwgEg3ZnSZwhGg2SaZrd2gQiysiVo86R3LcUZFFxZDSMADepof1jMLSumIbiqBRcbjyhvA78haaxnLrrbOuU3zqCi0kQXJf1gSc';
+            
+            const endpoint = `${apiUrl}/api/clientes/rfc/${rfc}`;
+            console.log('[AI TOOL] Fetching API:', endpoint);
+            
+            const fetchRes = await fetch(endpoint, {
+              method: 'GET',
+              headers: {
+                'Content-Type': 'application/json',
+                'x-api-key': apiKey
+              }
+            });
+            
+            if (!fetchRes.ok) {
+              console.error('[AI TOOL] API HTTP Error:', fetchRes.status);
+              return { error: `La API de clientes devolvió un error: ${fetchRes.statusText}` };
+            }
+            
+            const data = await fetchRes.json();
+            
+            if (data && data.data && data.data.length > 0) {
+              const cliente = data.data[0];
+              if (cliente.STATUS === 'A') {
+                return { status: "success", cliente };
+              } else {
+                return { status: "inactive", message: "El cliente existe pero no está activo en el sistema." };
+              }
+            }
+            
+            return { status: "not_found", message: "No se encontraron resultados para ese RFC." };
+          } catch (e) {
+            console.error('[AI TOOL] Excepción en consultar_cliente_rfc:', e.message);
+            return { error: `Error al consultar el RFC: ${e.message}` };
           }
         }
       };
