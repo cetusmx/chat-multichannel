@@ -8,6 +8,9 @@ export default function CartViewer({ cartData, client }) {
   const [isUpdating, setIsUpdating] = useState(false);
   const { sendMessage } = useChatStore();
   
+  const [isEditingAddress, setIsEditingAddress] = useState(false);
+  const [tempAddress, setTempAddress] = useState('');
+
   // Catalog state
   const [familias, setFamilias] = useState([]);
   const [searchForm, setSearchForm] = useState({
@@ -56,6 +59,29 @@ export default function CartViewer({ cartData, client }) {
     } catch (err) {
       console.error('Failed to update cart', err);
       alert('Error al actualizar carrito');
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handleSaveAddress = async (validate = false) => {
+    if (!client?.id) return;
+    setIsUpdating(true);
+    try {
+      const newCartData = {
+        items: cartItems,
+        shippingAddress: tempAddress,
+        razonSocial
+      };
+      await updateClientCart(client.id, newCartData);
+      setIsEditingAddress(false);
+      
+      if (validate && tempAddress) {
+        sendMessage(`Por favor valida tu dirección de envío:\n\n*${tempAddress}*\n\n¿Es correcta?`, false);
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Error al actualizar dirección');
     } finally {
       setIsUpdating(false);
     }
@@ -212,12 +238,49 @@ export default function CartViewer({ cartData, client }) {
                   </div>
                 )}
                 
-                {shippingAddress && (
-                  <div className="mt-2 pt-2 border-t border-sales-slate-700/50">
-                    <p className="text-xs font-semibold text-sales-slate-400 mb-1">Dirección de Envío:</p>
-                    <p className="text-xs text-sales-slate-300 line-clamp-2">{shippingAddress}</p>
+                <div className="mt-2 pt-2 border-t border-sales-slate-700/50">
+                  <div className="flex justify-between items-center mb-1">
+                    <p className="text-xs font-semibold text-sales-slate-400">Dirección de Envío:</p>
+                    {!isEditingAddress && (
+                      <button 
+                        onClick={() => { setTempAddress(shippingAddress || ''); setIsEditingAddress(true); }}
+                        className="text-[10px] text-sales-blue-400 hover:underline"
+                      >
+                        Editar
+                      </button>
+                    )}
                   </div>
-                )}
+                  
+                  {isEditingAddress ? (
+                    <div className="mt-1">
+                      <textarea 
+                        className="w-full bg-sales-slate-900 border border-sales-slate-700 text-sales-slate-200 text-xs rounded-lg p-2 focus:ring-sales-blue-500 focus:border-sales-blue-500 min-h-[60px]"
+                        value={tempAddress}
+                        onChange={(e) => setTempAddress(e.target.value)}
+                        placeholder="Escribe la dirección..."
+                      />
+                      <div className="flex gap-2 mt-2">
+                        <button 
+                          onClick={() => handleSaveAddress(false)}
+                          className="flex-1 bg-sales-slate-700 hover:bg-sales-slate-600 text-white text-[10px] py-1 rounded"
+                        >
+                          Guardar
+                        </button>
+                        <button 
+                          onClick={() => handleSaveAddress(true)}
+                          className="flex-1 bg-sales-blue-600 hover:bg-sales-blue-500 text-white text-[10px] py-1 rounded flex items-center justify-center gap-1"
+                          disabled={!tempAddress}
+                        >
+                          <Send className="w-3 h-3" /> Validar en Chat
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-sales-slate-300">
+                      {shippingAddress ? shippingAddress : <span className="italic opacity-50">No especificada</span>}
+                    </p>
+                  )}
+                </div>
               </div>
             )}
 
