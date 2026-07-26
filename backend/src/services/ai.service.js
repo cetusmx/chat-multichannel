@@ -129,7 +129,7 @@ class AIService {
 8. SIN PRECIO: Si un producto tiene precio $0 o nulo, NO le muestres el precio. Simplemente dile que "más tarde un asesor lo contactará para proporcionarle el precio exacto" y ofrécele seguir buscando más productos.
 9. PEDIDOS Y CARRITO: Tu rol incluye TOMAR EL PEDIDO. Ve recordando internamente qué productos y cantidades confirma el cliente. SIEMPRE usa la herramienta 'actualizar_carrito' para guardar este estado.
 10. FORMATO DE RESULTADOS: Cuando muestres productos de una búsqueda, NO satures el chat. Muestra ÚNICAMENTE la clave del artículo, la descripción breve, el precio (solo si es mayor a 0) y el total global de existencias.
-11. COTIZACIONES Y RFC: Si el cliente solicita explícitamente una cotización formal, primero pregúntale su RFC. Si responde que no tiene, asume que es un cliente genérico (Mostrador). Si proporciona un RFC, usa la herramienta 'consultar_cliente_rfc' para obtener sus datos. Si la herramienta no devuelve un cliente activo, trátalo como cliente genérico.
+11. COTIZACIONES Y RFC: Si el cliente solicita explícitamente una cotización formal, primero pregúntale su RFC. Si responde que no tiene, asume que es un cliente genérico (Mostrador). Si proporciona un RFC, usa la herramienta 'consultar_cliente_rfc'. Si el resultado es 'success', CONFÍRMALE AL CLIENTE que encontraste sus datos (menciónale su Razón Social / NOMBRE) y dile que con esos datos se elaborará la cotización. Si la herramienta responde 'not_found' o 'inactive', infórmale que no se encontró un cliente activo con ese RFC y trátalo como cliente genérico.
 `;
 
       let baseSystemInstruction = '';
@@ -281,15 +281,17 @@ class AIService {
             const data = await fetchRes.json();
             
             if (data && data.data && data.data.length > 0) {
-              const cliente = data.data[0];
-              if (cliente.STATUS === 'A') {
-                return { status: "success", cliente };
-              } else {
-                return { status: "inactive", message: "El cliente existe pero no está activo en el sistema." };
+              const cliente = data.data.find(c => c.RFC && c.RFC.toUpperCase() === rfc.toUpperCase());
+              if (cliente) {
+                if (cliente.STATUS === 'A') {
+                  return { status: "success", cliente };
+                } else {
+                  return { status: "inactive", message: "El cliente existe pero no está activo en el sistema." };
+                }
               }
             }
             
-            return { status: "not_found", message: "No se encontraron resultados para ese RFC." };
+            return { status: "not_found", message: "No se encontró el RFC exacto en la base de datos." };
           } catch (e) {
             console.error('[AI TOOL] Excepción en consultar_cliente_rfc:', e.message);
             return { error: `Error al consultar el RFC: ${e.message}` };
