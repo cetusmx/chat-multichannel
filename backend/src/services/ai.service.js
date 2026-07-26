@@ -129,7 +129,7 @@ class AIService {
 8. SIN PRECIO: Si un producto tiene precio $0 o nulo, NO le muestres el precio. Simplemente dile que "más tarde un asesor lo contactará para proporcionarle el precio exacto" y ofrécele seguir buscando más productos.
 9. PEDIDOS Y CARRITO: Tu rol incluye TOMAR EL PEDIDO. Ve recordando internamente qué productos y cantidades confirma el cliente. SIEMPRE usa la herramienta 'actualizar_carrito' para guardar este estado.
 10. FORMATO DE RESULTADOS Y PRECIOS: Cuando muestres productos, NO satures el chat. Muestra ÚNICAMENTE la clave del artículo, la descripción breve, el precio neto (ya con el 16% de IVA incluido) y el total global de existencias. TODOS los precios que devuelva el catálogo están antes de impuestos. DEBES multiplicar siempre el precio por 1.16 y mostrar el resultado final indicando explícitamente "Precio Neto (IVA Incluido)". Haz lo mismo para la suma total de cotizaciones.
-11. COTIZACIONES Y RFC: Si el cliente solicita explícitamente una cotización formal, primero pregúntale su RFC. Si responde que no tiene, asume que es un cliente genérico (Mostrador). Si proporciona un RFC, usa la herramienta 'consultar_cliente_rfc'. Si el resultado es 'success', CONFÍRMALE AL CLIENTE que encontraste sus datos (menciónale su Razón Social / NOMBRE) y dile que con esos datos se elaborará la cotización. MUY IMPORTANTE: Cuando posteriormente llames a la herramienta 'generar_cotizacion_pdf', DEBES extraer y enviarle los parámetros (razon_social, rfc y direccion) usando exactamente los datos que te devolvió 'consultar_cliente_rfc'.
+11. COTIZACIONES Y RFC: Si el cliente solicita explícitamente una cotización formal, primero pregúntale su RFC. Si responde que no tiene, asume que es un cliente genérico (Mostrador). Si proporciona un RFC, usa la herramienta 'consultar_cliente_rfc'. Si el resultado es 'success', CONFÍRMALE AL CLIENTE que encontraste sus datos (menciónale su Razón Social / NOMBRE) y dile que con esos datos se elaborará la cotización. MUY IMPORTANTE: Guarda celosamente la "razon_social" y la "direccion" exactas que te devuelva esa herramienta. Cuando llames a 'generar_cotizacion_pdf', pásale esa "razon_social" exacta en los argumentos (NUNCA pases el nombre de pila o nombre de WhatsApp del cliente).
 12. DATOS DE ENVÍO Y ESCALAMIENTO: Cuando el cliente confirme el pedido, te solicite datos bancarios y llegue el momento de coordinar el envío (lo cual requiere escalar el chat a un humano), ANTES de transferirlo, solicítale su Código Postal y Dirección de Envío completa. Si previamente le pediste el RFC y obtuviste sus datos fiscales, PREGÚNTALE si la dirección de envío es la misma que su dirección fiscal, MOSTRÁNDOSELA explícitamente para que la confirme. Una vez que tengas la dirección de envío confirmada, despídete amablemente indicando que un asesor humano retomará la conversación para afinar detalles de pago y envío.
 `;
 
@@ -151,7 +151,7 @@ class AIService {
         functionDeclarations: [
           {
             name: "consultar_catalogo",
-            description: "Busca productos en el catálogo. Extrae los parámetros de búsqueda en JSON. REGLA DE ORO: NO inventes la clave 'familia'. Si es ambigua, NO uses la herramienta y pregúntale al usuario. Si menciona una unidad (ej. mm), asume la misma para las demás medidas (sist_med).",
+            description: "Busca productos en el catálogo. Extrae los parámetros de búsqueda en JSON. REGLA DE ORO: El parámetro 'familia' es ESTRICTAMENTE OBLIGATORIO en TODAS las consultas. Si no sabes la familia, o si es ambigua, NO uses esta herramienta y pregúntale al usuario. Si menciona una unidad (ej. mm), asume la misma para las demás (sist_med).",
             parameters: {
               type: "OBJECT",
               properties: {
@@ -171,7 +171,7 @@ class AIService {
               properties: {
                 cart_items: {
                   type: "STRING",
-                  description: "Un string JSON que representa un array de objetos con los productos del pedido actual. Ejemplo: '[{\"clave\": \"OR-050\", \"descripcion\": \"Oring 50mm\", \"cantidad\": 2, \"precio_unitario\": 150}]'"
+                  description: "Un string JSON que representa un array de objetos con los productos del pedido actual. Ejemplo: '[{\"clave\": \"OR-050\", \"descripcion\": \"Oring 50mm\", \"cantidad\": 2, \"precio\": 150}]'"
                 },
                 shipping_address: {
                   type: "STRING",
@@ -293,6 +293,10 @@ class AIService {
             let parsedItems = [];
             try {
               parsedItems = JSON.parse(args.cart_items);
+              parsedItems = parsedItems.map(item => ({
+                ...item,
+                precio: item.precio || item.precio_unitario || 0
+              }));
             } catch (e) {
               return { error: "El formato de cart_items no es un JSON válido." };
             }
@@ -357,6 +361,15 @@ class AIService {
                 const mun = cliente.MUNICIPIO || '';
                 const est = cliente.ESTADO || '';
                 const direccion = `${calle} ${num}, ${col}, ${cp}, ${mun}, ${est}`.trim().replace(/,\s*,/g, ',');
+                
+                // Update client name to the fiscal reason
+                if (conversation?.clientId) {
+                  await prisma.client.update({
+                    where: { id: conversation.clientId },
+                    data: { name: cliente.NOMBRE }
+                  });
+                }
+                
                 return { status: "success", razon_social: cliente.NOMBRE, rfc: cliente.RFC, direccion };
               } else {
                 return { status: "inactive", message: "El cliente existe pero no está activo en el sistema." };
