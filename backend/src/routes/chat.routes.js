@@ -617,4 +617,41 @@ router.patch('/:conversationId/assign', authenticate, authorize('ADMIN', 'COORDI
   }
 });
 
+// PDF Generation Route
+const PdfGeneratorService = require('../services/pdf.service');
+
+router.post('/quote/generate', authenticate, async (req, res, next) => {
+  try {
+    const { client, cartItems } = req.body;
+    
+    // We can generate a temporary path to save the PDF
+    const tempFileName = `cotizacion_${Date.now()}.pdf`;
+    const tempFilePath = path.join(__dirname, '../../uploads/temp', tempFileName);
+    
+    // Ensure directory exists
+    const dir = path.dirname(tempFilePath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+
+    // Generate the PDF
+    await PdfGeneratorService.generateQuote(client, cartItems, tempFilePath);
+    
+    // Send the file to the client for download
+    res.download(tempFilePath, tempFileName, (err) => {
+      if (err) {
+        console.error('Error sending PDF:', err);
+      }
+      // Clean up the temp file after sending
+      fs.unlink(tempFilePath, (unlinkErr) => {
+        if (unlinkErr) console.error('Error deleting temp PDF:', unlinkErr);
+      });
+    });
+
+  } catch (error) {
+    console.error('Error generating PDF route:', error);
+    res.status(500).json({ error: 'Hubo un error al generar la cotización PDF' });
+  }
+});
+
 module.exports = router;

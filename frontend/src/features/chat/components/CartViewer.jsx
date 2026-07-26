@@ -545,7 +545,47 @@ export default function CartViewer({ cartData, client }) {
             </button>
             <button 
               className="flex-1 py-2.5 px-3 bg-sales-blue-600 hover:bg-sales-blue-500 text-white rounded-lg font-medium transition-colors shadow-lg shadow-sales-blue-900/20 flex justify-center items-center gap-2"
-              onClick={() => alert("Función de generar cotización PDF en desarrollo")}
+              onClick={async () => {
+                try {
+                  const token = localStorage.getItem('token');
+                  const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+                  
+                  // Convert client and cart to proper format
+                  const reqBody = {
+                    client: {
+                      name: client?.name || '',
+                      address: shippingAddress || '',
+                      phone: client?.phone || '',
+                      RFC: razonSocial || ''
+                    },
+                    cartItems: cartItems
+                  };
+
+                  const res = await fetch(`${baseUrl}/api/chat/quote/generate`, {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                      'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify(reqBody)
+                  });
+
+                  if (!res.ok) throw new Error('Falló al generar PDF');
+                  
+                  const blob = await res.blob();
+                  const url = window.URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.style.display = 'none';
+                  a.href = url;
+                  a.download = `Cotizacion_${Date.now()}.pdf`;
+                  document.body.appendChild(a);
+                  a.click();
+                  window.URL.revokeObjectURL(url);
+                } catch (error) {
+                  console.error('Error:', error);
+                  alert('Error al generar la cotización PDF');
+                }
+              }}
             >
               Cotización PDF
             </button>
