@@ -103,14 +103,14 @@ export default function CartViewer({ cartData, client }) {
   const handleInjectProduct = (product) => {
     const newItems = [...cartItems];
     // Check if already in cart
-    const existingIdx = newItems.findIndex(i => i.clave === product.CLAVE);
+    const existingIdx = newItems.findIndex(i => i.clave === product.CVE_ART);
     if (existingIdx >= 0) {
       newItems[existingIdx].cantidad = (newItems[existingIdx].cantidad || 1) + 1;
     } else {
       newItems.push({
-        clave: product.CLAVE,
-        descripcion: product.DESCRIPCION || product.NOMBRE,
-        precio: product.PRECIO || 0,
+        clave: product.CVE_ART,
+        descripcion: product.DESC_ECOMM || product.DESCR || product.NOMBRE,
+        precio: (product.PRECIO || 0) * 1.16, // Guardamos el precio Neto
         cantidad: 1
       });
     }
@@ -361,10 +361,10 @@ export default function CartViewer({ cartData, client }) {
                     <div className="flex justify-between items-start mb-2 gap-2">
                       <div className="flex-1 min-w-0">
                         <span className="inline-block px-2 py-0.5 rounded text-xs font-mono font-bold bg-sales-slate-700 text-sales-slate-200 mb-1">
-                          {product.CLAVE}
+                          {product.CVE_ART}
                         </span>
-                        <p className="text-sm text-sales-slate-300 leading-snug line-clamp-2" title={product.DESCRIPCION || product.NOMBRE}>
-                          {product.DESCRIPCION || product.NOMBRE}
+                        <p className="text-sm text-sales-slate-300 leading-snug line-clamp-2" title={product.DESC_ECOMM || product.DESCR || product.NOMBRE}>
+                          {product.DESC_ECOMM || product.DESCR || product.NOMBRE}
                         </p>
                       </div>
                     </div>
@@ -372,7 +372,7 @@ export default function CartViewer({ cartData, client }) {
                     <div className="flex justify-between items-center mt-3 pt-3 border-t border-sales-slate-700/50">
                       <div className="flex flex-col">
                         <span className="text-sm font-bold text-sales-slate-100">
-                          ${(product.PRECIO || 0).toFixed(2)}
+                          ${((product.PRECIO || 0) * 1.16).toFixed(2)} <span className="text-[10px] font-normal text-sales-slate-400">Neto (IVA Inc.)</span>
                         </span>
                         <span className="text-xs text-sales-slate-400">
                           Stock: {totalExt > 0 ? <span className="text-green-400 font-bold">{totalExt}</span> : '0'}
