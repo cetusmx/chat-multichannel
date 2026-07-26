@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ShoppingCart, Package, Info, Plus, Minus, Trash2, Trash, Search, Database, Loader2, ArrowRight, Filter, Send } from 'lucide-react';
+import { ShoppingCart, Package, Info, Plus, Minus, Trash2, Trash, Search, Database, Loader2, ArrowRight, Filter, Send, MessageSquare } from 'lucide-react';
 import { updateClientCart, searchSealMarketCatalog, getSealMarketFamilias } from '../../../services/api';
 import useChatStore from '../../../stores/useChatStore';
 
@@ -145,6 +145,13 @@ export default function CartViewer({ cartData, client }) {
     saveCart(newItems);
     // Optional: Auto-switch back to cart to show the added item
     setActiveTab('current');
+  };
+
+  const handleSuggestProduct = (product) => {
+    const desc = product.DESC_ECOMM || product.DESCR || product.NOMBRE;
+    const priceNet = ((product.PRECIO || 0) * 1.16).toFixed(2);
+    const msg = `Tengo esta opción:\n*${product.CVE_ART}* - ${desc}\nPrecio: $${priceNet} Neto (IVA Incluido)`;
+    sendMessage(msg, false);
   };
 
   const handleSendSummary = () => {
@@ -469,12 +476,21 @@ export default function CartViewer({ cartData, client }) {
                           Stock: {totalExt > 0 ? <span className="text-green-400 font-bold">{totalExt}</span> : '0'}
                         </span>
                       </div>
-                      <button 
-                        onClick={() => handleInjectProduct(product)}
-                        className="flex items-center gap-1 bg-sales-blue-600/20 text-sales-blue-400 hover:bg-sales-blue-600 hover:text-white px-3 py-1.5 rounded-md text-xs font-semibold transition-colors"
-                      >
-                        Añadir <ArrowRight className="w-3 h-3" />
-                      </button>
+                      <div className="flex flex-col gap-1.5 items-end">
+                        <button 
+                          onClick={() => handleSuggestProduct(product)}
+                          className="flex items-center justify-center gap-1 bg-sales-slate-700/50 text-sales-slate-300 hover:bg-sales-slate-600 hover:text-white px-3 py-1 rounded-md text-[10px] font-semibold transition-colors border border-sales-slate-600"
+                          title="Sugerir en el chat"
+                        >
+                          <MessageSquare className="w-3 h-3" /> Sugerir
+                        </button>
+                        <button 
+                          onClick={() => handleInjectProduct(product)}
+                          className="flex items-center justify-center gap-1 bg-sales-blue-600/20 text-sales-blue-400 hover:bg-sales-blue-600 hover:text-white px-3 py-1 rounded-md text-[10px] font-semibold transition-colors"
+                        >
+                          <ShoppingCart className="w-3 h-3" /> Añadir
+                        </button>
+                      </div>
                     </div>
                   </div>
                 );
