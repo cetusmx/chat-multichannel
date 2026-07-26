@@ -63,12 +63,8 @@ class GeminiProvider extends AIProvider {
       
       const configuredModel = genAI.getGenerativeModel(modelOptions);
       
-      const chat = configuredModel.startChat({
-        history: formattedMessages.slice(0, -1),
-      });
-
-      const lastMessage = formattedMessages[formattedMessages.length - 1];
-      let result = await chat.sendMessage(lastMessage.parts[0].text);
+      let contents = [...formattedMessages];
+      let result = await configuredModel.generateContent({ contents });
 
       let calls = result.response.functionCalls();
       // Handle tool calls iteratively
@@ -88,14 +84,24 @@ class GeminiProvider extends AIProvider {
           apiResponse = { error: `Error ejecutando ${call.name}: ${err.message}` };
         }
 
-        // Enviar el resultado de la función de vuelta a Gemini
-        result = await chat.sendMessage([{
-          functionResponse: {
-            name: call.name,
-            response: apiResponse
-          }
-        }]);
+        // Add the model's function call to history
+        contents.push({
+          role: 'model',
+          parts: [{ functionCall: { name: call.name, args: call.args } }]
+        });
+
+        // Add the function response as 'user' to history
+        contents.push({
+          role: 'user',
+          parts: [{
+            functionResponse: {
+              name: call.name,
+              response: apiResponse
+            }
+          }]
+        });
         
+        result = await configuredModel.generateContent({ contents });
         calls = result.response.functionCalls();
       }
 
