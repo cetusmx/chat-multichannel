@@ -146,7 +146,8 @@ export default function CartViewer({ cartData, client }) {
     saveCart(newItems);
     
     // Send auto-confirmation message to chat
-    sendMessage(`✅ *Agregado al carrito:*\n1x ${product.CVE_ART} - ${desc}`, false);
+    const priceNet = ((product.PRECIO || 0) * 1.16).toFixed(2);
+    sendMessage(`✅ *Agregado al carrito:*\n1x ${product.CVE_ART} - ${desc}\nPrecio: $${priceNet} Neto (IVA Incluido)`, false);
 
     // Optional: Auto-switch back to cart to show the added item
     setActiveTab('current');
@@ -288,9 +289,20 @@ export default function CartViewer({ cartData, client }) {
                       </div>
                     </div>
                   ) : (
-                    <p className="text-xs text-sales-slate-300">
-                      {shippingAddress ? shippingAddress : <span className="italic opacity-50">No especificada</span>}
-                    </p>
+                    <div className="flex justify-between items-start mt-1">
+                      <p className="text-xs text-sales-slate-300 flex-1 pr-2">
+                        {shippingAddress ? shippingAddress : <span className="italic opacity-50">No especificada</span>}
+                      </p>
+                      {shippingAddress && (
+                        <button 
+                          onClick={() => sendMessage(`Por favor valida tu dirección de envío:\n\n*${shippingAddress}*\n\n¿Es correcta?`, false)}
+                          className="flex-shrink-0 bg-sales-slate-700/50 hover:bg-sales-blue-600 hover:text-white text-sales-blue-400 text-[10px] py-1 px-2 rounded flex items-center justify-center gap-1 transition-colors border border-sales-slate-600/50 hover:border-sales-blue-500"
+                          title="Pedir validación en el chat"
+                        >
+                          <Send className="w-3 h-3" /> Validar
+                        </button>
+                      )}
+                    </div>
                   )}
                 </div>
               </div>
