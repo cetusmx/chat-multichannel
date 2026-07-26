@@ -222,14 +222,33 @@ class AIService {
             }
             
             const data = await fetchRes.json();
+            let results = data.data || [];
             
-            if (data && data.data && Array.isArray(data.data)) {
-               // Limitar los resultados a 5 para no reventar la memoria de contexto de Gemini
-               return { 
-                 resultados: data.data.slice(0, 5), 
-                 total_encontrados: data.pagination?.totalRecords || data.data.length,
-                 nota: "Se están mostrando máximo 5 resultados. Si hay más, pide al cliente que sea más específico." 
-               };
+            if (Array.isArray(results) && results.length > 0) {
+              // 1. Omitir productos "muertos" (precio 0, sin stock, y sin fecha de última compra)
+              results = results.filter(item => {
+                const totalExt = Object.values(item.existencias || {}).reduce((a, b) => a + (b || 0), 0);
+                const isDead = (!item.PRECIO || item.PRECIO === 0) && totalExt === 0 && !item.FCH_ULTCOM;
+                return !isDead;
+              });
+
+              // 2. Priorizar productos con existencia si hay múltiples opciones
+              if (results.length > 1) {
+                const conExistencia = results.filter(item => {
+                  const totalExt = Object.values(item.existencias || {}).reduce((a, b) => a + (b || 0), 0);
+                  return totalExt > 0;
+                });
+                if (conExistencia.length > 0) {
+                  results = conExistencia;
+                }
+              }
+
+              // Limitar los resultados a 5 para no reventar la memoria de contexto de Gemini
+              return { 
+                resultados: results.slice(0, 5), 
+                total_encontrados: results.length,
+                nota: "Se están mostrando máximo 5 resultados. Si hay más, pide al cliente que sea más específico." 
+              };
             }
             return data;
           } catch (e) {
