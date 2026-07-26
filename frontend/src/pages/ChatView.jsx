@@ -80,26 +80,27 @@ export default function ChatView() {
                 hasMore={hasMore[currentConversationId] || false}
                 loadMoreMessages={() => loadMoreMessages(currentConversationId)}
                 isLoadingMore={isLoadingMore}
+                headerActions={
+                  activeConv?.client?.cartData && 
+                  ((Array.isArray(activeConv.client.cartData) ? activeConv.client.cartData : (activeConv.client.cartData.items || [])).length > 0) && (
+                    <button
+                      onClick={() => setIsCartOpen(true)}
+                      className="relative z-40 cursor-pointer bg-gradient-to-r from-sales-cyan-600 to-sales-blue-600 hover:from-sales-cyan-500 hover:to-sales-blue-500 text-white p-2.5 rounded-full shadow-[0_0_12px_rgba(6,182,212,0.6)] border border-sales-cyan-400/50 transition-all duration-300 hover:scale-110 active:scale-95 flex items-center justify-center"
+                      title="Ver Carrito"
+                    >
+                      <ShoppingCart className="w-5 h-5" />
+                      <span className="absolute top-0 right-0 transform translate-x-1/4 -translate-y-1/4 bg-sales-coral-500 text-[10px] font-bold w-4 h-4 flex items-center justify-center rounded-full shadow-sm border border-sales-cyan-600">
+                        {(() => {
+                          const cData = activeConv.client.cartData;
+                          const items = Array.isArray(cData) ? cData : (cData?.items || []);
+                          return items.length;
+                        })()}
+                      </span>
+                    </button>
+                  )
+                }
               />
             </div>
-            {/* FAB para abrir el carrito si hay items */}
-            {activeConv?.client?.cartData && 
-              ((Array.isArray(activeConv.client.cartData) ? activeConv.client.cartData : (activeConv.client.cartData.items || [])).length > 0) && (
-              <button
-                onClick={() => setIsCartOpen(true)}
-                className="absolute top-4 right-4 z-40 cursor-pointer bg-gradient-to-r from-sales-cyan-600 to-sales-blue-600 hover:from-sales-cyan-500 hover:to-sales-blue-500 text-white p-3 rounded-full shadow-[0_0_15px_rgba(6,182,212,0.5)] border border-sales-cyan-400/50 transition-all duration-300 hover:scale-110 active:scale-95"
-                title="Ver Carrito"
-              >
-                <ShoppingCart className="w-6 h-6" />
-                <span className="absolute -top-1 -right-1 bg-sales-coral-500 text-xs font-bold w-5 h-5 flex items-center justify-center rounded-full shadow border border-sales-slate-900">
-                  {(() => {
-                    const cData = activeConv.client.cartData;
-                    const items = Array.isArray(cData) ? cData : (cData?.items || []);
-                    return items.length;
-                  })()}
-                </span>
-              </button>
-            )}
 
             {/* Overlay Drawer para el Carrito */}
             {activeConv?.client?.cartData && (
