@@ -84,12 +84,12 @@ function generateQuotationHtml(data) {
 
       body {
         margin: 0;
-        padding: 40px 50px;
+        padding: 30px 40px;
         font-family: 'Inter', sans-serif;
         background-color: var(--bg-color);
         color: var(--text-dark);
-        font-size: 13px;
-        line-height: 1.5;
+        font-size: 12px;
+        line-height: 1.3;
       }
 
       /* --- HEADER --- */
@@ -97,20 +97,21 @@ function generateQuotationHtml(data) {
         display: flex;
         justify-content: space-between;
         align-items: flex-start;
-        margin-bottom: 40px;
+        margin-bottom: 20px;
         border-bottom: 2px solid var(--primary);
-        padding-bottom: 20px;
+        padding-bottom: 15px;
       }
 
       .logo-container img {
-        max-width: 180px;
+        max-width: 140px;
         height: auto;
       }
 
       .company-details {
-        margin-top: 10px;
+        margin-top: 5px;
         color: var(--text-light);
-        font-size: 11px;
+        font-size: 10px;
+        line-height: 1.2;
       }
 
       .quote-info {
@@ -118,10 +119,10 @@ function generateQuotationHtml(data) {
       }
 
       .quote-title {
-        font-size: 28px;
+        font-size: 24px;
         font-weight: 700;
         color: var(--primary);
-        margin: 0 0 5px 0;
+        margin: 0 0 2px 0;
         text-transform: uppercase;
       }
 
@@ -129,16 +130,16 @@ function generateQuotationHtml(data) {
         font-size: 14px;
         color: var(--accent);
         font-weight: 600;
-        margin-bottom: 15px;
+        margin-bottom: 10px;
       }
 
       /* --- CLIENT SECTION --- */
       .client-section {
         display: flex;
         justify-content: space-between;
-        margin-bottom: 25px;
+        margin-bottom: 15px;
         background-color: #F8FAFC;
-        padding: 15px;
+        padding: 10px 15px;
         border-radius: 8px;
         border-left: 4px solid var(--primary);
       }
@@ -152,25 +153,26 @@ function generateQuotationHtml(data) {
       }
 
       .section-label {
-        font-size: 11px;
+        font-size: 10px;
         text-transform: uppercase;
         color: var(--text-light);
         font-weight: 700;
         letter-spacing: 0.5px;
-        margin-bottom: 8px;
+        margin-bottom: 4px;
       }
 
       .client-name {
-        font-size: 16px;
+        font-size: 14px;
         font-weight: 700;
         color: var(--primary);
-        margin: 0 0 2px 0;
+        margin: 0;
       }
 
       .client-text {
         margin: 0;
         color: var(--text-dark);
-        line-height: 1.4;
+        line-height: 1.2;
+        font-size: 11px;
       }
 
       /* --- ITEMS TABLE --- */
