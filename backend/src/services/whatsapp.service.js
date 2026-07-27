@@ -166,6 +166,26 @@ const whatsappService = {
                 console.warn('[WHATSAPP_SERVICE] Webhook received media but no media ID found in payload:', JSON.stringify(message));
               }
             }
+
+            // --- Handle Replies (context) ---
+            if (message.context && message.context.id) {
+              const repliedWaId = message.context.id;
+              try {
+                const repliedMsg = await prisma.message.findUnique({
+                  where: { waMessageId: repliedWaId }
+                });
+                let snippet = 'Archivo multimedia o mensaje anterior';
+                if (repliedMsg && repliedMsg.content) {
+                  snippet = repliedMsg.content.substring(0, 60).replace(/\n/g, ' ');
+                  if (repliedMsg.content.length > 60) snippet += '...';
+                }
+                // Prepend quote to the incoming text
+                text = `> [Respuesta a]: "${snippet}"\n\n${text}`;
+              } catch (ctxErr) {
+                console.error('[WHATSAPP_SERVICE] Error fetching context message:', ctxErr.message);
+              }
+            }
+            
             
             
             const lockKey = `${tenantId}_${clientPhone}`;
