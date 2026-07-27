@@ -443,7 +443,7 @@ const whatsappService = {
                         data: { status: 'ESCALATED' }
                       });
                       try {
-                        const io = require('../utils/socket').getIo();
+                        const io = socket.getIo();
                         io.of('/chat')
                           .to(`tenant_${tenantId}_coordinators`)
                           .emit('chat:escalated', { 
