@@ -81,7 +81,6 @@ export default function ChatView() {
                 loadMoreMessages={() => loadMoreMessages(currentConversationId)}
                 isLoadingMore={isLoadingMore}
                 headerActions={
-                headerActions={
                   <button
                     onClick={() => setIsCartOpen(true)}
                     className="relative z-40 cursor-pointer bg-gradient-to-r from-sales-cyan-600 to-sales-blue-600 hover:from-sales-cyan-500 hover:to-sales-blue-500 text-white p-2.5 rounded-full shadow-[0_0_12px_rgba(6,182,212,0.6)] border border-sales-cyan-400/50 transition-all duration-300 hover:scale-110 active:scale-95 flex items-center justify-center"
