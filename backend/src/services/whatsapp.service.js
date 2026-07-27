@@ -434,7 +434,7 @@ const whatsappService = {
 
                     // Revisa si la IA está activa
                     const aiConfig = await prisma.aiConfig.findUnique({ where: { tenantId } });
-                    const isAiActive = aiConfig && aiConfig.isActive;
+                    const isAiActive = aiConfig ? aiConfig.isActive : true;
 
                     if (!isAiActive) {
                       // Silently escalate if AI is disabled
