@@ -1,11 +1,24 @@
 /** @vitest-environment jsdom */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import Sidebar from './Sidebar';
+import useAuthStore from '../../stores/useAuthStore';
+
+// Mock useAuthStore so the component sees an ADMIN user
+vi.mock('../../stores/useAuthStore', () => ({
+  __esModule: true,
+  default: vi.fn(),
+}));
 
 describe('Sidebar Component', () => {
   it('renders the sidebar with correct fixed width and labels', () => {
+    // Setup mock return value
+    useAuthStore.mockImplementation((selector) => {
+      const state = { user: { role: 'ADMIN' } };
+      return selector(state);
+    });
+
     render(
       <MemoryRouter>
         <Sidebar />

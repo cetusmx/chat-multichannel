@@ -619,7 +619,6 @@ router.patch('/:conversationId/assign', authenticate, authorize('ADMIN', 'COORDI
 
 // PDF Generation Route
 const PdfGeneratorService = require('../services/pdf.service');
-const whatsappService = require('../services/whatsapp.service');
 
 router.post('/quote/generate', authenticate, async (req, res, next) => {
   try {
