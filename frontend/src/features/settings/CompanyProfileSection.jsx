@@ -3,7 +3,10 @@ import { get, put } from '../../services/api.js';
 
 export default function CompanyProfileSection() {
   const [profile, setProfile] = useState(null);
-  const [form, setForm] = useState({ name: '', domain: '', phone: '', email: '', address: '' });
+  const [form, setForm] = useState({ 
+    name: '', domain: '', phone: '', email: '', address: '',
+    rfc: '', bank: '', account: '', clabe: '' 
+  });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -20,6 +23,10 @@ export default function CompanyProfileSection() {
           phone: body.data.phone || '',
           email: body.data.email || '',
           address: body.data.address || '',
+          rfc: body.data.rfc || '',
+          bank: body.data.bankDetails?.bank || '',
+          account: body.data.bankDetails?.account || '',
+          clabe: body.data.bankDetails?.clabe || '',
         });
       } else {
         setError(body.error?.message || 'Error al cargar perfil');
@@ -34,7 +41,20 @@ export default function CompanyProfileSection() {
     setSaved(false);
     setSaving(true);
     try {
-      const res = await put('/tenant/profile', form);
+      const payload = {
+        name: form.name,
+        domain: form.domain,
+        phone: form.phone,
+        email: form.email,
+        address: form.address,
+        rfc: form.rfc,
+        bankDetails: {
+          bank: form.bank,
+          account: form.account,
+          clabe: form.clabe
+        }
+      };
+      const res = await put('/tenant/profile', payload);
       if (!res.ok) {
         const body = await res.json();
         throw new Error(body.error?.message || 'Error al guardar');
@@ -112,6 +132,45 @@ export default function CompanyProfileSection() {
               onChange={(e) => setForm({ ...form, address: e.target.value })}
               rows={2}
               className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-sales-slate-100 focus:outline-none focus:ring-2 focus:ring-sales-coral/50"
+            />
+          </div>
+          <div className="col-span-2 mt-4">
+            <h4 className="text-md font-medium text-sales-slate-200 border-b border-slate-700 pb-2 mb-4">Datos Fiscales y Bancarios</h4>
+          </div>
+          <div>
+            <label className="mb-1 block text-sm text-sales-slate-400">RFC de la Empresa</label>
+            <input
+              value={form.rfc}
+              onChange={(e) => setForm({ ...form, rfc: e.target.value })}
+              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-sales-slate-100 focus:outline-none focus:ring-2 focus:ring-sales-coral/50"
+              placeholder="Ej. XAXX010101000"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm text-sales-slate-400">Banco</label>
+            <input
+              value={form.bank}
+              onChange={(e) => setForm({ ...form, bank: e.target.value })}
+              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-sales-slate-100 focus:outline-none focus:ring-2 focus:ring-sales-coral/50"
+              placeholder="Ej. BANCOMER / BANAMEX"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm text-sales-slate-400">Cuenta Bancaria</label>
+            <input
+              value={form.account}
+              onChange={(e) => setForm({ ...form, account: e.target.value })}
+              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-sales-slate-100 focus:outline-none focus:ring-2 focus:ring-sales-coral/50"
+              placeholder="Ej. 0194674065"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm text-sales-slate-400">CLABE Interbancaria</label>
+            <input
+              value={form.clabe}
+              onChange={(e) => setForm({ ...form, clabe: e.target.value })}
+              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-sales-slate-100 focus:outline-none focus:ring-2 focus:ring-sales-coral/50"
+              placeholder="Ej. 012320001946740654"
             />
           </div>
         </div>
