@@ -1,136 +1,156 @@
 const request = require('supertest');
-const { PrismaClient } = require('@prisma/client');
+const jwt = require('jsonwebtoken');
 const app = require('../../src/app');
+const prisma = require('../../src/config/database');
 
-const prisma = new PrismaClient();
+const JWT_SECRET = process.env.JWT_SECRET || 'test-secret';
 
-jest.mock('../../src/middleware/auth', () => (req, res, next) => {
-  if (req.headers.authorization === 'Bearer admin-token') {
-    req.user = { id: 'admin-1', role: 'ADMIN', tenantId: 'tenant-1' };
-  } else if (req.headers.authorization === 'Bearer vendor-token') {
-    req.user = { id: 'vendor-1', role: 'VENDOR', tenantId: 'tenant-1' };
-  } else {
-    return res.status(401).json({ error: 'No autorizado' });
-  }
-  next();
+let adminToken;
+let vendorToken;
+let testTenantId;
+let testVendorId;
+const createdCannedIds = [];
+const createdUserIds = [];
+
+beforeAll(async () => {
+  const tenant = await prisma.tenant.findFirst({ where: { domain: 'demo.salesflow.app' } });
+  testTenantId = tenant.id;
+
+  // Create a vendor to test usages
+  const vendor = await prisma.user.create({
+    data: {
+      name: 'Test Vendor Canned',
+      email: 'vendor.canned@salesflow.app',
+      passwordHash: 'dummy',
+      role: 'VENDOR',
+      tenantId: testTenantId,
+    }
+  });
+  testVendorId = vendor.id;
+  createdUserIds.push(vendor.id);
+
+  adminToken = jwt.sign(
+    { id: 'test-admin', tenantId: testTenantId, role: 'ADMIN' },
+    JWT_SECRET,
+    { expiresIn: '1h' },
+  );
+
+  vendorToken = jwt.sign(
+    { id: testVendorId, tenantId: testTenantId, role: 'VENDOR' },
+    JWT_SECRET,
+    { expiresIn: '1h' },
+  );
 });
 
-jest.mock('../../src/middleware/rbac', () => (...allowed) => (req, res, next) => {
-  if (!allowed.includes(req.user.role)) {
-    return res.status(403).json({ error: 'No autorizado' });
+afterAll(async () => {
+  if (createdCannedIds.length > 0) {
+    await prisma.cannedResponseUsage.deleteMany({
+      where: { cannedResponseId: { in: createdCannedIds } }
+    });
+    await prisma.cannedResponse.deleteMany({
+      where: { id: { in: createdCannedIds } }
+    });
   }
-  next();
+  if (createdUserIds.length > 0) {
+    await prisma.user.deleteMany({
+      where: { id: { in: createdUserIds } }
+    });
+  }
 });
 
 describe('Canned Responses API', () => {
-  let cannedId;
-
-  beforeAll(async () => {
-    // Inject mock properties if they don't exist (due to lack of prisma generate locally)
-    if (!prisma.cannedResponse) prisma.cannedResponse = {};
-    if (!prisma.cannedResponseUsage) prisma.cannedResponseUsage = {};
-  });
-
-  afterAll(async () => {
-    await prisma.$disconnect();
-  });
-
-  beforeEach(() => {
-    jest.clearAllMocks();
-  });
+  let firstResponseId;
+  let secondResponseId;
 
   it('POST /api/canned-responses should create a new response if admin', async () => {
-    prisma.cannedResponse.create = jest.fn().mockResolvedValue({
-      id: 'canned-1',
-      tenantId: 'tenant-1',
-      title: 'Saludo',
-      content: 'Hola',
-      shortcut: '/hola'
-    });
-
     const res = await request(app)
       .post('/api/canned-responses')
-      .set('Authorization', 'Bearer admin-token')
-      .send({ title: 'Saludo', content: 'Hola', shortcut: '/hola' });
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ title: 'Saludo 1', content: 'Hola!', shortcut: '/hola' });
 
     expect(res.status).toBe(201);
-    expect(res.body.data.id).toBe('canned-1');
+    expect(res.body.data.id).toBeDefined();
+    firstResponseId = res.body.data.id;
+    createdCannedIds.push(firstResponseId);
   });
 
   it('POST /api/canned-responses should deny if vendor', async () => {
     const res = await request(app)
       .post('/api/canned-responses')
-      .set('Authorization', 'Bearer vendor-token')
-      .send({ title: 'Saludo', content: 'Hola', shortcut: '/hola' });
+      .set('Authorization', `Bearer ${vendorToken}`)
+      .send({ title: 'Saludo 2', content: 'Hola 2', shortcut: '/hola2' });
 
     expect(res.status).toBe(403);
   });
 
   it('GET /api/canned-responses should return responses for tenant', async () => {
-    prisma.cannedResponse.findMany = jest.fn().mockResolvedValue([
-      { id: 'canned-1', title: 'Saludo', content: 'Hola' }
-    ]);
-
     const res = await request(app)
       .get('/api/canned-responses')
-      .set('Authorization', 'Bearer admin-token');
+      .set('Authorization', `Bearer ${adminToken}`);
 
     expect(res.status).toBe(200);
-    expect(res.body.data).toHaveLength(1);
+    expect(res.body.data.some(r => r.id === firstResponseId)).toBe(true);
   });
 
-  it('GET /api/canned-responses/my-usage should return ordered responses', async () => {
-    prisma.cannedResponse.findMany = jest.fn().mockResolvedValue([
-      { id: 'canned-1', title: 'Saludo', content: 'Hola' },
-      { id: 'canned-2', title: 'Despedida', content: 'Adios' }
-    ]);
-    prisma.cannedResponseUsage.findMany = jest.fn().mockResolvedValue([
-      { cannedResponseId: 'canned-2', useCount: 5, lastUsedAt: new Date() }
-    ]);
-
+  it('POST /api/canned-responses should create another response', async () => {
     const res = await request(app)
-      .get('/api/canned-responses/my-usage')
-      .set('Authorization', 'Bearer vendor-token');
+      .post('/api/canned-responses')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ title: 'Despedida', content: 'Adios!', shortcut: '/adios' });
+
+    expect(res.status).toBe(201);
+    secondResponseId = res.body.data.id;
+    createdCannedIds.push(secondResponseId);
+  });
+
+  it('POST /api/canned-responses/:id/use should record usage for vendor', async () => {
+    // Record usage multiple times for second response
+    await request(app)
+      .post(`/api/canned-responses/${secondResponseId}/use`)
+      .set('Authorization', `Bearer ${vendorToken}`);
+    
+    const res = await request(app)
+      .post(`/api/canned-responses/${secondResponseId}/use`)
+      .set('Authorization', `Bearer ${vendorToken}`);
 
     expect(res.status).toBe(200);
-    // canned-2 should be first because of higher useCount
-    expect(res.body.data[0].id).toBe('canned-2');
+    expect(res.body.data.useCount).toBe(2);
+  });
+
+  it('GET /api/canned-responses/my-usage should return ordered responses (most used first)', async () => {
+    const res = await request(app)
+      .get('/api/canned-responses/my-usage')
+      .set('Authorization', `Bearer ${vendorToken}`);
+
+    expect(res.status).toBe(200);
+    
+    // We expect both responses to be returned
+    const data = res.body.data;
+    const firstIndex = data.findIndex(r => r.id === firstResponseId);
+    const secondIndex = data.findIndex(r => r.id === secondResponseId);
+
+    // secondResponseId should appear before firstResponseId because it has more usages
+    expect(secondIndex).toBeLessThan(firstIndex);
+    expect(data[secondIndex].useCount).toBe(2);
+    expect(data[firstIndex].useCount).toBe(0);
   });
 
   it('PUT /api/canned-responses/:id should update response if admin', async () => {
-    prisma.cannedResponse.findFirst = jest.fn().mockResolvedValue({ id: 'canned-1' });
-    prisma.cannedResponse.update = jest.fn().mockResolvedValue({ id: 'canned-1', title: 'Nuevo' });
-
     const res = await request(app)
-      .put('/api/canned-responses/canned-1')
-      .set('Authorization', 'Bearer admin-token')
-      .send({ title: 'Nuevo' });
+      .put(`/api/canned-responses/${firstResponseId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ title: 'Saludo Nuevo', content: 'Hola Nuevo!', shortcut: '/holanuevo' });
 
     expect(res.status).toBe(200);
-    expect(res.body.data.title).toBe('Nuevo');
+    expect(res.body.data.title).toBe('Saludo Nuevo');
   });
 
   it('DELETE /api/canned-responses/:id should delete response if admin', async () => {
-    prisma.cannedResponse.findFirst = jest.fn().mockResolvedValue({ id: 'canned-1' });
-    prisma.cannedResponse.delete = jest.fn().mockResolvedValue({});
-
     const res = await request(app)
-      .delete('/api/canned-responses/canned-1')
-      .set('Authorization', 'Bearer admin-token');
+      .delete(`/api/canned-responses/${firstResponseId}`)
+      .set('Authorization', `Bearer ${adminToken}`);
 
     expect(res.status).toBe(200);
     expect(res.body.data.success).toBe(true);
-  });
-
-  it('POST /api/canned-responses/:id/use should record usage', async () => {
-    prisma.cannedResponse.findFirst = jest.fn().mockResolvedValue({ id: 'canned-1' });
-    prisma.cannedResponseUsage.upsert = jest.fn().mockResolvedValue({ id: 'usage-1' });
-
-    const res = await request(app)
-      .post('/api/canned-responses/canned-1/use')
-      .set('Authorization', 'Bearer vendor-token');
-
-    expect(res.status).toBe(200);
-    expect(res.body.data.id).toBe('usage-1');
   });
 });
