@@ -287,6 +287,7 @@ function generateQuotationHtml(data) {
         <div class="section-label">Datos de Facturación</div>
         <h2 class="client-name">${client.name}</h2>
         ${client.rfc ? `<p class="client-text"><strong>RFC:</strong> ${client.rfc}</p>` : ''}
+        ${client.billingAddress ? `<p class="client-text"><strong>Domicilio Fiscal:</strong><br>${client.billingAddress}</p>` : ''}
         ${client.phone ? `<p class="client-text"><strong>Tel:</strong> ${client.phone}</p>` : ''}
       </div>
       <div class="client-box shipping">

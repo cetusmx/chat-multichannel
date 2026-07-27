@@ -37,6 +37,8 @@ export default function CartViewer({ cartData, client }) {
   let cartItems = [];
   let shippingAddress = null;
   let razonSocial = null;
+  let rfc = null;
+  let billingAddress = null;
 
   if (Array.isArray(cartData)) {
     cartItems = cartData;
@@ -44,6 +46,8 @@ export default function CartViewer({ cartData, client }) {
     cartItems = cartData.items;
     shippingAddress = cartData.shippingAddress;
     razonSocial = cartData.razonSocial;
+    rfc = cartData.rfc || cartData.RFC;
+    billingAddress = cartData.billingAddress || cartData.domicilioFiscal;
   }
 
   // Define update helper
@@ -54,7 +58,9 @@ export default function CartViewer({ cartData, client }) {
       const newCartData = {
         items: newItems,
         shippingAddress,
-        razonSocial
+        razonSocial,
+        rfc,
+        billingAddress
       };
       await updateClientCart(client.id, newCartData);
     } catch (err) {
@@ -553,10 +559,11 @@ export default function CartViewer({ cartData, client }) {
                   // Convert client and cart to proper format
                   const reqBody = {
                     client: {
-                      name: client?.name || '',
+                      name: razonSocial || client?.name || '',
+                      rfc: rfc || '',
+                      billingAddress: billingAddress || '',
                       address: shippingAddress || '',
-                      phone: client?.phone || '',
-                      RFC: razonSocial || ''
+                      phone: client?.phone || ''
                     },
                     cartItems: cartItems
                   };

@@ -20,7 +20,8 @@ class PdfGeneratorService {
         },
         client: {
           name: clientData.name || clientData.NOMBRE || 'Cliente General',
-          rfc: clientData.RFC || '',
+          rfc: clientData.rfc || clientData.RFC || '',
+          billingAddress: clientData.billingAddress || '',
           address: clientData.address || (clientData.CALLE ? `${clientData.CALLE} ${clientData.NUMEXT}, ${clientData.COLONIA} C.P. ${clientData.CODIGO}` : ''),
           phone: clientData.phone || ''
         },
