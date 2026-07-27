@@ -661,7 +661,7 @@ export default function CartViewer({ cartData, client }) {
                       rfc: rfc || '',
                       billingAddress: billingAddress || '',
                       address: shippingAddress || '',
-                      phone: client?.phone || ''
+                      phone: client?.phoneNumber || client?.phone || ''
                     },
                     cartItems: cartItems
                   };
