@@ -619,10 +619,11 @@ router.patch('/:conversationId/assign', authenticate, authorize('ADMIN', 'COORDI
 
 // PDF Generation Route
 const PdfGeneratorService = require('../services/pdf.service');
+const whatsappService = require('../services/whatsapp.service');
 
 router.post('/quote/generate', authenticate, async (req, res, next) => {
   try {
-    const { client, cartItems } = req.body;
+    const { client, cartItems, conversationId } = req.body;
     
     // We can generate a temporary path to save the PDF
     const tempFileName = `cotizacion_${Date.now()}.pdf`;
@@ -644,6 +645,28 @@ router.post('/quote/generate', authenticate, async (req, res, next) => {
 
     // Generate the PDF
     await PdfGeneratorService.generateQuote(client, cartItems, companyData, tempFilePath);
+    
+    // If conversationId is provided, send it via WhatsApp to the client
+    if (conversationId) {
+      try {
+        const fileObj = {
+          path: tempFilePath,
+          mimetype: 'application/pdf',
+          originalname: 'Cotizacion.pdf'
+        };
+        const vendorId = req.user.id || req.user.name; // Ideally we use ID, fallback to name
+        await whatsappService.sendMedia(
+          conversationId,
+          fileObj,
+          '📄 *Aquí tienes tu Cotización Formal.*\nAdjunto el documento con el detalle de tu pedido y nuestras instrucciones de pago.',
+          vendorId,
+          'VENDOR',
+          'Cotizacion.pdf'
+        );
+      } catch (wsErr) {
+        console.error('Error sending PDF via WhatsApp:', wsErr);
+      }
+    }
     
     // Send the file to the client for download
     res.download(tempFilePath, tempFileName, (err) => {

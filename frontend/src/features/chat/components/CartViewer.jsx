@@ -655,6 +655,7 @@ export default function CartViewer({ cartData, client }) {
                   
                   // Convert client and cart to proper format
                   const reqBody = {
+                    conversationId: useChatStore.getState().currentConversationId,
                     client: {
                       name: razonSocial || client?.name || '',
                       chatName: client?.name || '',
