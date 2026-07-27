@@ -26,8 +26,9 @@ describe('Canned Responses API', () => {
   let cannedId;
 
   beforeAll(async () => {
-    // Note: in a real environment we would setup/teardown db.
-    // For this jest run, we mock prisma responses.
+    // Inject mock properties if they don't exist (due to lack of prisma generate locally)
+    if (!prisma.cannedResponse) prisma.cannedResponse = {};
+    if (!prisma.cannedResponseUsage) prisma.cannedResponseUsage = {};
   });
 
   afterAll(async () => {
