@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { get, post } from '../../services/api';
+import { get, post } from '../../../services/api';
 
 export default function CannedResponsesPopover({ isOpen, onClose, onSelect, filterText, anchorEl }) {
   const [responses, setResponses] = useState([]);
