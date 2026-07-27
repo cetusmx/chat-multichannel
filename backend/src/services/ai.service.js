@@ -309,7 +309,9 @@ class AIService {
             const newCartData = {
               items: parsedItems,
               shippingAddress: args.shipping_address || (Array.isArray(currentCart) ? null : currentCart.shippingAddress),
-              razonSocial: razonSocial
+              razonSocial: razonSocial,
+              rfc: Array.isArray(currentCart) ? null : currentCart.rfc,
+              billingAddress: Array.isArray(currentCart) ? null : currentCart.billingAddress
             };
 
             if (conversation?.clientId) {
@@ -366,7 +368,9 @@ class AIService {
                 if (conversation?.clientId) {
                   const client = await prisma.client.findUnique({ where: { id: conversation.clientId } });
                   const cartData = client.cartData || {};
-                  const newCartData = Array.isArray(cartData) ? { items: cartData, razonSocial: cliente.NOMBRE } : { ...cartData, razonSocial: cliente.NOMBRE };
+                  const newCartData = Array.isArray(cartData) 
+                    ? { items: cartData, razonSocial: cliente.NOMBRE, rfc: cliente.RFC, billingAddress: direccion } 
+                    : { ...cartData, razonSocial: cliente.NOMBRE, rfc: cliente.RFC, billingAddress: direccion };
                   
                   await prisma.client.update({
                     where: { id: conversation.clientId },
