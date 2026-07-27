@@ -548,7 +548,6 @@ export default function CartViewer({ cartData, client }) {
               onClick={async () => {
                 try {
                   const token = localStorage.getItem('token');
-                  const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
                   
                   // Convert client and cart to proper format
                   const reqBody = {
@@ -561,7 +560,8 @@ export default function CartViewer({ cartData, client }) {
                     cartItems: cartItems
                   };
 
-                  const res = await fetch(`${baseUrl}/api/chat/quote/generate`, {
+                  // Use relative URL so it goes through Vite proxy / Nginx
+                  const res = await fetch(`/api/chat/quote/generate`, {
                     method: 'POST',
                     headers: {
                       'Content-Type': 'application/json',
