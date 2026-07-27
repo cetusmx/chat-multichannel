@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { ShoppingCart, Package, Info, Plus, Minus, Trash2, Trash, Search, Database, Loader2, ArrowRight, Filter, Send, MessageSquare } from 'lucide-react';
 import { updateClientCart, searchSealMarketCatalog, getSealMarketFamilias } from '../../../services/api';
 import useChatStore from '../../../stores/useChatStore';
+import useAuthStore from '../../../stores/useAuthStore';
 
 export default function CartViewer({ cartData, client }) {
   const [activeTab, setActiveTab] = useState('current'); // 'current' or 'catalog'
@@ -547,7 +548,7 @@ export default function CartViewer({ cartData, client }) {
               className="flex-1 py-2.5 px-3 bg-sales-blue-600 hover:bg-sales-blue-500 text-white rounded-lg font-medium transition-colors shadow-lg shadow-sales-blue-900/20 flex justify-center items-center gap-2"
               onClick={async () => {
                 try {
-                  const token = localStorage.getItem('token');
+                  const token = useAuthStore.getState().token;
                   
                   // Convert client and cart to proper format
                   const reqBody = {
