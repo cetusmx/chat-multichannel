@@ -668,20 +668,53 @@ router.post('/quote/generate', authenticate, async (req, res, next) => {
       }
     }
     
-    // Send the file to the client for download
-    res.download(tempFilePath, tempFileName, (err) => {
-      if (err) {
-        console.error('Error sending PDF:', err);
-      }
-      // Clean up the temp file after sending
-      fs.unlink(tempFilePath, (unlinkErr) => {
-        if (unlinkErr) console.error('Error deleting temp PDF:', unlinkErr);
-      });
+    // Send the file to the client
+    const fileBuffer = fs.readFileSync(tempFilePath);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${tempFileName}"`);
+    res.send(fileBuffer);
+
+    // Clean up the temp file after sending
+    fs.unlink(tempFilePath, (unlinkErr) => {
+      if (unlinkErr) console.error('Error deleting temp PDF:', unlinkErr);
     });
 
   } catch (error) {
     console.error('Error generating PDF route:', error);
     res.status(500).json({ error: 'Hubo un error al generar la cotización PDF' });
+  }
+});
+
+router.post('/quote/send-email', authenticate, async (req, res, next) => {
+  try {
+    const { client, cartItems, email } = req.body;
+    if (!email) {
+      return res.status(400).json({ error: 'El email es requerido' });
+    }
+    
+    const tempFileName = `cotizacion_${Date.now()}.pdf`;
+    const tempFilePath = path.join(__dirname, '../../uploads/temp', tempFileName);
+    const dir = path.dirname(tempFilePath);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+
+    let companyData = null;
+    if (req.user && req.user.tenantId) {
+      companyData = await prisma.tenant.findUnique({ where: { id: req.user.tenantId } });
+    }
+
+    await PdfGeneratorService.generateQuote(client, cartItems, companyData, tempFilePath);
+    
+    const EmailService = require('../services/email.service');
+    await EmailService.sendQuotationEmail(email, client.name || client.razonSocial || 'Cliente', tempFilePath);
+
+    fs.unlink(tempFilePath, (err) => {
+      if (err) console.error('Error deleting temp PDF:', err);
+    });
+
+    res.json({ success: true, message: 'Cotización enviada por correo exitosamente' });
+  } catch (error) {
+    console.error('Error sending PDF email:', error);
+    res.status(500).json({ error: 'Hubo un error al enviar el correo' });
   }
 });
 

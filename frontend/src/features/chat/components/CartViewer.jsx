@@ -599,14 +599,22 @@ export default function CartViewer({ cartData, client }) {
                       </div>
                       <div className="flex flex-col gap-1.5 items-end">
                         <button 
-                          onClick={() => handleSuggestProduct(product)}
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            handleSuggestProduct(product);
+                          }}
                           className="flex items-center justify-center gap-1 bg-sales-slate-700/50 text-sales-slate-300 hover:bg-sales-slate-600 hover:text-white px-3 py-1 rounded-md text-[10px] font-semibold transition-colors border border-sales-slate-600"
                           title="Sugerir en el chat"
                         >
                           <MessageSquare className="w-3 h-3" /> Sugerir
                         </button>
                         <button 
-                          onClick={() => handleInjectProduct(product)}
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            handleInjectProduct(product);
+                          }}
                           className="flex items-center justify-center gap-1 bg-sales-blue-600/20 text-sales-blue-400 hover:bg-sales-blue-600 hover:text-white px-3 py-1 rounded-md text-[10px] font-semibold transition-colors"
                         >
                           <ShoppingCart className="w-3 h-3" /> Añadir
@@ -637,25 +645,68 @@ export default function CartViewer({ cartData, client }) {
               <span className="text-sales-blue-400">${total.toFixed(2)}</span>
             </div>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-col">
+            <div className="flex gap-2">
+              <button 
+                className="flex-1 py-2.5 px-3 bg-sales-slate-800 hover:bg-sales-slate-700 border border-sales-slate-700 text-sales-blue-400 rounded-lg font-medium transition-colors shadow-lg flex justify-center items-center gap-2"
+                onClick={handleSendSummary}
+                disabled={cartItems.length === 0}
+                title="Enviar resumen al chat"
+              >
+                <Send className="w-4 h-4" />
+                Resumen a Chat
+              </button>
+              <button 
+                className="flex-1 py-2.5 px-3 bg-sales-blue-600 hover:bg-sales-blue-500 text-white rounded-lg font-medium transition-colors shadow-lg shadow-sales-blue-900/20 flex justify-center items-center gap-2"
+                onClick={async () => {
+                  try {
+                    const token = useAuthStore.getState().token;
+                    const reqBody = {
+                      conversationId: useChatStore.getState().currentConversationId,
+                      client: {
+                        name: razonSocial || client?.name || '',
+                        chatName: client?.name || '',
+                        rfc: rfc || '',
+                        billingAddress: billingAddress || '',
+                        address: shippingAddress || '',
+                        phone: client?.phoneNumber || client?.phone || ''
+                      },
+                      cartItems: cartItems
+                    };
+                    const res = await fetch(`/api/chat/quote/generate`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                      body: JSON.stringify(reqBody)
+                    });
+                    if (!res.ok) throw new Error('Falló al generar PDF');
+                    const blob = await res.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.style.display = 'none';
+                    a.href = url;
+                    a.download = `Cotizacion_${Date.now()}.pdf`;
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                  } catch (error) {
+                    console.error('Error:', error);
+                    alert('Error al generar la cotización PDF');
+                  }
+                }}
+              >
+                Cotización PDF
+              </button>
+            </div>
             <button 
-              className="flex-1 py-2.5 px-3 bg-sales-slate-800 hover:bg-sales-slate-700 border border-sales-slate-700 text-sales-blue-400 rounded-lg font-medium transition-colors shadow-lg flex justify-center items-center gap-2"
-              onClick={handleSendSummary}
-              disabled={cartItems.length === 0}
-              title="Enviar resumen al chat"
-            >
-              <Send className="w-4 h-4" />
-              Enviar al Chat
-            </button>
-            <button 
-              className="flex-1 py-2.5 px-3 bg-sales-blue-600 hover:bg-sales-blue-500 text-white rounded-lg font-medium transition-colors shadow-lg shadow-sales-blue-900/20 flex justify-center items-center gap-2"
+              className="w-full py-2 px-3 bg-sales-slate-800 hover:bg-sales-slate-700 border border-sales-slate-700 text-sales-slate-300 rounded-lg font-medium transition-colors shadow-lg flex justify-center items-center gap-2 text-sm"
               onClick={async () => {
+                const email = window.prompt("Ingrese el correo electrónico al que desea enviar la cotización:");
+                if (!email) return;
+                
                 try {
                   const token = useAuthStore.getState().token;
-                  
-                  // Convert client and cart to proper format
                   const reqBody = {
-                    conversationId: useChatStore.getState().currentConversationId,
+                    email,
                     client: {
                       name: razonSocial || client?.name || '',
                       chatName: client?.name || '',
@@ -666,35 +717,24 @@ export default function CartViewer({ cartData, client }) {
                     },
                     cartItems: cartItems
                   };
-
-                  // Use relative URL so it goes through Vite proxy / Nginx
-                  const res = await fetch(`/api/chat/quote/generate`, {
+                  const res = await fetch(`/api/chat/quote/send-email`, {
                     method: 'POST',
-                    headers: {
-                      'Content-Type': 'application/json',
-                      'Authorization': `Bearer ${token}`
-                    },
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                     body: JSON.stringify(reqBody)
                   });
-
-                  if (!res.ok) throw new Error('Falló al generar PDF');
-                  
-                  const blob = await res.blob();
-                  const url = window.URL.createObjectURL(blob);
-                  const a = document.createElement('a');
-                  a.style.display = 'none';
-                  a.href = url;
-                  a.download = `Cotizacion_${Date.now()}.pdf`;
-                  document.body.appendChild(a);
-                  a.click();
-                  window.URL.revokeObjectURL(url);
+                  if (!res.ok) {
+                    const data = await res.json();
+                    throw new Error(data.error || 'Error al enviar');
+                  }
+                  alert('Cotización enviada exitosamente por correo electrónico.');
                 } catch (error) {
                   console.error('Error:', error);
-                  alert('Error al generar la cotización PDF');
+                  alert('Error al enviar cotización por correo: ' + error.message);
                 }
               }}
+              disabled={cartItems.length === 0}
             >
-              Cotización PDF
+              Enviar por Correo
             </button>
           </div>
         </div>

@@ -78,6 +78,7 @@ model Tenant {
   conversations  Conversation[]
   documents      Document[]
   documentChunks DocumentChunk[]
+  cannedResponses CannedResponse[]
 
   @@map("tenants")
 }
@@ -135,6 +136,7 @@ model User {
   assignees     User[]           @relation("UserCoordinator")
   conversations Conversation[]   @relation("VendorConversations")
   eligibleRules EligibleVendor[]
+  cannedResponseUsages CannedResponseUsage[]
 
   @@index([tenantId])
   @@index([role])
@@ -334,4 +336,35 @@ model DocumentChunk {
   @@index([documentId])
   @@index([tenantId])
   @@map("document_chunks")
+}
+
+model CannedResponse {
+  id        String   @id @default(cuid())
+  tenantId  String   @map("tenant_id")
+  title     String
+  content   String   @db.Text
+  shortcut  String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  usages    CannedResponseUsage[]
+
+  @@index([tenantId])
+  @@map("canned_responses")
+}
+
+model CannedResponseUsage {
+  id               String   @id @default(cuid())
+  userId           String   @map("user_id")
+  cannedResponseId String   @map("canned_response_id")
+  lastUsedAt       DateTime @default(now()) @map("last_used_at")
+  useCount         Int      @default(0) @map("use_count")
+
+  user             User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  cannedResponse   CannedResponse @relation(fields: [cannedResponseId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, cannedResponseId])
+  @@index([userId])
+  @@map("canned_response_usages")
 }

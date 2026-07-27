@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, useMemo } from 'react';
 import useAuthStore from '../../../stores/useAuthStore';
 import useChatStore from '../../../stores/useChatStore';
 import { post } from '../../../services/api';
+import CannedResponsesPopover from './CannedResponsesPopover';
 
 const formatBytes = (bytes, decimals = 1) => {
   if (!+bytes) return '0 Bytes';
@@ -24,7 +25,13 @@ const SecureMedia = ({ url, className, type = 'IMAGE', alt, fallbackText }) => {
     let objectUrl = null;
     let isMounted = true;
     
-    fetch(`${import.meta.env.VITE_API_URL || ''}${url}`, {
+    let fetchUrl = url;
+    if (import.meta.env.VITE_API_URL) {
+      const baseUrl = import.meta.env.VITE_API_URL.replace(/\/api$/, '');
+      fetchUrl = `${baseUrl}${url}`;
+    }
+
+    fetch(fetchUrl, {
       headers: { Authorization: `Bearer ${token}` }
     })
     .then(r => {
@@ -104,6 +111,7 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
   const [text, setText] = useState('');
   const [isInternal, setIsInternal] = useState(false);
   const [aiPopoverOpen, setAiPopoverOpen] = useState(false);
+  const [cannedPopoverOpen, setCannedPopoverOpen] = useState(false);
   const [aiPrompt, setAiPrompt] = useState('');
   const [aiDraft, setAiDraft] = useState('');
   const [aiError, setAiError] = useState(null);
@@ -347,9 +355,23 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
 
   const handleKeyDown = (e) => {
     if (e.key === '/' && text === '') {
-      e.preventDefault();
-      setAiPopoverOpen(true);
+      setCannedPopoverOpen(true);
     }
+  };
+
+  const handleTextChange = (e) => {
+    const val = e.target.value.replace(/[\r\n\u00A0\u202F\uFEFF]+/g, ' ');
+    setText(val);
+    if (val.startsWith('/')) {
+      setCannedPopoverOpen(true);
+    } else {
+      setCannedPopoverOpen(false);
+    }
+  };
+
+  const handleCannedSelect = (content) => {
+    setText(content);
+    chatInputRef.current?.focus();
   };
 
   const handleAddTag = async (e, msgId) => {
@@ -715,16 +737,25 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
               {isInternal ? '🔒 Interno' : '💬 Cliente'}
             </button>
           )}
-          <input 
-            type="text"
-            ref={chatInputRef}
-            className={`flex-1 bg-sales-slate-800 border border-sales-slate-700 rounded-lg px-4 py-2 text-sales-slate-200 focus:outline-none focus:border-sales-cyan-400 transition-all`}
-            placeholder={isUploading ? "Enviando..." : (selectedFile ? "Añadir un comentario..." : (isInternal ? "Escribe un comentario interno..." : "Escribe un mensaje al cliente... (Usa / para IA)"))}
-            value={text}
-            onChange={(e) => setText(e.target.value.replace(/[\r\n\u00A0\u202F\uFEFF]+/g, ' '))}
-            onKeyDown={handleKeyDown}
-            disabled={isUploading || isDrafting}
-          />
+          <div className="flex-1 relative">
+            <CannedResponsesPopover
+              isOpen={cannedPopoverOpen}
+              onClose={() => setCannedPopoverOpen(false)}
+              onSelect={handleCannedSelect}
+              filterText={text.startsWith('/') ? text.substring(1) : ''}
+              anchorEl={chatInputRef.current}
+            />
+            <input 
+              type="text"
+              ref={chatInputRef}
+              className={`w-full bg-sales-slate-800 border border-sales-slate-700 rounded-lg px-4 py-2 text-sales-slate-200 focus:outline-none focus:border-sales-cyan-400 transition-all`}
+              placeholder={isUploading ? "Enviando..." : (selectedFile ? "Añadir un comentario..." : (isInternal ? "Escribe un comentario interno..." : "Escribe un mensaje al cliente... (Usa / para respuestas rápidas)"))}
+              value={text}
+              onChange={handleTextChange}
+              onKeyDown={handleKeyDown}
+              disabled={isUploading || isDrafting}
+            />
+          </div>
           <button 
             type="submit" 
             disabled={(!text.trim() && !selectedFile) || isUploading || isDrafting}

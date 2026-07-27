@@ -279,3 +279,7 @@ export async function getSealMarketFamilias() {
   }
   return res.json();
 }
+
+export async function enviarCotizacionEmail(data) {
+  return post('/chat/quote/send-email', data);
+}

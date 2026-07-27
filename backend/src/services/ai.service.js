@@ -218,6 +218,20 @@ class AIService {
               },
               required: ["razon_social"]
             }
+          },
+          {
+            name: "enviar_cotizacion_email",
+            description: "Envía la cotización actual por correo electrónico al cliente. Úsala cuando el cliente solicite que se le envíe la cotización a un email específico.",
+            parameters: {
+              type: "OBJECT",
+              properties: {
+                email: {
+                  type: "STRING",
+                  description: "Correo electrónico del cliente"
+                }
+              },
+              required: ["email"]
+            }
           }
         ]
       }];
@@ -481,6 +495,72 @@ class AIService {
           } catch (e) {
             console.error('[AI TOOL] Excepción en generar_cotizacion_pdf:', e);
             return { status: 'error', message: `Error al generar el PDF: ${e.message}` };
+          }
+        },
+        enviar_cotizacion_email: async (args) => {
+          try {
+            console.log('[AI TOOL] enviar_cotizacion_email invocado con args:', args);
+            if (!conversation || !conversation.client) {
+              return { status: 'error', message: 'No hay datos del cliente disponibles para generar la cotización.' };
+            }
+            
+            let cartDataObj = conversation.client.cartData;
+            let cartItems = [];
+            if (Array.isArray(cartDataObj)) {
+              cartItems = cartDataObj;
+            } else if (cartDataObj && cartDataObj.items) {
+              cartItems = cartDataObj.items;
+            }
+
+            if (!cartItems || cartItems.length === 0) {
+              return { status: 'error', message: 'El carrito está vacío. Agrega productos primero.' };
+            }
+
+            const path = require('path');
+            const fs = require('fs');
+            const PdfGeneratorService = require('./pdf.service');
+            const EmailService = require('./email.service');
+            
+            const clientDataForPdf = {
+              name: conversation.client.name || 'Cliente',
+              chatName: conversation.client.name || '',
+              RFC: '',
+              billingAddress: '',
+              address: '',
+              phone: conversation.client.phoneNumber || conversation.client.phone || ''
+            };
+
+            const tempDir = path.join(__dirname, '..', '..', 'uploads', 'temp');
+            if (!fs.existsSync(tempDir)) {
+              fs.mkdirSync(tempDir, { recursive: true });
+            }
+            const fileName = `Cotizacion_${conversation.client.id}_${Date.now()}.pdf`;
+            const filePath = path.join(tempDir, fileName);
+
+            const tenant = await prisma.tenant.findUnique({ where: { id: conversation.tenantId } });
+            const companyData = tenant ? {
+              name: tenant.name,
+              address: tenant.address,
+              rfc: tenant.rfc,
+              email: tenant.email,
+              phone: tenant.phone,
+              bankDetails: tenant.bankDetails
+            } : null;
+
+            await PdfGeneratorService.generateQuote(clientDataForPdf, cartItems, companyData, filePath);
+            
+            await EmailService.sendQuotationEmail(args.email, clientDataForPdf.name, filePath);
+
+            setTimeout(() => {
+              fs.unlink(filePath, (err) => {
+                if (err) console.error('Error deleting temp PDF:', err);
+              });
+            }, 10000);
+
+            return { status: 'success', message: 'Cotización enviada exitosamente al correo del cliente.' };
+          } catch (e) {
+            console.error('[AI TOOL] Excepción en enviar_cotizacion_email:', e);
+            return { status: 'error', message: `Error al enviar el PDF por correo: ${e.message}` };
           }
         }
       };

@@ -8,6 +8,7 @@ import AiConfigSection from '../features/settings/AiConfigSection.jsx';
 import KnowledgeBaseSection from '../features/settings/KnowledgeBaseSection.jsx';
 import AssignmentRulesSection from '../features/settings/AssignmentRulesSection.jsx';
 import SlaConfigSection from '../features/settings/SlaConfigSection.jsx';
+import CannedResponsesSection from '../features/settings/CannedResponsesSection.jsx';
 
 const tabs = [
   { id: 'company', label: 'Empresa', roles: ['ADMIN', 'COORDINATOR'] },
@@ -16,6 +17,7 @@ const tabs = [
   { id: 'whatsapp', label: 'WhatsApp API', roles: ['ADMIN'] },
   { id: 'ai', label: 'Inteligencia Artificial', roles: ['ADMIN'] },
   { id: 'kb', label: 'Base de Conocimiento', roles: ['ADMIN'] },
+  { id: 'canned', label: 'Respuestas Rápidas', roles: ['ADMIN'] },
   { id: 'assignment', label: 'Asignación de Clientes', roles: ['ADMIN'] },
   { id: 'sla', label: 'SLA y Tiempos', roles: ['ADMIN', 'COORDINATOR'] },
 ];
@@ -34,6 +36,7 @@ export default function Settings() {
       case 'whatsapp': return <WhatsAppSettingsSection />;
       case 'ai': return <AiConfigSection />;
       case 'kb': return <KnowledgeBaseSection />;
+      case 'canned': return <CannedResponsesSection />;
       case 'assignment': return <AssignmentRulesSection />;
       case 'sla': return <SlaConfigSection />;
       default: return null;
