@@ -594,7 +594,7 @@ const whatsappService = {
   /**
    * Envía media al cliente vía Meta Graph API, opcionalmente con un texto (caption).
    */
-  async sendMedia(conversationId, file, caption = null, senderId = null, senderType = 'VENDOR', originalName = null) {
+  async sendMedia(conversationId, file, caption = null, senderId = null, senderType = 'VENDOR', originalName = null, cleanup = true) {
     const fs = require('fs');
     const fsp = require('fs/promises');
     let fileStream = null;
@@ -734,7 +734,7 @@ const whatsappService = {
     } finally {
       if (fileStream) fileStream.destroy();
       // Cleanup temp file safely
-      if (file && typeof file.path === 'string') {
+      if (cleanup && file && typeof file.path === 'string') {
         try {
           if (fs.existsSync(file.path)) {
             await fsp.unlink(file.path);

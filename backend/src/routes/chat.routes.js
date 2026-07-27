@@ -660,7 +660,8 @@ router.post('/quote/generate', authenticate, async (req, res, next) => {
           '📄 *Aquí tienes tu Cotización Formal.*\nAdjunto el documento con el detalle de tu pedido y nuestras instrucciones de pago.',
           vendorId,
           'VENDOR',
-          'Cotizacion.pdf'
+          'Cotizacion.pdf',
+          false
         );
       } catch (wsErr) {
         console.error('Error sending PDF via WhatsApp:', wsErr);
