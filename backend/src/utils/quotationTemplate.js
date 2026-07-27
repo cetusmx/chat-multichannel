@@ -241,9 +241,9 @@ function generateQuotationHtml(data) {
         font-size: 20px;
         font-weight: 700;
         color: var(--primary);
-        border-top: 2px solid var(--primary);
-        padding-top: 15px;
-        margin-top: 5px;
+        border-bottom: 2px solid var(--primary);
+        padding-bottom: 15px;
+        margin-bottom: 5px;
       }
 
       .grand-total .amount {
@@ -292,6 +292,7 @@ function generateQuotationHtml(data) {
       </div>
       <div class="client-box shipping">
         <div class="section-label">Dirección de Envío</div>
+        ${client.chatName ? `<p class="client-text" style="margin-bottom: 5px;"><strong>Entregar a:</strong> ${client.chatName}</p>` : ''}
         <p class="client-text" style="white-space: pre-line;">
           ${client.address || 'No especificada'}
         </p>

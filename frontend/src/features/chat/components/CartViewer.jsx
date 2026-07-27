@@ -560,6 +560,7 @@ export default function CartViewer({ cartData, client }) {
                   const reqBody = {
                     client: {
                       name: razonSocial || client?.name || '',
+                      chatName: client?.name || '',
                       rfc: rfc || '',
                       billingAddress: billingAddress || '',
                       address: shippingAddress || '',
