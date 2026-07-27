@@ -354,13 +354,18 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
   };
 
   const handleKeyDown = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSend(e);
+      return;
+    }
     if (e.key === '/' && text === '') {
       setCannedPopoverOpen(true);
     }
   };
 
   const handleTextChange = (e) => {
-    const val = e.target.value.replace(/[\r\n\u00A0\u202F\uFEFF]+/g, ' ');
+    const val = e.target.value;
     setText(val);
     if (val.startsWith('/')) {
       setCannedPopoverOpen(true);
@@ -675,7 +680,7 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
                 />
                 <div className="flex justify-end gap-2">
                   <button type="button" onClick={() => setAiDraft('')} className="px-3 py-1.5 bg-sales-slate-700 hover:bg-sales-slate-600 text-white rounded text-sm font-medium">Reintentar</button>
-                  <button type="button" onClick={() => { const sanitizedDraft = aiDraft.replace(/[\r\n\u00A0\u202F\uFEFF]+/g, ' '); setText(text ? text + ' ' + sanitizedDraft : sanitizedDraft); closeAiPopover(); setTimeout(() => chatInputRef.current?.focus(), 0); }} className="px-3 py-1.5 bg-sales-cyan-600 hover:bg-sales-cyan-500 text-white rounded text-sm font-medium">Usar Borrador</button>
+                  <button type="button" onClick={() => { const sanitizedDraft = aiDraft; setText(text ? text + '\n' + sanitizedDraft : sanitizedDraft); closeAiPopover(); setTimeout(() => chatInputRef.current?.focus(), 0); }} className="px-3 py-1.5 bg-sales-cyan-600 hover:bg-sales-cyan-500 text-white rounded text-sm font-medium">Usar Borrador</button>
                 </div>
               </div>
             )}
@@ -745,10 +750,11 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
               filterText={text.startsWith('/') ? text.substring(1) : ''}
               anchorEl={chatInputRef.current}
             />
-            <input 
-              type="text"
+            <textarea
+              rows="1"
               ref={chatInputRef}
-              className={`w-full bg-sales-slate-800 border border-sales-slate-700 rounded-lg px-4 py-2 text-sales-slate-200 focus:outline-none focus:border-sales-cyan-400 transition-all`}
+              className={`w-full bg-sales-slate-800 border border-sales-slate-700 rounded-lg px-4 py-2 text-sales-slate-200 focus:outline-none focus:border-sales-cyan-400 transition-all resize-y`}
+              style={{ minHeight: '42px', maxHeight: '150px' }}
               placeholder={isUploading ? "Enviando..." : (selectedFile ? "Añadir un comentario..." : (isInternal ? "Escribe un comentario interno..." : "Escribe un mensaje al cliente... (Usa / para respuestas rápidas)"))}
               value={text}
               onChange={handleTextChange}
