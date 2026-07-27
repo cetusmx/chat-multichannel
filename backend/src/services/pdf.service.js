@@ -7,16 +7,16 @@ class PdfGeneratorService {
   /**
    * Genera un PDF de cotización a partir de los datos del cliente y su carrito.
    */
-  static async generateQuote(clientData, cartItems, outputPath) {
+  static async generateQuote(clientData, cartItems, companyData, outputPath) {
     try {
       // Map properties to match template
       const templateData = {
         company: {
-          name: 'Seal Market',
-          address: 'Calle Ejemplo 123, Ciudad, País',
-          rfc: 'XAXX010101000',
-          email: 'ventas@sealmarket.com',
-          phone: '555-123-4567'
+          name: companyData?.name || 'Seal Market',
+          address: companyData?.address || 'Calle Ejemplo 123, Ciudad, País',
+          rfc: companyData?.rfc || 'XAXX010101000',
+          email: companyData?.email || 'ventas@sealmarket.com',
+          phone: companyData?.phone || '555-123-4567'
         },
         client: {
           name: clientData.name || clientData.NOMBRE || 'Cliente General',
@@ -30,7 +30,7 @@ class PdfGeneratorService {
           quantity: item.cantidad || 1,
           precioNeto: item.precio || 0 
         })),
-        bankDetails: {
+        bankDetails: companyData?.bankDetails || {
           bank: 'BANCOMER / BANAMEX',
           account: '0194674065 / 2793917',
           clabe: '012320001946740654 / Suc. 7007'

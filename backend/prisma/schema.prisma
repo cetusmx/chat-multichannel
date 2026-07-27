@@ -63,6 +63,8 @@ model Tenant {
   address       String?
   status        String   @default("active")
   businessHours Json?    @map("business_hours")
+  rfc           String?
+  bankDetails   Json?    @map("bank_details")
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
 

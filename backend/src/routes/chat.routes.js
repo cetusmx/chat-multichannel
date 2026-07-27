@@ -634,8 +634,16 @@ router.post('/quote/generate', authenticate, async (req, res, next) => {
       fs.mkdirSync(dir, { recursive: true });
     }
 
+    // Fetch tenant (company) data to include in the quote
+    let companyData = null;
+    if (req.user && req.user.tenantId) {
+      companyData = await prisma.tenant.findUnique({
+        where: { id: req.user.tenantId }
+      });
+    }
+
     // Generate the PDF
-    await PdfGeneratorService.generateQuote(client, cartItems, tempFilePath);
+    await PdfGeneratorService.generateQuote(client, cartItems, companyData, tempFilePath);
     
     // Send the file to the client for download
     res.download(tempFilePath, tempFileName, (err) => {
