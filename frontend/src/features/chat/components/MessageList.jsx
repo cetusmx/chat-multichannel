@@ -299,7 +299,7 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
       }
     } else if (text.trim()) {
       try {
-        await onSendMessage(text.replace(/[\r\n\u00A0\u202F\uFEFF]+/g, ' ').trim(), isInternal);
+        await onSendMessage(text.trim(), isInternal);
         setText('');
         setIsInternal(false);
       } catch (error) {
@@ -355,6 +355,10 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
 
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
+      if (cannedPopoverOpen) {
+        e.preventDefault();
+        return;
+      }
       e.preventDefault();
       handleSend(e);
       return;
