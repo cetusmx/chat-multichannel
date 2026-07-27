@@ -62,9 +62,9 @@ async function getAiConfig(tenantId) {
       where: { tenantId }
     });
     if (!config) {
-      return { isConfigured: false };
+      return { isConfigured: false, isActive: false };
     }
-    return { isConfigured: true, provider: config.provider };
+    return { isConfigured: true, provider: config.provider, isActive: config.isActive };
   } catch (error) {
     if (error instanceof ApiError) throw error;
     throw ApiError.internal('Database error while fetching AI config');
@@ -73,7 +73,7 @@ async function getAiConfig(tenantId) {
 
 async function updateAiConfig(tenantId, data) {
   if (!data) throw ApiError.badRequest('Data is required');
-  const { provider = 'gemini', apiKey } = data;
+  const { provider = 'gemini', apiKey, isActive = true } = data;
   if (!apiKey) throw ApiError.badRequest('API Key is required');
 
   const aiProvider = getProvider(provider);
@@ -89,11 +89,10 @@ async function updateAiConfig(tenantId, data) {
   try {
     const updated = await prisma.aiConfig.upsert({
       where: { tenantId },
-      update: { provider, apiKey: encryptedKey },
-      create: { tenantId, provider, apiKey: encryptedKey }
+      update: { provider, apiKey: encryptedKey, isActive },
+      create: { tenantId, provider, apiKey: encryptedKey, isActive },
     });
-
-    return { isConfigured: true, provider: updated.provider };
+    return { isConfigured: true, provider: updated.provider, isActive: updated.isActive };
   } catch (error) {
     if (error instanceof ApiError) throw error;
     throw ApiError.internal('Database error while updating AI config');

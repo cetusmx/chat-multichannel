@@ -9,6 +9,7 @@ import { getAiConfig, updateAiConfig } from '../../services/api.js';
 export default function AiConfigSection() {
   const [provider, setProvider] = useState('gemini');
   const [apiKey, setApiKey] = useState('');
+  const [isActive, setIsActive] = useState(true);
   const [isConfigured, setIsConfigured] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -22,6 +23,7 @@ export default function AiConfigSection() {
         if (data.isConfigured) {
           setIsConfigured(true);
           setProvider(data.provider);
+          if (data.isActive !== undefined) setIsActive(data.isActive);
         }
       } catch (err) {
         setError(err.message);
@@ -42,9 +44,9 @@ export default function AiConfigSection() {
     setError('');
     setSuccess('');
     try {
-      const result = await updateAiConfig({ provider, apiKey });
+      await updateAiConfig({ provider, apiKey, isActive });
       setIsConfigured(true);
-      setProvider(result.provider || provider);
+      setProvider(provider);
       setApiKey(''); // Clear for security
       setSuccess('AI Configuration saved successfully');
     } catch (err) {
@@ -93,6 +95,26 @@ export default function AiConfigSection() {
           >
             <option value="gemini">Google Gemini</option>
           </select>
+        </div>
+
+        <div className="flex items-center justify-between bg-slate-800 p-4 rounded-lg border border-slate-700">
+          <div>
+            <label className="block text-sm font-medium text-sales-slate-100">
+              Estado de la Inteligencia Artificial
+            </label>
+            <p className="text-xs text-sales-slate-400 mt-1">
+              Si está inactiva, los chats se escalarán y se ocultará el carrito automático, permitiendo al vendedor hacerlo manual.
+            </p>
+          </div>
+          <label className="relative inline-flex items-center cursor-pointer">
+            <input 
+              type="checkbox" 
+              className="sr-only peer" 
+              checked={isActive}
+              onChange={(e) => setIsActive(e.target.checked)}
+            />
+            <div className="w-11 h-6 bg-slate-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sales-cyan-500"></div>
+          </label>
         </div>
 
         <div>

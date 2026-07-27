@@ -432,6 +432,33 @@ const whatsappService = {
 
                     const offHours = isOffHours(tenant?.businessHours);
 
+                    // Revisa si la IA está activa
+                    const aiConfig = await prisma.aiConfig.findUnique({ where: { tenantId } });
+                    const isAiActive = aiConfig && aiConfig.isActive;
+
+                    if (!isAiActive) {
+                      // Silently escalate if AI is disabled
+                      const updatedConv = await prisma.conversation.update({
+                        where: { id: conversation.id },
+                        data: { status: 'ESCALATED' }
+                      });
+                      try {
+                        const io = require('../utils/socket').getIo();
+                        io.of('/chat')
+                          .to(`tenant_${tenantId}_coordinators`)
+                          .emit('chat:escalated', { 
+                            type: 'ESCALATION_ALERT', 
+                            conversationId: conversation.id, 
+                            message: 'Nueva conversación requiere atención (IA inactiva).' 
+                          });
+                        io.of('/chat')
+                          .to(`tenant_${tenantId}_vendors`)
+                          .emit('conversation_escalated', updatedConv);
+                      } catch (e) {
+                        console.error('Socket notification error on silent escalation:', e);
+                      }
+                      return;
+                    }
 
                     let responseText = await aiService.generateAutoResponse(tenantId, conversation.id, text, { isOffHours: offHours });
                     
