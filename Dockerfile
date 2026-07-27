@@ -14,8 +14,12 @@ RUN npm run build
 # Stage 2: Build Backend & App
 FROM node:20-alpine
 WORKDIR /app
-# Install OpenSSL for Prisma
-RUN apk add --no-cache openssl
+# Install OpenSSL for Prisma and Chromium/fonts for Puppeteer
+RUN apk add --no-cache openssl chromium nss freetype harfbuzz ca-certificates ttf-freefont
+
+# Tell Puppeteer to skip downloading Chrome and use the system one
+ENV PUPPETEER_SKIP_DOWNLOAD=true
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
 
 # Copy backend package files
 COPY backend/package*.json ./backend/
