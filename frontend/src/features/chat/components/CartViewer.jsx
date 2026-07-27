@@ -3,14 +3,19 @@ import { ShoppingCart, Package, Info, Plus, Minus, Trash2, Trash, Search, Databa
 import { updateClientCart, searchSealMarketCatalog, getSealMarketFamilias } from '../../../services/api';
 import useChatStore from '../../../stores/useChatStore';
 import useAuthStore from '../../../stores/useAuthStore';
+import ConfirmModal from '../../../components/ConfirmModal.jsx';
 
 export default function CartViewer({ cartData, client }) {
   const [activeTab, setActiveTab] = useState('current'); // 'current' or 'catalog'
   const [isUpdating, setIsUpdating] = useState(false);
+  const [confirmModal, setConfirmModal] = useState({ open: false, type: null, idx: null });
   const { sendMessage } = useChatStore();
   
   const [isEditingAddress, setIsEditingAddress] = useState(false);
   const [tempAddress, setTempAddress] = useState('');
+  
+  const [isEditingBilling, setIsEditingBilling] = useState(false);
+  const [tempBilling, setTempBilling] = useState({ razonSocial: '', rfc: '', billingAddress: '' });
 
   // Catalog state
   const [familias, setFamilias] = useState([]);
@@ -78,7 +83,9 @@ export default function CartViewer({ cartData, client }) {
       const newCartData = {
         items: cartItems,
         shippingAddress: tempAddress,
-        razonSocial
+        razonSocial,
+        rfc,
+        billingAddress
       };
       await updateClientCart(client.id, newCartData);
       setIsEditingAddress(false);
@@ -94,6 +101,31 @@ export default function CartViewer({ cartData, client }) {
     }
   };
 
+  const handleSaveBilling = async (validate = false) => {
+    if (!client?.id) return;
+    setIsUpdating(true);
+    try {
+      const newCartData = {
+        items: cartItems,
+        shippingAddress,
+        razonSocial: tempBilling.razonSocial,
+        rfc: tempBilling.rfc,
+        billingAddress: tempBilling.billingAddress
+      };
+      await updateClientCart(client.id, newCartData);
+      setIsEditingBilling(false);
+      
+      if (validate) {
+        sendMessage(`Por favor valida tus datos de facturación:\n\nRazón Social: *${tempBilling.razonSocial || '-'}*\nRFC: *${tempBilling.rfc || '-'}*\nDomicilio: *${tempBilling.billingAddress || '-'}*\n\n¿Son correctos?`, false);
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Error al actualizar datos de facturación');
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
   const handleUpdateQuantity = (idx, delta) => {
     const newItems = [...cartItems];
     const item = newItems[idx];
@@ -104,16 +136,21 @@ export default function CartViewer({ cartData, client }) {
   };
 
   const handleRemoveItem = (idx) => {
-    if (window.confirm('¿Eliminar este artículo del carrito?')) {
-      const newItems = cartItems.filter((_, i) => i !== idx);
-      saveCart(newItems);
-    }
+    setConfirmModal({ open: true, type: 'REMOVE', idx });
   };
 
   const handleClearCart = () => {
-    if (window.confirm('¿Estás seguro de vaciar todo el carrito?')) {
+    setConfirmModal({ open: true, type: 'CLEAR', idx: null });
+  };
+
+  const executeConfirm = () => {
+    if (confirmModal.type === 'REMOVE') {
+      const newItems = cartItems.filter((_, i) => i !== confirmModal.idx);
+      saveCart(newItems);
+    } else if (confirmModal.type === 'CLEAR') {
       saveCart([]);
     }
+    setConfirmModal({ open: false, type: null, idx: null });
   };
 
   const handleSearch = async (e) => {
@@ -251,12 +288,72 @@ export default function CartViewer({ cartData, client }) {
                 <p className="text-sm text-sales-slate-100 font-medium truncate">{client.name}</p>
                 {client.phone && <p className="text-xs text-sales-slate-400 mt-1">{client.phone}</p>}
                 
-                {razonSocial && (
-                  <div className="mt-2 pt-2 border-t border-sales-slate-700/50">
-                    <p className="text-xs font-semibold text-sales-slate-400 mb-1">Razón Social (Facturación):</p>
-                    <p className="text-xs text-sales-slate-300 line-clamp-2">{razonSocial}</p>
+                <div className="mt-2 pt-2 border-t border-sales-slate-700/50">
+                  <div className="flex justify-between items-center mb-1">
+                    <p className="text-xs font-semibold text-sales-slate-400">Datos de Facturación:</p>
+                    {!isEditingBilling && (
+                      <button 
+                        onClick={() => { 
+                          setTempBilling({ razonSocial: razonSocial || '', rfc: rfc || '', billingAddress: billingAddress || '' }); 
+                          setIsEditingBilling(true); 
+                        }}
+                        className="text-[10px] text-sales-blue-400 hover:underline"
+                      >
+                        Editar
+                      </button>
+                    )}
                   </div>
-                )}
+                  
+                  {isEditingBilling ? (
+                    <div className="mt-1 space-y-2">
+                      <input 
+                        className="w-full bg-sales-slate-900 border border-sales-slate-700 text-sales-slate-200 text-xs rounded-lg p-2 focus:ring-sales-blue-500 min-h-[30px]"
+                        value={tempBilling.razonSocial}
+                        onChange={(e) => setTempBilling({...tempBilling, razonSocial: e.target.value})}
+                        placeholder="Razón Social"
+                      />
+                      <input 
+                        className="w-full bg-sales-slate-900 border border-sales-slate-700 text-sales-slate-200 text-xs rounded-lg p-2 focus:ring-sales-blue-500 min-h-[30px]"
+                        value={tempBilling.rfc}
+                        onChange={(e) => setTempBilling({...tempBilling, rfc: e.target.value})}
+                        placeholder="RFC"
+                      />
+                      <textarea 
+                        className="w-full bg-sales-slate-900 border border-sales-slate-700 text-sales-slate-200 text-xs rounded-lg p-2 focus:ring-sales-blue-500 min-h-[50px]"
+                        value={tempBilling.billingAddress}
+                        onChange={(e) => setTempBilling({...tempBilling, billingAddress: e.target.value})}
+                        placeholder="Domicilio Fiscal"
+                      />
+                      <div className="flex gap-2 mt-2">
+                        <button 
+                          onClick={() => handleSaveBilling(false)}
+                          className="flex-1 bg-sales-slate-700 hover:bg-sales-slate-600 text-white text-[10px] py-1 rounded"
+                        >
+                          Guardar
+                        </button>
+                        <button 
+                          onClick={() => handleSaveBilling(true)}
+                          className="flex-1 bg-sales-blue-600 hover:bg-sales-blue-500 text-white text-[10px] py-1 rounded flex items-center justify-center gap-1"
+                          disabled={!tempBilling.razonSocial && !tempBilling.rfc}
+                        >
+                          <Send className="w-3 h-3" /> Validar
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col gap-1 mt-1">
+                      {razonSocial || rfc || billingAddress ? (
+                        <>
+                          {razonSocial && <p className="text-xs text-sales-slate-300"><strong>Nombre:</strong> {razonSocial}</p>}
+                          {rfc && <p className="text-xs text-sales-slate-300"><strong>RFC:</strong> {rfc}</p>}
+                          {billingAddress && <p className="text-xs text-sales-slate-300"><strong>Dom:</strong> {billingAddress}</p>}
+                        </>
+                      ) : (
+                        <p className="text-xs text-sales-slate-300 italic opacity-50">No especificados</p>
+                      )}
+                    </div>
+                  )}
+                </div>
                 
                 <div className="mt-2 pt-2 border-t border-sales-slate-700/50">
                   <div className="flex justify-between items-center mb-1">
@@ -601,6 +698,15 @@ export default function CartViewer({ cartData, client }) {
           </div>
         </div>
       )}
+
+      <ConfirmModal
+        open={confirmModal.open}
+        title={confirmModal.type === 'CLEAR' ? 'Vaciar Carrito' : 'Eliminar Artículo'}
+        message={confirmModal.type === 'CLEAR' ? '¿Estás seguro de vaciar todo el carrito?' : '¿Seguro que deseas eliminar este artículo del carrito?'}
+        confirmText="Eliminar"
+        onConfirm={executeConfirm}
+        onCancel={() => setConfirmModal({ open: false, type: null, idx: null })}
+      />
     </div>
   );
 }

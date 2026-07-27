@@ -136,9 +136,9 @@ function generateQuotationHtml(data) {
       .client-section {
         display: flex;
         justify-content: space-between;
-        margin-bottom: 40px;
+        margin-bottom: 25px;
         background-color: #F8FAFC;
-        padding: 20px;
+        padding: 15px;
         border-radius: 8px;
         border-left: 4px solid var(--primary);
       }
@@ -164,12 +164,13 @@ function generateQuotationHtml(data) {
         font-size: 16px;
         font-weight: 700;
         color: var(--primary);
-        margin: 0 0 4px 0;
+        margin: 0 0 2px 0;
       }
 
       .client-text {
-        margin: 0 0 2px 0;
+        margin: 0;
         color: var(--text-dark);
+        line-height: 1.4;
       }
 
       /* --- ITEMS TABLE --- */
@@ -185,7 +186,7 @@ function generateQuotationHtml(data) {
         text-transform: uppercase;
         font-size: 11px;
         font-weight: 600;
-        padding: 12px 10px;
+        padding: 8px 10px;
         text-align: left;
         letter-spacing: 0.5px;
       }
@@ -194,9 +195,10 @@ function generateQuotationHtml(data) {
       th.right, td.right { text-align: right; }
 
       td {
-        padding: 12px 10px;
+        padding: 8px 10px;
         border-bottom: 1px solid var(--border-color);
         color: var(--text-dark);
+        font-size: 11px;
       }
 
       tr:last-child td {
@@ -211,19 +213,21 @@ function generateQuotationHtml(data) {
         justify-content: space-between;
         align-items: flex-start;
         margin-top: 20px;
+        page-break-inside: avoid;
       }
 
       .bank-details {
         flex: 1;
         background-color: #F8FAFC;
-        padding: 20px;
+        padding: 15px;
         border-radius: 8px;
         border-left: 4px solid var(--accent);
         margin-right: 40px;
       }
 
       .bank-details p {
-        margin: 0 0 5px 0;
+        margin: 0;
+        line-height: 1.4;
       }
 
       .totals-box {
@@ -252,12 +256,13 @@ function generateQuotationHtml(data) {
 
       /* --- FOOTER NOTE --- */
       .footer-note {
-        margin-top: 50px;
+        margin-top: 30px;
         text-align: center;
         font-size: 10px;
         color: var(--text-light);
         border-top: 1px solid var(--border-color);
-        padding-top: 20px;
+        padding-top: 15px;
+        page-break-inside: avoid;
       }
     </style>
   </head>
