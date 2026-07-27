@@ -434,8 +434,19 @@ class AIService {
             const fileName = `Cotizacion_${conversation.client.id}_${Date.now()}.pdf`;
             const filePath = path.join(tempDir, fileName);
 
+            // Get tenant (company) data
+            const tenant = await prisma.tenant.findUnique({ where: { id: conversation.tenantId } });
+            const companyData = tenant ? {
+              name: tenant.name,
+              address: tenant.address,
+              rfc: tenant.rfc,
+              email: tenant.email,
+              phone: tenant.phone,
+              bankDetails: tenant.bankDetails
+            } : null;
+
             // Generate PDF
-            await PdfGeneratorService.generateQuote(clientDataForPdf, cartItems, filePath);
+            await PdfGeneratorService.generateQuote(clientDataForPdf, cartItems, companyData, filePath);
 
             // Send via WhatsApp
             const fileObj = {
