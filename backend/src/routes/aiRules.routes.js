@@ -7,7 +7,7 @@ const router = express.Router();
 router.get('/', async (req, res) => {
   try {
     const rules = await prisma.aiRule.findMany({
-      where: { tenantId: req.tenant.id },
+      where: { tenantId: req.user.tenantId },
       orderBy: { term: 'asc' }
     });
     res.json(rules);
@@ -23,7 +23,7 @@ router.post('/', async (req, res) => {
   try {
     const rule = await prisma.aiRule.create({
       data: {
-        tenantId: req.tenant.id,
+        tenantId: req.user.tenantId,
         term,
         definition,
         isActive: isActive !== undefined ? isActive : true
@@ -46,7 +46,7 @@ router.put('/:id', async (req, res) => {
   try {
     // Verify it belongs to tenant
     const existing = await prisma.aiRule.findUnique({ where: { id } });
-    if (!existing || existing.tenantId !== req.tenant.id) {
+    if (!existing || existing.tenantId !== req.user.tenantId) {
       return res.status(404).json({ error: 'Rule not found' });
     }
 
@@ -70,7 +70,7 @@ router.delete('/:id', async (req, res) => {
   try {
     // Verify it belongs to tenant
     const existing = await prisma.aiRule.findUnique({ where: { id } });
-    if (!existing || existing.tenantId !== req.tenant.id) {
+    if (!existing || existing.tenantId !== req.user.tenantId) {
       return res.status(404).json({ error: 'Rule not found' });
     }
 
