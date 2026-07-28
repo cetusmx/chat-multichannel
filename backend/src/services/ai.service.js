@@ -152,7 +152,7 @@ class AIService {
       }
 
       if (isOffHours) {
-        baseSystemInstruction += `\nAl estar fuera de horario laboral, preséntate brevemente como Inteligencia Artificial, resuelve la duda si puedes usar el Contexto, infórmale que los humanos regresarán al siguiente día hábil e incluye siempre [[ESCALATE]].`;
+        baseSystemInstruction += `\nAl estar fuera de horario laboral, preséntate brevemente como Inteligencia Artificial, infórmale al cliente que estamos cerrados, menciónale nuestros horarios de atención y despídete amablemente indicando que el equipo de ventas le contactará al siguiente día hábil. ESTÁ ESTRICTAMENTE PROHIBIDO hacerle preguntas al cliente (como "¿En qué te puedo ayudar?") o invitarlo a seguir conversando. Termina el mensaje despidiéndote e incluye siempre la etiqueta [[ESCALATE]].`;
       }
 
       // ----------------------------------------------------
