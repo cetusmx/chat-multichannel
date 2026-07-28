@@ -100,6 +100,23 @@ class AIService {
       });
       const clientCart = conversation?.client?.cartData || [];
 
+      // Fetch tenant to get timezone
+      const tenant = await prisma.tenant.findUnique({
+        where: { id: tenantId },
+        select: { businessHours: true }
+      });
+      const tz = tenant?.businessHours?.timezone || 'America/Mexico_City';
+      const currentTimeStr = new Date().toLocaleString('es-MX', { 
+        timeZone: tz, 
+        weekday: 'long', 
+        year: 'numeric', 
+        month: 'long', 
+        day: 'numeric', 
+        hour: '2-digit', 
+        minute: '2-digit',
+        hour12: true
+      });
+
       // Fetch active vendors dynamically
       const activeVendorsList = await prisma.user.findMany({
         where: { tenantId, role: 'VENDOR', isActive: true },
@@ -118,6 +135,7 @@ class AIService {
 
       const dynamicContext = `
 [DATOS EN TIEMPO REAL DEL SISTEMA]
+- Fecha y hora actual en la ubicación del negocio: ${currentTimeStr}
 - ¿Fuera de horario laboral?: ${isOffHours ? 'SÍ (Estamos cerrados)' : 'NO (Estamos abiertos)'}
 - Equipo de vendedores: ${vendorNames}
 - CARRITO DE COMPRAS DEL CLIENTE: ${JSON.stringify(clientCart)}
@@ -152,7 +170,7 @@ class AIService {
       }
 
       if (isOffHours) {
-        baseSystemInstruction += `\nAl estar fuera de horario laboral, preséntate brevemente como Inteligencia Artificial, infórmale al cliente que estamos cerrados, menciónale nuestros horarios de atención y despídete amablemente indicando que el equipo de ventas le contactará al siguiente día hábil. ESTÁ ESTRICTAMENTE PROHIBIDO hacerle preguntas al cliente (como "¿En qué te puedo ayudar?") o invitarlo a seguir conversando. Termina el mensaje despidiéndote e incluye siempre la etiqueta [[ESCALATE]].`;
+        baseSystemInstruction += `\nAl estar fuera de horario laboral, preséntate brevemente como Inteligencia Artificial e infórmale al cliente que estamos cerrados. Usa tu conocimiento de la 'Fecha y hora actual' y tu sentido común para darle una respuesta 100% contextualizada y natural (ej. si son las 3 am, dile "en unas horas más"; si es sábado en la tarde, dile "el lunes a primera hora"; si es de noche despídete con "buenas noches"). ESTÁ ESTRICTAMENTE PROHIBIDO hacerle preguntas al cliente (como "¿En qué te puedo ayudar?") o invitarlo a seguir conversando. Termina el mensaje despidiéndote e incluye siempre la etiqueta [[ESCALATE]].`;
       }
 
       // ----------------------------------------------------
