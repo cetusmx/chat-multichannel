@@ -14,6 +14,9 @@ jest.mock('../../src/config/database', () => ({
   },
   conversation: {
     findUnique: jest.fn()
+  },
+  aiRule: {
+    findMany: jest.fn()
   }
 }));
 
@@ -28,6 +31,7 @@ describe('AIService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     prisma.user.findMany.mockResolvedValue([{ name: 'Test Vendor' }]);
+    prisma.aiRule.findMany.mockResolvedValue([]);
     prisma.conversation.findUnique.mockResolvedValue({ 
       id: 'conv1', 
       clientId: 'client1', 
