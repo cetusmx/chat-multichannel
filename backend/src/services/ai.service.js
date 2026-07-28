@@ -107,13 +107,22 @@ class AIService {
       });
       const vendorNames = activeVendorsList.map(v => v.name).join(', ') || 'Ninguno disponible';
 
+      // Fetch AI Dictionary Rules
+      const aiRulesList = await prisma.aiRule.findMany({
+        where: { tenantId, isActive: true }
+      });
+      let customRulesString = '';
+      if (aiRulesList.length > 0) {
+        customRulesString = '\n[REGLAS Y DICCIONARIO PERSONALIZADO]\n' + aiRulesList.map(r => `- "${r.term}": ${r.definition}`).join('\n');
+      }
+
       const dynamicContext = `
 [DATOS EN TIEMPO REAL DEL SISTEMA]
 - ¿Fuera de horario laboral?: ${isOffHours ? 'SÍ (Estamos cerrados)' : 'NO (Estamos abiertos)'}
 - Equipo de vendedores: ${vendorNames}
 - CARRITO DE COMPRAS DEL CLIENTE: ${JSON.stringify(clientCart)}
 - Instrucción de Carrito: Este es el estado persistente del carrito. Usa la herramienta 'actualizar_carrito' para modificarlo si el cliente pide agregar o quitar algo.
-- Instrucción dinámica: Si el cliente pregunta por un vendedor específico que esté en el equipo, indícale si estamos dentro o fuera de horario e incluye [[ESCALATE]] para asignarle el chat a esa persona.
+- Instrucción dinámica: Si el cliente pregunta por un vendedor específico que esté en el equipo, indícale si estamos dentro o fuera de horario e incluye [[ESCALATE]] para asignarle el chat a esa persona.${customRulesString}
 [FIN DE DATOS]
 `;
 

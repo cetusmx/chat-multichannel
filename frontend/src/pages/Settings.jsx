@@ -5,6 +5,7 @@ import BranchListSection from '../features/settings/BranchListSection.jsx';
 import GroupListSection from '../features/settings/GroupListSection.jsx';
 import WhatsAppSettingsSection from '../features/settings/WhatsAppSettingsSection.jsx';
 import AiConfigSection from '../features/settings/AiConfigSection.jsx';
+import AiRulesSection from '../features/settings/AiRulesSection.jsx';
 import KnowledgeBaseSection from '../features/settings/KnowledgeBaseSection.jsx';
 import AssignmentRulesSection from '../features/settings/AssignmentRulesSection.jsx';
 import SlaConfigSection from '../features/settings/SlaConfigSection.jsx';
@@ -34,7 +35,12 @@ export default function Settings() {
       case 'branches': return <BranchListSection />;
       case 'groups': return <GroupListSection />;
       case 'whatsapp': return <WhatsAppSettingsSection />;
-      case 'ai': return <AiConfigSection />;
+      case 'ai': return (
+        <div className="space-y-6">
+          <AiConfigSection />
+          <AiRulesSection />
+        </div>
+      );
       case 'kb': return <KnowledgeBaseSection />;
       case 'canned': return <CannedResponsesSection />;
       case 'assignment': return <AssignmentRulesSection />;

@@ -56,6 +56,7 @@ app.use('/api/clients', clientRoutes);
 app.use('/api/conversations', conversationRoutes);
 app.use('/api/metrics', metricsRoutes);
 app.use('/api/canned-responses', require('./routes/canned_responses.routes'));
+app.use('/api/tenant/ai-rules', authenticate, require('./routes/aiRules.routes'));
 app.use('/api/sealmarket', require('./routes/sealmarket.routes'));
 
 app.use('/api-docs', swaggerRoutes);
