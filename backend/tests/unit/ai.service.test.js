@@ -17,6 +17,9 @@ jest.mock('../../src/config/database', () => ({
   },
   aiRule: {
     findMany: jest.fn()
+  },
+  tenant: {
+    findUnique: jest.fn()
   }
 }));
 
@@ -36,6 +39,9 @@ describe('AIService', () => {
       id: 'conv1', 
       clientId: 'client1', 
       client: { cartData: [] } 
+    });
+    prisma.tenant.findUnique.mockResolvedValue({
+      businessHours: { timezone: 'America/Mexico_City' }
     });
   });
 
