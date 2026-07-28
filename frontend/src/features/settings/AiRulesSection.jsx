@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Edit2, Trash2, Save, X, Search, BookOpen } from 'lucide-react';
-import axios from '../../lib/axios';
+import { get, post, put, del } from '../../services/api';
 
 const AiRulesSection = () => {
   const [rules, setRules] = useState([]);
@@ -19,8 +19,11 @@ const AiRulesSection = () => {
 
   const fetchRules = async () => {
     try {
-      const res = await axios.get('/api/tenant/ai-rules');
-      setRules(res.data);
+      const res = await get('/tenant/ai-rules');
+      if (res.ok) {
+        const data = await res.json();
+        setRules(data);
+      }
     } catch (err) {
       console.error('Error fetching ai rules:', err);
     } finally {
@@ -49,7 +52,7 @@ const AiRulesSection = () => {
   const handleDelete = async (id) => {
     if (!window.confirm('¿Eliminar esta regla permanentemente?')) return;
     try {
-      await axios.delete(`/api/tenant/ai-rules/${id}`);
+      await del(`/tenant/ai-rules/${id}`);
       fetchRules();
     } catch (err) {
       console.error(err);
@@ -59,7 +62,7 @@ const AiRulesSection = () => {
 
   const handleToggle = async (rule) => {
     try {
-      await axios.put(`/api/tenant/ai-rules/${rule.id}`, {
+      await put(`/tenant/ai-rules/${rule.id}`, {
         ...rule,
         isActive: !rule.isActive
       });
@@ -77,15 +80,22 @@ const AiRulesSection = () => {
     }
     
     try {
+      let res;
       if (currentRule) {
-        await axios.put(`/api/tenant/ai-rules/${currentRule.id}`, formData);
+        res = await put(`/tenant/ai-rules/${currentRule.id}`, formData);
       } else {
-        await axios.post('/api/tenant/ai-rules', formData);
+        res = await post('/tenant/ai-rules', formData);
       }
+      
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.error || 'Error al guardar la regla');
+      }
+      
       setIsEditing(false);
       fetchRules();
     } catch (err) {
-      setFormError(err.response?.data?.error || 'Error al guardar la regla');
+      setFormError(err.message || 'Error al guardar la regla');
     }
   };
 
