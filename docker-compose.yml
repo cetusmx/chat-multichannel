@@ -21,7 +21,7 @@ services:
     build: .
     container_name: salesflow-app
     restart: unless-stopped
-    command: sh -c "npx prisma generate && npx prisma migrate deploy && node prisma/seed.js && node src/index.js"
+    command: sh -c "npx prisma migrate deploy && node prisma/seed.js && node src/index.js"
     ports:
       - "4005:4000"
     environment:
