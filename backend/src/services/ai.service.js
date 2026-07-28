@@ -75,7 +75,7 @@ class AIService {
           content: { not: '' }
         },
         orderBy: { createdAt: 'desc' },
-        take: 40
+        take: 12
       });
       
       // Map history to provider format (in chronological order)
