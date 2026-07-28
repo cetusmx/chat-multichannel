@@ -79,6 +79,7 @@ model Tenant {
   documents      Document[]
   documentChunks DocumentChunk[]
   cannedResponses CannedResponse[]
+  aiRules         AiRule[]
 
   @@map("tenants")
 }
@@ -368,4 +369,20 @@ model CannedResponseUsage {
   @@unique([userId, cannedResponseId])
   @@index([userId])
   @@map("canned_response_usages")
+}
+
+model AiRule {
+  id          String   @id @default(cuid())
+  tenantId    String   @map("tenant_id")
+  term        String
+  definition  String   @db.Text
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@unique([tenantId, term])
+  @@map("ai_rules")
 }
