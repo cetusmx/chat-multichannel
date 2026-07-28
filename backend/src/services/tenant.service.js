@@ -10,7 +10,7 @@ async function getProfile(tenantId) {
       id: true, name: true, domain: true,
       phone: true, email: true, address: true,
       status: true, createdAt: true, updatedAt: true,
-      rfc: true, bankDetails: true,
+      rfc: true, bankDetails: true, businessHours: true,
     },
   });
 
@@ -44,12 +44,13 @@ async function updateProfile(tenantId, data) {
       address: data.address !== undefined ? data.address : undefined,
       rfc: data.rfc !== undefined ? data.rfc : undefined,
       bankDetails: data.bankDetails !== undefined ? data.bankDetails : undefined,
+      businessHours: data.businessHours !== undefined ? data.businessHours : undefined,
     },
     select: {
       id: true, name: true, domain: true,
       phone: true, email: true, address: true,
       status: true, createdAt: true, updatedAt: true,
-      rfc: true, bankDetails: true,
+      rfc: true, bankDetails: true, businessHours: true,
     },
   });
 
