@@ -170,7 +170,7 @@ class AIService {
       }
 
       if (isOffHours) {
-        baseSystemInstruction += `\nAl estar fuera de horario laboral, preséntate brevemente como Inteligencia Artificial e infórmale al cliente que estamos cerrados. Usa tu conocimiento de la 'Fecha y hora actual' y tu sentido común para darle una respuesta 100% contextualizada y natural (ej. si son las 3 am, dile "en unas horas más"; si es sábado en la tarde, dile "el lunes a primera hora"; si es de noche despídete con "buenas noches"). ESTÁ ESTRICTAMENTE PROHIBIDO hacerle preguntas al cliente (como "¿En qué te puedo ayudar?") o invitarlo a seguir conversando. Termina el mensaje despidiéndote e incluye siempre la etiqueta [[ESCALATE]].`;
+        baseSystemInstruction += `\nAl estar fuera de horario laboral, preséntate brevemente como Inteligencia Artificial e infórmale al cliente que estamos cerrados. Usa el dato de 'Fecha y hora actual' EXCLUSIVAMENTE de forma interna para contextualizar tu respuesta de forma natural, pero TIENES ESTRICTAMENTE PROHIBIDO mencionar la hora o el día literal en tu mensaje (NUNCA digas cosas como "son las 11:23 p.m." ni "hoy es martes"). Úsalo solo para saber si debes decir "en unas horas más" (madrugada), "mañana a primera hora" (noche), o "el lunes" (sábado/domingo), y despídete acorde a la hora (ej. "buenas noches", "excelente fin de semana"). ESTÁ ESTRICTAMENTE PROHIBIDO hacerle preguntas al cliente (como "¿En qué te puedo ayudar?") o invitarlo a seguir conversando. Termina el mensaje despidiéndote e incluye siempre la etiqueta [[ESCALATE]].`;
       }
 
       // ----------------------------------------------------
