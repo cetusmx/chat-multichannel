@@ -15,7 +15,9 @@ export default function TenantDetails() {
 
   // Form state
   const [maxUsers, setMaxUsers] = useState(0);
+  const [isUnlimitedUsers, setIsUnlimitedUsers] = useState(false);
   const [maxAiTokens, setMaxAiTokens] = useState(0);
+  const [isUnlimitedTokens, setIsUnlimitedTokens] = useState(false);
   const [licenseType, setLicenseType] = useState('SUBSCRIPTION');
 
   const fetchTenantDetails = useCallback(async () => {
@@ -24,11 +26,13 @@ export default function TenantDetails() {
       setError(null);
       const data = await api.get(`/api/superadmin/tenants/${id}`);
       setTenant(data);
-      setMaxUsers(data.maxUsers);
-      setMaxAiTokens(data.maxAiTokens);
+      setMaxUsers(data.maxUsers === -1 ? '' : data.maxUsers);
+      setIsUnlimitedUsers(data.maxUsers === -1);
+      setMaxAiTokens(data.maxAiTokens === -1 ? '' : data.maxAiTokens);
+      setIsUnlimitedTokens(data.maxAiTokens === -1);
       setLicenseType(data.licenseType || 'SUBSCRIPTION');
     } catch (err) {
-      setError(err.message || 'Error al cargar el inquilino');
+      if (!tenant) setError(err.message || 'Error al cargar el inquilino');
       toast.error('Error al cargar datos del inquilino');
     } finally {
       setLoading(false);
@@ -50,8 +54,8 @@ export default function TenantDetails() {
   const handleSave = async (e) => {
     e.preventDefault();
     
-    const numUsers = Number(maxUsers);
-    const payloadTokens = licenseType === 'LIFETIME' ? 0 : Number(maxAiTokens);
+    const numUsers = isUnlimitedUsers ? -1 : (maxUsers === "" ? 0 : Number(maxUsers));
+    const payloadTokens = licenseType === 'LIFETIME' ? 0 : (isUnlimitedTokens ? -1 : (maxAiTokens === "" ? 0 : Number(maxAiTokens)));
 
     if (tenant) {
       const isReducingUsers = numUsers !== -1 && numUsers < tenant.maxUsers;
@@ -99,7 +103,7 @@ export default function TenantDetails() {
     );
   }
 
-  if (error || !tenant) {
+  if (error && !tenant) {
     return (
       <div className="w-full text-center py-12">
         <p className="text-red-400 mb-4">{error || 'Inquilino no encontrado'}</p>
@@ -154,13 +158,15 @@ export default function TenantDetails() {
               <div className="flex gap-2 items-center">
                 <input 
                   type="number"
-                  min="-1"
+                  min={tenant.currentActiveUsers ?? 0}
                   value={maxUsers}
                   onChange={(e) => setMaxUsers(e.target.value)}
-                  disabled={saving}
+                  disabled={saving || isUnlimitedUsers}
                   className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-2 text-slate-200 focus:outline-none focus:border-blue-500 transition-colors disabled:opacity-50"
                 />
-                <span className="text-xs text-slate-500">-1 = Ilimitado</span>
+                <label className="flex items-center gap-2 text-sm text-slate-300 whitespace-nowrap cursor-pointer">
+                  <input type="checkbox" className="rounded bg-slate-800 border-slate-700 text-blue-600 focus:ring-blue-600 focus:ring-offset-slate-950" checked={isUnlimitedUsers} onChange={(e) => setIsUnlimitedUsers(e.target.checked)} disabled={saving} /> Ilimitado
+                </label>
               </div>
             </div>
 
@@ -171,15 +177,17 @@ export default function TenantDetails() {
               <div className="flex gap-2 items-center">
                 <input 
                   type="number"
-                  min="-1"
+                  min="0"
                   value={licenseType === 'LIFETIME' ? 0 : maxAiTokens}
                   onChange={(e) => setMaxAiTokens(e.target.value)}
-                  disabled={saving || licenseType === 'LIFETIME'}
+                  disabled={saving || licenseType === 'LIFETIME' || isUnlimitedTokens}
                   className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-2 text-slate-200 focus:outline-none focus:border-blue-500 transition-colors disabled:opacity-50"
                 />
-                <span className="text-xs text-slate-500">
-                  {licenseType === 'LIFETIME' ? 'Deshabilitado (0)' : '-1 = Ilimitado'}
-                </span>
+                {licenseType !== 'LIFETIME' && (
+                  <label className="flex items-center gap-2 text-sm text-slate-300 whitespace-nowrap cursor-pointer">
+                    <input type="checkbox" className="rounded bg-slate-800 border-slate-700 text-blue-600 focus:ring-blue-600 focus:ring-offset-slate-950" checked={isUnlimitedTokens} onChange={(e) => setIsUnlimitedTokens(e.target.checked)} disabled={saving} /> Ilimitado
+                  </label>
+                )}
               </div>
             </div>
           </div>

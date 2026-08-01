@@ -114,8 +114,9 @@ describe('Superadmin Tenant Controller', () => {
 
       expect(res.status).toHaveBeenCalledWith(400);
       expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
-        success: false,
-        message: 'Validation failed',
+        error: expect.objectContaining({
+          message: 'Validation failed'
+        })
       }));
     });
 
@@ -133,8 +134,9 @@ describe('Superadmin Tenant Controller', () => {
 
       expect(res.status).toHaveBeenCalledWith(409);
       expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
-        success: false,
-        message: 'Conflict: domain already exists',
+        error: expect.objectContaining({
+          message: 'Conflict: domain already exists'
+        })
       }));
     });
     
@@ -150,30 +152,33 @@ describe('Superadmin Tenant Controller', () => {
 
       expect(res.status).toHaveBeenCalledWith(500);
       expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
-        success: false,
-        message: 'Database Error',
+        error: expect.objectContaining({
+          message: 'Database Error'
+        })
       }));
     });
   });
 
   describe('updateTenantStatus', () => {
     it('should validate status and update tenant', async () => {
-      const mockResult = { id: 't1', status: 'suspended' };
+      const validUuid = '123e4567-e89b-12d3-a456-426614174000';
+      const mockResult = { id: validUuid, status: 'suspended' };
       superadminTenantService.updateTenantStatus.mockResolvedValue(mockResult);
 
-      const req = { params: { id: 't1' }, body: { status: 'suspended' } };
+      const req = { params: { id: validUuid }, body: { status: 'suspended' } };
       const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
       const next = jest.fn();
 
       await superadminTenantController.updateTenantStatus(req, res, next);
 
-      expect(superadminTenantService.updateTenantStatus).toHaveBeenCalledWith('t1', 'suspended');
+      expect(superadminTenantService.updateTenantStatus).toHaveBeenCalledWith(validUuid, 'suspended');
       expect(success).toHaveBeenCalledWith(res, mockResult);
       expect(next).not.toHaveBeenCalled();
     });
 
     it('should return 400 for Zod validation error if status is invalid', async () => {
-      const req = { params: { id: 't1' }, body: { status: 'invalid_status' } };
+      const validUuid = '123e4567-e89b-12d3-a456-426614174000';
+      const req = { params: { id: validUuid }, body: { status: 'invalid_status' } };
       const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
       const next = jest.fn();
 
@@ -181,8 +186,9 @@ describe('Superadmin Tenant Controller', () => {
 
       expect(res.status).toHaveBeenCalledWith(400);
       expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
-        success: false,
-        message: 'Validation failed',
+        error: expect.objectContaining({
+          message: 'Validation failed'
+        })
       }));
     });
 
@@ -191,7 +197,8 @@ describe('Superadmin Tenant Controller', () => {
       error.statusCode = 404;
       superadminTenantService.updateTenantStatus.mockRejectedValue(error);
 
-      const req = { params: { id: 't99' }, body: { status: 'suspended' } };
+      const validUuid = '123e4567-e89b-12d3-a456-426614174000';
+      const req = { params: { id: validUuid }, body: { status: 'suspended' } };
       const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
       const next = jest.fn();
 
@@ -199,8 +206,9 @@ describe('Superadmin Tenant Controller', () => {
 
       expect(res.status).toHaveBeenCalledWith(404);
       expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
-        success: false,
-        message: 'Tenant not found',
+        error: expect.objectContaining({
+          message: 'Tenant not found'
+        })
       }));
     });
   });

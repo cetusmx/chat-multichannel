@@ -269,8 +269,8 @@ async function updateTenantLicenses(tenantId, payload, superadminId) {
           newValues: { maxUsers, maxAiTokens, licenseType }
         });
 
-        return updatedTenant;
-      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 10000 });
+        return { ...updatedTenant, currentActiveUsers: activeUsersCount };
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 5000 });
     } catch (err) {
       if (err.code === 'P2034' && attempt < maxRetries - 1) {
         attempt++;

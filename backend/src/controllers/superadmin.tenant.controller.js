@@ -21,21 +21,13 @@ const updateTenantStatusSchema = z.object({
   status: z.enum(['active', 'suspended']),
 });
 
-const tenantIdSchema = z.string().refine(val => /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(val) || /^c[^\s-]{7,}$/.test(val), { message: 'Invalid tenant ID format (must be UUID or CUID)' });
+const tenantIdSchema = z.string().refine(val => /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(val) || /^c[a-z0-9]{24}$/.test(val), { message: 'Invalid tenant ID format (must be UUID or CUID)' });
 
 const updateTenantLicensesSchema = z.object({
   maxUsers: z.number().int().min(-1).max(2147483647),
   maxAiTokens: z.number().int().min(-1).max(2147483647),
   licenseType: z.enum(['SUBSCRIPTION', 'LIFETIME']),
-}).strict().refine(data => {
-  if (data.licenseType === 'LIFETIME' && data.maxAiTokens !== 0) {
-    return false;
-  }
-  return true;
-}, {
-  message: "LIFETIME licenses must have maxAiTokens strictly set to 0",
-  path: ["maxAiTokens"],
-});
+}).strict();
 
 async function getTenants(req, res, next) {
   try {
@@ -59,9 +51,7 @@ async function createTenant(req, res, next) {
     const parsed = createTenantSchema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json({
-        success: false,
-        message: 'Validation failed',
-        errors: parsed.error.errors,
+        error: { message: 'Validation failed', details: parsed.error.errors }
       });
     }
     const validatedData = parsed.data;
@@ -90,24 +80,19 @@ async function createTenant(req, res, next) {
       if (Array.isArray(err.meta.target)) field = err.meta.target[0];
       else if (typeof err.meta.target === 'string') field = err.meta.target;
       return res.status(409).json({
-        success: false,
-        message: `Conflict: ${field} already exists`,
-        field,
+        error: { message: `Conflict: ${field} already exists`, field }
       });
     }
     if (err instanceof z.ZodError) {
       return res.status(400).json({
-        success: false,
-        message: 'Validation failed',
-        errors: err.errors,
+        error: { message: 'Validation failed', details: err.errors }
       });
     }
     const logger = require('../utils/logger');
     logger.error('Error creating tenant:', err);
     const status = err.statusCode || err.status || 500;
     return res.status(status).json({
-      success: false,
-      message: err.message || 'Internal server error while creating tenant',
+      error: { message: err.message || 'Internal server error while creating tenant' }
     });
   }
 }
@@ -117,9 +102,7 @@ async function updateTenantStatus(req, res, next) {
     const parsedId = tenantIdSchema.safeParse(req.params.id);
     if (!parsedId.success) {
       return res.status(400).json({
-        success: false,
-        message: 'Invalid tenant ID format',
-        errors: parsedId.error.errors,
+        error: { message: 'Invalid tenant ID format', details: parsedId.error.errors }
       });
     }
     const id = parsedId.data;
@@ -127,9 +110,7 @@ async function updateTenantStatus(req, res, next) {
     const parsedData = updateTenantStatusSchema.safeParse(req.body);
     if (!parsedData.success) {
       return res.status(400).json({
-        success: false,
-        message: 'Validation failed',
-        errors: parsedData.error.errors,
+        error: { message: 'Validation failed', details: parsedData.error.errors }
       });
     }
     const validatedData = parsedData.data;
@@ -139,24 +120,21 @@ async function updateTenantStatus(req, res, next) {
     success(res, result);
   } catch (err) {
     if (err.statusCode === 403) {
-      return res.status(403).json({ success: false, message: err.message });
+      return res.status(403).json({ error: { message: err.message } });
     }
     if (err.statusCode === 404) {
-      return res.status(404).json({ success: false, message: 'Tenant not found' });
+      return res.status(404).json({ error: { message: 'Tenant not found' } });
     }
     if (err instanceof z.ZodError) {
       return res.status(400).json({
-        success: false,
-        message: 'Validation failed',
-        errors: err.errors,
+        error: { message: 'Validation failed', details: err.errors }
       });
     }
     const logger = require('../utils/logger');
     logger.error(`Error updating tenant status for ${req.params.id}:`, err);
     const status = err.statusCode || err.status || 500;
     return res.status(status).json({
-      success: false,
-      message: err.message || 'Internal server error while updating tenant status',
+      error: { message: err.message || 'Internal server error while updating tenant status' }
     });
   }
 }
@@ -166,8 +144,7 @@ async function getTenantById(req, res, next) {
     const parsedId = tenantIdSchema.safeParse(req.params.id);
     if (!parsedId.success) {
       return res.status(400).json({
-        success: false,
-        message: 'Invalid tenant ID format',
+        error: { message: 'Invalid tenant ID format', details: parsedId.error?.errors }
       });
     }
     const id = parsedId.data;
@@ -176,11 +153,11 @@ async function getTenantById(req, res, next) {
     success(res, result);
   } catch (err) {
     if (err.statusCode === 404) {
-      return res.status(404).json({ success: false, message: 'Tenant not found' });
+      return res.status(404).json({ error: { message: 'Tenant not found' } });
     }
     const logger = require('../utils/logger');
     logger.error(`Error getting tenant ${req.params.id}:`, err);
-    return res.status(500).json({ success: false, message: 'Internal server error' });
+    return res.status(500).json({ error: { message: 'Internal server error' } });
   }
 }
 
@@ -189,9 +166,7 @@ async function updateTenantLicenses(req, res, next) {
     const parsedId = tenantIdSchema.safeParse(req.params.id);
     if (!parsedId.success) {
       return res.status(400).json({
-        success: false,
-        message: 'Invalid tenant ID format',
-        errors: parsedId.error.errors,
+        error: { message: 'Invalid tenant ID format', details: parsedId.error.errors }
       });
     }
     const id = parsedId.data;
@@ -199,9 +174,7 @@ async function updateTenantLicenses(req, res, next) {
     const parsedData = updateTenantLicensesSchema.safeParse(req.body);
     if (!parsedData.success) {
       return res.status(400).json({
-        success: false,
-        message: 'Validation failed',
-        errors: parsedData.error.errors,
+        error: { message: 'Validation failed', details: parsedData.error.errors }
       });
     }
     const validatedData = parsedData.data;
