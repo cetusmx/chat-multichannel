@@ -58,8 +58,8 @@ export default function TenantDetails() {
     const payloadTokens = licenseType === 'LIFETIME' ? 0 : (isUnlimitedTokens ? -1 : (maxAiTokens === "" ? 0 : Number(maxAiTokens)));
 
     if (tenant) {
-      const isReducingUsers = numUsers !== -1 && numUsers < tenant.maxUsers;
-      const isReducingTokens = payloadTokens !== -1 && payloadTokens < tenant.maxAiTokens && licenseType !== 'LIFETIME';
+      const isReducingUsers = numUsers !== -1 && (tenant.maxUsers === -1 || numUsers < tenant.maxUsers);
+      const isReducingTokens = payloadTokens !== -1 && (tenant.maxAiTokens === -1 || payloadTokens < tenant.maxAiTokens) && licenseType !== 'LIFETIME';
 
       if (isReducingUsers || isReducingTokens) {
         if (!window.confirm("Estás reduciendo los límites de licencia actuales para este inquilino. ¿Proceder?")) {
