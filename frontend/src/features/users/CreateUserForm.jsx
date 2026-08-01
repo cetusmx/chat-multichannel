@@ -6,6 +6,7 @@ export default function CreateUserForm({ onSuccess }) {
     name: '', email: '', phone: '', password: '', role: 'VENDOR', groupIds: [],
   });
   const [groups, setGroups] = useState([]);
+  const [tenantProfile, setTenantProfile] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -13,6 +14,10 @@ export default function CreateUserForm({ onSuccess }) {
     get('/groups').then(async (res) => {
       const body = await res.json();
       if (res.ok) setGroups(body.data || []);
+    });
+    get('/tenant/profile').then(async (res) => {
+      const body = await res.json();
+      if (res.ok) setTenantProfile(body.data);
     });
   }, []);
 
@@ -50,9 +55,18 @@ export default function CreateUserForm({ onSuccess }) {
     }
   }
 
+  const isQuotaExceeded = tenantProfile && tenantProfile.maxUsers !== -1 && tenantProfile.currentUsersCount >= tenantProfile.maxUsers;
+
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <h2 className="text-xl font-semibold text-sales-slate-100">Nuevo Usuario</h2>
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-semibold text-sales-slate-100">Nuevo Usuario</h2>
+        {tenantProfile && tenantProfile.maxUsers !== -1 && (
+          <span className="text-sm font-medium text-sales-slate-300">
+            Asientos: {tenantProfile.currentUsersCount}/{tenantProfile.maxUsers}
+          </span>
+        )}
+      </div>
 
       {error && (
         <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-400">
@@ -163,8 +177,9 @@ export default function CreateUserForm({ onSuccess }) {
       <div className="flex gap-3 pt-2">
         <button
           type="submit"
-          disabled={loading}
-          className="rounded-lg bg-sales-orange px-6 py-2 text-sm font-medium text-white hover:bg-sales-orange-light transition-colors disabled:opacity-50"
+          disabled={loading || isQuotaExceeded}
+          className="rounded-lg bg-sales-orange px-6 py-2 text-sm font-medium text-white hover:bg-sales-orange-light transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          title={isQuotaExceeded ? "Límite de asientos alcanzado" : undefined}
         >
           {loading ? 'Creando...' : 'Crear Usuario'}
         </button>

@@ -3,6 +3,20 @@ import useAuthStore from '../stores/useAuthStore.js';
 const BASE_URL = '/api';
 let refreshPromise = null;
 
+async function handle403(res) {
+  if (res.status === 403) {
+    const cloned = res.clone();
+    try {
+      const body = await cloned.json();
+      if (body.error?.code === 'QUOTA_EXCEEDED' && typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('QUOTA_EXCEEDED_MODAL'));
+      }
+    } catch (e) {
+      console.warn('Failed to parse 403 error body', e);
+    }
+  }
+}
+
 async function request(endpoint, options = {}, isFormData = false) {
   const { token } = useAuthStore.getState();
   const headers = { ...options.headers };
@@ -53,28 +67,11 @@ async function request(endpoint, options = {}, isFormData = false) {
     const newToken = await refreshPromise;
     headers.Authorization = `Bearer ${newToken}`;
     const retryRes = await fetch(`${BASE_URL}${endpoint}`, { ...options, headers });
-    if (retryRes.status === 403) {
-      const cloned = retryRes.clone();
-      try {
-        const body = await cloned.json();
-        if (body.error?.code === 'QUOTA_EXCEEDED' && typeof window !== 'undefined') {
-          window.dispatchEvent(new CustomEvent('QUOTA_EXCEEDED_MODAL'));
-        }
-      } catch (e) {}
-    }
+    await handle403(retryRes);
     return retryRes;
   }
 
-  if (res.status === 403) {
-    const cloned = res.clone();
-    try {
-      const body = await cloned.json();
-      if (body.error?.code === 'QUOTA_EXCEEDED' && typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('QUOTA_EXCEEDED_MODAL'));
-      }
-    } catch (e) {}
-  }
-
+  await handle403(res);
   return res;
 }
 

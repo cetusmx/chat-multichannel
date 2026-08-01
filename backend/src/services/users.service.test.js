@@ -49,7 +49,7 @@ describe('users.service quota enforcement', () => {
 
   describe('Limits (under, exact, over)', () => {
     it('under limit: should succeed', async () => {
-      prisma.tenant.findUnique.mockResolvedValue({ maxUsers: 5 });
+      prisma.$queryRaw.mockResolvedValue([{ id: 't1', maxUsers: 5 }]);
       prisma.user.count.mockResolvedValue(3); // 3 active + 1 new = 4 <= 5
       prisma.user.create.mockResolvedValue({ id: 'u1', isActive: true, role: 'ADMIN' });
       
@@ -59,7 +59,7 @@ describe('users.service quota enforcement', () => {
     });
 
     it('exact limit: should fail when trying to exceed', async () => {
-      prisma.tenant.findUnique.mockResolvedValue({ maxUsers: 5 });
+      prisma.$queryRaw.mockResolvedValue([{ id: 't1', maxUsers: 5 }]);
       prisma.user.count.mockResolvedValue(5); // 5 active + 1 new = 6 > 5
       
       await expect(createUser(validUser, 't1', 'ADMIN'))
@@ -69,7 +69,7 @@ describe('users.service quota enforcement', () => {
 
   describe('Edge limits (-1, 0)', () => {
     it('edge limit -1: should skip quota check', async () => {
-      prisma.tenant.findUnique.mockResolvedValue({ maxUsers: -1 });
+      prisma.$queryRaw.mockResolvedValue([{ id: 't1', maxUsers: -1 }]);
       prisma.user.create.mockResolvedValue({ id: 'u1', isActive: true, role: 'ADMIN' });
       
       await createUser(validUser, 't1', 'ADMIN');
@@ -78,7 +78,7 @@ describe('users.service quota enforcement', () => {
     });
 
     it('edge limit 0: should immediately throw QUOTA_EXCEEDED', async () => {
-      prisma.tenant.findUnique.mockResolvedValue({ maxUsers: 0 });
+      prisma.$queryRaw.mockResolvedValue([{ id: 't1', maxUsers: 0 }]);
       
       await expect(createUser(validUser, 't1', 'ADMIN'))
         .rejects.toMatchObject({ status: 403, code: 'QUOTA_EXCEEDED' });
@@ -88,7 +88,7 @@ describe('users.service quota enforcement', () => {
 
   describe('Pending invitations', () => {
     it('should query explicitly for isActive: true, ignoring pending/inactive', async () => {
-      prisma.tenant.findUnique.mockResolvedValue({ maxUsers: 5 });
+      prisma.$queryRaw.mockResolvedValue([{ id: 't1', maxUsers: 5 }]);
       prisma.user.count.mockResolvedValue(2);
       prisma.user.create.mockResolvedValue({ id: 'u1', isActive: true, role: 'ADMIN' });
       
@@ -107,7 +107,7 @@ describe('users.service quota enforcement', () => {
 
     it('should throw QUOTA_EXCEEDED when reactivating an inactive user if quota is full', async () => {
       prisma.user.findFirst.mockResolvedValue({ id: 'u1', isActive: false, role: 'ADMIN' });
-      prisma.tenant.findUnique.mockResolvedValue({ maxUsers: 5 });
+      prisma.$queryRaw.mockResolvedValue([{ id: 't1', maxUsers: 5 }]);
       prisma.user.count.mockResolvedValue(5);
       
       await expect(reactivateUser('u1', 't1', 'ADMIN'))
@@ -116,7 +116,7 @@ describe('users.service quota enforcement', () => {
 
     it('should enforce quota in updateUser if isActive changes from false to true', async () => {
       prisma.user.findFirst.mockResolvedValue({ id: 'u1', isActive: false, role: 'ADMIN' });
-      prisma.tenant.findUnique.mockResolvedValue({ maxUsers: 5 });
+      prisma.$queryRaw.mockResolvedValue([{ id: 't1', maxUsers: 5 }]);
       prisma.user.count.mockResolvedValue(5);
 
       await expect(updateUser('u1', 't1', 'ADMIN', { isActive: true }))
@@ -126,7 +126,7 @@ describe('users.service quota enforcement', () => {
 
   describe('Bulk creation', () => {
     it('should throw QUOTA_EXCEEDED if bulk array size exceeds available quota', async () => {
-      prisma.tenant.findUnique.mockResolvedValue({ maxUsers: 5 });
+      prisma.$queryRaw.mockResolvedValue([{ id: 't1', maxUsers: 5 }]);
       prisma.user.count.mockResolvedValue(4);
       
       const bulkUsers = [validUser, { ...validUser, email: 'test2@example.com' }];
@@ -135,7 +135,7 @@ describe('users.service quota enforcement', () => {
     });
 
     it('should succeed if bulk array fits inside quota', async () => {
-      prisma.tenant.findUnique.mockResolvedValue({ maxUsers: 5 });
+      prisma.$queryRaw.mockResolvedValue([{ id: 't1', maxUsers: 5 }]);
       prisma.user.count.mockResolvedValue(3);
       prisma.user.create.mockResolvedValue({ id: 'u1', isActive: true, role: 'ADMIN' });
       
@@ -148,7 +148,7 @@ describe('users.service quota enforcement', () => {
 
   describe('Transaction concurrency lock', () => {
     it('should execute SELECT FOR UPDATE raw query on tenant', async () => {
-      prisma.tenant.findUnique.mockResolvedValue({ maxUsers: 5 });
+      prisma.$queryRaw.mockResolvedValue([{ id: 't1', maxUsers: 5 }]);
       prisma.user.count.mockResolvedValue(1);
       prisma.user.create.mockResolvedValue({ id: 'u1', isActive: true, role: 'ADMIN' });
       

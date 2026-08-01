@@ -1,0 +1,794 @@
+diff --git a/backend/src/services/users.service.js b/backend/src/services/users.service.js
+index 4a65c95..34fe6c0 100644
+--- a/backend/src/services/users.service.js
++++ b/backend/src/services/users.service.js
+@@ -1,13 +1,41 @@
+ const bcrypt = require('bcryptjs');
++const { Prisma } = require('@prisma/client');
++const { z } = require('zod');
+ const prisma = require('../config/database');
+ const ApiError = require('../utils/ApiError');
+ 
+ const SALT_ROUNDS = 10;
+ const VALID_CREATOR_ROLES = ['ADMIN', 'COORDINATOR'];
+ 
+-async function validateCoordinator(coordinatorId, tenantId) {
++async function enforceQuota(tx, tenantId, newUsersCount = 1) {
++  // strict Zod validation for bulk payload array length / sizes
++  z.number().int().positive().max(10000).parse(newUsersCount);
++
++  try {
++    await tx.$queryRaw(Prisma.sql`SELECT id FROM "Tenant" WHERE id = ${tenantId}::uuid FOR UPDATE`);
++  } catch (error) {
++    throw ApiError.conflict('System busy, please try again');
++  }
++
++  const tenant = await tx.tenant.findUnique({ where: { id: tenantId } });
++  if (!tenant) throw ApiError.notFound('Tenant not found');
++
++  if (tenant.maxUsers === -1) return;
++
++  if (tenant.maxUsers === 0) {
++    throw ApiError.forbidden('Quota exceeded', 'QUOTA_EXCEEDED');
++  }
++
++  const currentCount = await tx.user.count({ where: { tenantId, isActive: true } });
++  if (currentCount + newUsersCount > tenant.maxUsers) {
++    console.warn(`QUOTA_EXCEEDED_ATTEMPT: tenant ${tenantId} tried to exceed maxUsers of ${tenant.maxUsers}`);
++    throw ApiError.forbidden('Quota exceeded', 'QUOTA_EXCEEDED');
++  }
++}
++
++async function validateCoordinator(tx, coordinatorId, tenantId) {
+   if (!coordinatorId) return;
+-  const coordinator = await prisma.user.findFirst({
++  const coordinator = await tx.user.findFirst({
+     where: { id: coordinatorId, tenantId, role: 'COORDINATOR' },
+   });
+   if (!coordinator) {
+@@ -15,13 +43,13 @@ async function validateCoordinator(coordinatorId, tenantId) {
+   }
+ }
+ 
+-async function validateGroupCoordinatorLimit(groupIds, tenantId, excludeUserId) {
++async function validateGroupCoordinatorLimit(tx, groupIds, tenantId, excludeUserId) {
+   const where = {
+     groupId: { in: groupIds },
+     user: { role: 'COORDINATOR', tenantId },
+     ...(excludeUserId ? { userId: { not: excludeUserId } } : {}),
+   };
+-  const existing = await prisma.groupVendor.findMany({
++  const existing = await tx.groupVendor.findMany({
+     where,
+     include: {
+       group: { select: { name: true } },
+@@ -38,9 +66,9 @@ async function validateGroupCoordinatorLimit(groupIds, tenantId, excludeUserId)
+   }
+ }
+ 
+-async function resolveGroupCoordinator(groupIds, tenantId) {
++async function resolveGroupCoordinator(tx, groupIds, tenantId) {
+   if (!groupIds || groupIds.length === 0) return null;
+-  const coordGv = await prisma.groupVendor.findFirst({
++  const coordGv = await tx.groupVendor.findFirst({
+     where: { groupId: groupIds[0], user: { role: 'COORDINATOR', tenantId } },
+     select: { userId: true },
+   });
+@@ -48,6 +76,10 @@ async function resolveGroupCoordinator(groupIds, tenantId) {
+ }
+ 
+ async function createUser(data, tenantId, actorRole) {
++  if (Array.isArray(data)) {
++    return createBulkUsers(data, tenantId, actorRole);
++  }
++
+   if (!VALID_CREATOR_ROLES.includes(actorRole)) {
+     throw ApiError.forbidden('Insufficient permissions');
+   }
+@@ -56,66 +88,138 @@ async function createUser(data, tenantId, actorRole) {
+     throw ApiError.badRequest('Password must be at least 6 characters');
+   }
+ 
+-  const existing = await prisma.user.findUnique({ where: { email: data.email } });
+-  if (existing) {
+-    throw ApiError.conflict('Email already in use');
+-  }
+-
+   if (actorRole === 'COORDINATOR' && data.role !== 'VENDOR') {
+     throw ApiError.forbidden('Coordinator can only create vendors');
+   }
+ 
+-  let coordinatorId = null;
+-  if (data.role === 'VENDOR') {
+-    if (!data.groupIds || data.groupIds.length === 0) {
+-      throw ApiError.badRequest('At least one group is required for vendor role');
++  return await prisma.$transaction(async (tx) => {
++    await enforceQuota(tx, tenantId, 1);
++
++    const existing = await tx.user.findUnique({ where: { email: data.email } });
++    if (existing) {
++      throw ApiError.conflict('Email already in use');
+     }
+-    if (data.groupIds.length > 1) {
+-      throw ApiError.badRequest('A vendor can only be assigned to one group');
++
++    let coordinatorId = null;
++    if (data.role === 'VENDOR') {
++      if (!data.groupIds || data.groupIds.length === 0) {
++        throw ApiError.badRequest('At least one group is required for vendor role');
++      }
++      if (data.groupIds.length > 1) {
++        throw ApiError.badRequest('A vendor can only be assigned to one group');
++      }
++      coordinatorId = await resolveGroupCoordinator(tx, data.groupIds, tenantId);
+     }
+-    coordinatorId = await resolveGroupCoordinator(data.groupIds, tenantId);
+-  }
+ 
+-  if (data.role === 'COORDINATOR' && data.coordinatorId) {
+-    await validateCoordinator(data.coordinatorId, tenantId);
+-    coordinatorId = data.coordinatorId;
+-  }
++    if (data.role === 'COORDINATOR' && data.coordinatorId) {
++      await validateCoordinator(tx, data.coordinatorId, tenantId);
++      coordinatorId = data.coordinatorId;
++    }
+ 
+-  if (data.groupIds && data.groupIds.length > 0) {
+-    const validGroups = await prisma.group.count({
+-      where: { id: { in: data.groupIds }, branch: { tenantId } },
+-    });
+-    if (validGroups !== data.groupIds.length) {
+-      throw ApiError.badRequest('One or more groups are invalid or belong to another tenant');
++    if (data.groupIds && data.groupIds.length > 0) {
++      const validGroups = await tx.group.count({
++        where: { id: { in: data.groupIds }, branch: { tenantId } },
++      });
++      if (validGroups !== data.groupIds.length) {
++        throw ApiError.badRequest('One or more groups are invalid or belong to another tenant');
++      }
++    }
++
++    if (data.role === 'COORDINATOR' && data.groupIds && data.groupIds.length > 0) {
++      await validateGroupCoordinatorLimit(tx, data.groupIds, tenantId);
+     }
+-  }
+ 
+-  if (data.role === 'COORDINATOR' && data.groupIds && data.groupIds.length > 0) {
+-    await validateGroupCoordinatorLimit(data.groupIds, tenantId);
++    const passwordHash = await bcrypt.hash(data.password, SALT_ROUNDS);
++
++    const user = await tx.user.create({
++      data: {
++        name: data.name,
++        email: data.email,
++        phone: data.phone || null,
++        passwordHash,
++        role: data.role,
++        tenantId,
++        coordinatorId,
++        groups: data.groupIds && data.groupIds.length > 0
++          ? { create: data.groupIds.map((groupId) => ({ groupId })) }
++          : undefined,
++      },
++      include: {
++        groups: { include: { group: { select: { id: true, name: true } } } },
++        coordinator: { select: { id: true, name: true, email: true } },
++      },
++    });
++
++    return formatUser(user);
++  }, { timeout: 10000 });
++}
++
++async function createBulkUsers(dataArray, tenantId, actorRole) {
++  if (!VALID_CREATOR_ROLES.includes(actorRole)) {
++    throw ApiError.forbidden('Insufficient permissions');
+   }
+ 
+-  const passwordHash = await bcrypt.hash(data.password, SALT_ROUNDS);
+-
+-  const user = await prisma.user.create({
+-    data: {
+-      name: data.name,
+-      email: data.email,
+-      phone: data.phone || null,
+-      passwordHash,
+-      role: data.role,
+-      tenantId,
+-      coordinatorId,
+-      groups: data.groupIds && data.groupIds.length > 0
+-        ? { create: data.groupIds.map((groupId) => ({ groupId })) }
+-        : undefined,
+-    },
+-    include: {
+-      groups: { include: { group: { select: { id: true, name: true } } } },
+-      coordinator: { select: { id: true, name: true, email: true } },
+-    },
+-  });
++  return await prisma.$transaction(async (tx) => {
++    await enforceQuota(tx, tenantId, dataArray.length);
++
++    const createdUsers = [];
++    for (const data of dataArray) {
++      if (!data.password || data.password.length < 6) {
++        throw ApiError.badRequest('Password must be at least 6 characters');
++      }
++      
++      const existing = await tx.user.findUnique({ where: { email: data.email } });
++      if (existing) {
++        throw ApiError.conflict('Email already in use');
++      }
++      
++      let coordinatorId = null;
++      if (data.role === 'VENDOR') {
++        if (!data.groupIds || data.groupIds.length === 0) {
++          throw ApiError.badRequest('At least one group is required for vendor role');
++        }
++        coordinatorId = await resolveGroupCoordinator(tx, data.groupIds, tenantId);
++      }
++      if (data.role === 'COORDINATOR' && data.coordinatorId) {
++        await validateCoordinator(tx, data.coordinatorId, tenantId);
++        coordinatorId = data.coordinatorId;
++      }
++      if (data.groupIds && data.groupIds.length > 0) {
++        const validGroups = await tx.group.count({
++          where: { id: { in: data.groupIds }, branch: { tenantId } },
++        });
++        if (validGroups !== data.groupIds.length) {
++          throw ApiError.badRequest('One or more groups are invalid or belong to another tenant');
++        }
++      }
++      if (data.role === 'COORDINATOR' && data.groupIds && data.groupIds.length > 0) {
++        await validateGroupCoordinatorLimit(tx, data.groupIds, tenantId);
++      }
+ 
+-  return formatUser(user);
++      const passwordHash = await bcrypt.hash(data.password, SALT_ROUNDS);
++
++      const user = await tx.user.create({
++        data: {
++          name: data.name,
++          email: data.email,
++          phone: data.phone || null,
++          passwordHash,
++          role: data.role,
++          tenantId,
++          coordinatorId,
++          groups: data.groupIds && data.groupIds.length > 0
++            ? { create: data.groupIds.map((groupId) => ({ groupId })) }
++            : undefined,
++        },
++        include: {
++          groups: { include: { group: { select: { id: true, name: true } } } },
++          coordinator: { select: { id: true, name: true, email: true } },
++        },
++      });
++      createdUsers.push(formatUser(user));
++    }
++    return createdUsers;
++  }, { timeout: 10000 });
+ }
+ 
+ async function listUsers(tenantId, filters = {}, actorRole) {
+@@ -212,6 +316,29 @@ function formatUser(user) {
+   };
+ }
+ 
++async function reactivateUser(id, tenantId, actorRole) {
++  const user = await prisma.user.findFirst({ where: { id, tenantId } });
++  if (!user) throw ApiError.notFound('User not found');
++  
++  if (user.isActive) {
++    return formatUser(user);
++  }
++
++  return await prisma.$transaction(async (tx) => {
++    await enforceQuota(tx, tenantId, 1);
++
++    const updated = await tx.user.update({
++      where: { id },
++      data: { isActive: true },
++      include: {
++        groups: { include: { group: { select: { id: true, name: true } } } },
++        coordinator: { select: { id: true, name: true, email: true } },
++      },
++    });
++    return formatUser(updated);
++  }, { timeout: 10000 });
++}
++
+ async function updateUser(id, tenantId, actorRole, data) {
+   const user = await prisma.user.findFirst({ where: { id, tenantId } });
+   if (!user) {
+@@ -226,104 +353,110 @@ async function updateUser(id, tenantId, actorRole, data) {
+     throw ApiError.forbidden('Coordinator cannot change role to non-vendor');
+   }
+ 
+-  if (data.email && data.email !== user.email) {
+-    const existing = await prisma.user.findUnique({ where: { email: data.email } });
+-    if (existing) {
+-      throw ApiError.conflict('Email already in use');
++  return await prisma.$transaction(async (tx) => {
++    if (data.isActive === true && !user.isActive) {
++      await enforceQuota(tx, tenantId, 1);
+     }
+-  }
+ 
+-  let coordinatorValue;
+-  if (user.role === 'VENDOR') {
+-    if (data.groupIds !== undefined) {
+-      coordinatorValue = await resolveGroupCoordinator(data.groupIds, tenantId);
+-    }
+-  } else if (data.coordinatorId !== undefined) {
+-    coordinatorValue = data.coordinatorId || null;
+-    if (coordinatorValue) {
+-      await validateCoordinator(coordinatorValue, tenantId);
++    if (data.email && data.email !== user.email) {
++      const existing = await tx.user.findUnique({ where: { email: data.email } });
++      if (existing) {
++        throw ApiError.conflict('Email already in use');
++      }
+     }
+-  }
+-
+-  const updateData = {
+-    name: data.name !== undefined ? data.name : undefined,
+-    email: data.email !== undefined ? data.email : undefined,
+-    phone: data.phone !== undefined ? data.phone : undefined,
+-    coordinatorId: coordinatorValue !== undefined ? coordinatorValue : undefined,
+-    isActive: data.isActive !== undefined ? data.isActive : undefined,
+-  };
+ 
+-  if (data.groupIds !== undefined) {
+-    if (user.role === 'ADMIN') {
+-      throw ApiError.badRequest('Group assignment is not available for admin users');
++    let coordinatorValue;
++    if (user.role === 'VENDOR') {
++      if (data.groupIds !== undefined) {
++        coordinatorValue = await resolveGroupCoordinator(tx, data.groupIds, tenantId);
++      }
++    } else if (data.coordinatorId !== undefined) {
++      coordinatorValue = data.coordinatorId || null;
++      if (coordinatorValue) {
++        await validateCoordinator(tx, coordinatorValue, tenantId);
++      }
+     }
+ 
+-    if (data.groupIds.length === 0) {
+-      throw ApiError.badRequest('At least one group is required');
+-    }
++    const updateData = {
++      name: data.name !== undefined ? data.name : undefined,
++      email: data.email !== undefined ? data.email : undefined,
++      phone: data.phone !== undefined ? data.phone : undefined,
++      coordinatorId: coordinatorValue !== undefined ? coordinatorValue : undefined,
++      isActive: data.isActive !== undefined ? data.isActive : undefined,
++    };
+ 
+-    if (user.role === 'VENDOR' && data.groupIds.length > 1) {
+-      throw ApiError.badRequest('A vendor can only be assigned to one group');
+-    }
++    if (data.groupIds !== undefined) {
++      if (user.role === 'ADMIN') {
++        throw ApiError.badRequest('Group assignment is not available for admin users');
++      }
+ 
+-    const validGroups = await prisma.group.count({
+-      where: { id: { in: data.groupIds }, branch: { tenantId } },
+-    });
+-    if (validGroups !== data.groupIds.length) {
+-      throw ApiError.badRequest('One or more groups are invalid or belong to another tenant');
+-    }
++      if (data.groupIds.length === 0) {
++        throw ApiError.badRequest('At least one group is required');
++      }
+ 
+-    if (user.role === 'COORDINATOR') {
+-      await validateGroupCoordinatorLimit(data.groupIds, tenantId, id);
+-      const currentGroups = await prisma.groupVendor.findMany({
+-        where: { userId: id },
+-        select: { groupId: true },
++      if (user.role === 'VENDOR' && data.groupIds.length > 1) {
++        throw ApiError.badRequest('A vendor can only be assigned to one group');
++      }
++
++      const validGroups = await tx.group.count({
++        where: { id: { in: data.groupIds }, branch: { tenantId } },
+       });
+-      const removedGroupIds = currentGroups
+-        .map((gv) => gv.groupId)
+-        .filter((gid) => !data.groupIds.includes(gid));
+-
+-      if (removedGroupIds.length > 0) {
+-        const groupsWithVendors = await prisma.groupVendor.groupBy({
+-          by: ['groupId'],
+-          where: {
+-            groupId: { in: removedGroupIds },
+-            user: { role: 'VENDOR' },
+-          },
+-          _count: { groupId: true },
+-        });
++      if (validGroups !== data.groupIds.length) {
++        throw ApiError.badRequest('One or more groups are invalid or belong to another tenant');
++      }
+ 
+-        if (groupsWithVendors.length > 0) {
+-          const groupNames = await prisma.group.findMany({
+-            where: { id: { in: groupsWithVendors.map((g) => g.groupId) } },
+-            select: { name: true },
++      if (user.role === 'COORDINATOR') {
++        await validateGroupCoordinatorLimit(tx, data.groupIds, tenantId, id);
++        const currentGroups = await tx.groupVendor.findMany({
++          where: { userId: id },
++          select: { groupId: true },
++        });
++        const removedGroupIds = currentGroups
++          .map((gv) => gv.groupId)
++          .filter((gid) => !data.groupIds.includes(gid));
++
++        if (removedGroupIds.length > 0) {
++          const groupsWithVendors = await tx.groupVendor.groupBy({
++            by: ['groupId'],
++            where: {
++              groupId: { in: removedGroupIds },
++              user: { role: 'VENDOR' },
++            },
++            _count: { groupId: true },
+           });
+-          throw ApiError.badRequest(
+-            `Cannot remove groups with active vendors: ${groupNames.map((g) => g.name).join(', ')}`,
+-          );
++
++          if (groupsWithVendors.length > 0) {
++            const groupNames = await tx.group.findMany({
++              where: { id: { in: groupsWithVendors.map((g) => g.groupId) } },
++              select: { name: true },
++            });
++            throw ApiError.badRequest(
++              `Cannot remove groups with active vendors: ${groupNames.map((g) => g.name).join(', ')}`,
++            );
++          }
+         }
+       }
+-    }
+ 
+-    await prisma.groupVendor.deleteMany({ where: { userId: id } });
++      await tx.groupVendor.deleteMany({ where: { userId: id } });
+ 
+-    if (data.groupIds.length > 0) {
+-      await prisma.groupVendor.createMany({
+-        data: data.groupIds.map((groupId) => ({ groupId, userId: id })),
+-      });
++      if (data.groupIds.length > 0) {
++        await tx.groupVendor.createMany({
++          data: data.groupIds.map((groupId) => ({ groupId, userId: id })),
++        });
++      }
+     }
+-  }
+ 
+-  const updated = await prisma.user.update({
+-    where: { id },
+-    data: updateData,
+-    include: {
+-      groups: { include: { group: { select: { id: true, name: true } } } },
+-      coordinator: { select: { id: true, name: true, email: true } },
+-    },
+-  });
++    const updated = await tx.user.update({
++      where: { id },
++      data: updateData,
++      include: {
++        groups: { include: { group: { select: { id: true, name: true } } } },
++        coordinator: { select: { id: true, name: true, email: true } },
++      },
++    });
+ 
+-  return formatUser(updated);
++    return formatUser(updated);
++  }, { timeout: 10000 });
+ }
+ 
+ async function registerFcmToken(userId, token) {
+@@ -353,4 +486,4 @@ async function testPushNotification(userId) {
+   });
+ }
+ 
+-module.exports = { createUser, listUsers, getUserById, updateUser, registerFcmToken, removeFcmToken, testPushNotification };
++module.exports = { createUser, listUsers, getUserById, updateUser, reactivateUser, registerFcmToken, removeFcmToken, testPushNotification };
+diff --git a/backend/src/services/users.service.test.js b/backend/src/services/users.service.test.js
+new file mode 100644
+index 0000000..836624b
+--- /dev/null
++++ b/backend/src/services/users.service.test.js
+@@ -0,0 +1,170 @@
++const { createUser, updateUser, reactivateUser } = require('./users.service');
++const prisma = require('../config/database');
++const ApiError = require('../utils/ApiError');
++
++jest.mock('../config/database', () => ({
++  $transaction: jest.fn(),
++  user: {
++    findUnique: jest.fn(),
++    findFirst: jest.fn(),
++    create: jest.fn(),
++    update: jest.fn(),
++    count: jest.fn(),
++  },
++  tenant: {
++    findUnique: jest.fn(),
++  },
++  group: {
++    count: jest.fn(),
++  },
++  groupVendor: {
++    findFirst: jest.fn(),
++    findMany: jest.fn(),
++    deleteMany: jest.fn(),
++    createMany: jest.fn(),
++  },
++  $queryRaw: jest.fn(),
++}));
++
++jest.mock('bcryptjs', () => ({
++  hash: jest.fn().mockResolvedValue('hashed_password'),
++}));
++
++describe('users.service quota enforcement', () => {
++  beforeEach(() => {
++    jest.clearAllMocks();
++    prisma.$transaction.mockImplementation(async (callback) => {
++      // Pass a mocked tx object
++      return callback({
++        $queryRaw: prisma.$queryRaw,
++        tenant: prisma.tenant,
++        user: prisma.user,
++        group: prisma.group,
++        groupVendor: prisma.groupVendor,
++      });
++    });
++  });
++
++  const validUser = { name: 'Test', email: 'test@example.com', password: 'password123', role: 'ADMIN' };
++
++  describe('Limits (under, exact, over)', () => {
++    it('under limit: should succeed', async () => {
++      prisma.tenant.findUnique.mockResolvedValue({ maxUsers: 5 });
++      prisma.user.count.mockResolvedValue(3); // 3 active + 1 new = 4 <= 5
++      prisma.user.create.mockResolvedValue({ id: 'u1', isActive: true, role: 'ADMIN' });
++      
++      const res = await createUser(validUser, 't1', 'ADMIN');
++      expect(res.id).toBe('u1');
++      expect(prisma.user.count).toHaveBeenCalledWith({ where: { tenantId: 't1', isActive: true } });
++    });
++
++    it('exact limit: should fail when trying to exceed', async () => {
++      prisma.tenant.findUnique.mockResolvedValue({ maxUsers: 5 });
++      prisma.user.count.mockResolvedValue(5); // 5 active + 1 new = 6 > 5
++      
++      await expect(createUser(validUser, 't1', 'ADMIN'))
++        .rejects.toMatchObject({ status: 403, code: 'QUOTA_EXCEEDED' });
++    });
++  });
++
++  describe('Edge limits (-1, 0)', () => {
++    it('edge limit -1: should skip quota check', async () => {
++      prisma.tenant.findUnique.mockResolvedValue({ maxUsers: -1 });
++      prisma.user.create.mockResolvedValue({ id: 'u1', isActive: true, role: 'ADMIN' });
++      
++      await createUser(validUser, 't1', 'ADMIN');
++      // Count should NOT be called
++      expect(prisma.user.count).not.toHaveBeenCalled();
++    });
++
++    it('edge limit 0: should immediately throw QUOTA_EXCEEDED', async () => {
++      prisma.tenant.findUnique.mockResolvedValue({ maxUsers: 0 });
++      
++      await expect(createUser(validUser, 't1', 'ADMIN'))
++        .rejects.toMatchObject({ status: 403, code: 'QUOTA_EXCEEDED' });
++      expect(prisma.user.count).not.toHaveBeenCalled();
++    });
++  });
++
++  describe('Pending invitations', () => {
++    it('should query explicitly for isActive: true, ignoring pending/inactive', async () => {
++      prisma.tenant.findUnique.mockResolvedValue({ maxUsers: 5 });
++      prisma.user.count.mockResolvedValue(2);
++      prisma.user.create.mockResolvedValue({ id: 'u1', isActive: true, role: 'ADMIN' });
++      
++      await createUser(validUser, 't1', 'ADMIN');
++      expect(prisma.user.count).toHaveBeenCalledWith({ where: { tenantId: 't1', isActive: true } });
++    });
++  });
++
++  describe('Reactivation Loophole', () => {
++    it('should bypass quota check if user is already active', async () => {
++      prisma.user.findFirst.mockResolvedValue({ id: 'u1', isActive: true, role: 'ADMIN' });
++      
++      await reactivateUser('u1', 't1', 'ADMIN');
++      expect(prisma.$transaction).not.toHaveBeenCalled();
++    });
++
++    it('should throw QUOTA_EXCEEDED when reactivating an inactive user if quota is full', async () => {
++      prisma.user.findFirst.mockResolvedValue({ id: 'u1', isActive: false, role: 'ADMIN' });
++      prisma.tenant.findUnique.mockResolvedValue({ maxUsers: 5 });
++      prisma.user.count.mockResolvedValue(5);
++      
++      await expect(reactivateUser('u1', 't1', 'ADMIN'))
++        .rejects.toMatchObject({ status: 403, code: 'QUOTA_EXCEEDED' });
++    });
++
++    it('should enforce quota in updateUser if isActive changes from false to true', async () => {
++      prisma.user.findFirst.mockResolvedValue({ id: 'u1', isActive: false, role: 'ADMIN' });
++      prisma.tenant.findUnique.mockResolvedValue({ maxUsers: 5 });
++      prisma.user.count.mockResolvedValue(5);
++
++      await expect(updateUser('u1', 't1', 'ADMIN', { isActive: true }))
++        .rejects.toMatchObject({ status: 403, code: 'QUOTA_EXCEEDED' });
++    });
++  });
++
++  describe('Bulk creation', () => {
++    it('should throw QUOTA_EXCEEDED if bulk array size exceeds available quota', async () => {
++      prisma.tenant.findUnique.mockResolvedValue({ maxUsers: 5 });
++      prisma.user.count.mockResolvedValue(4);
++      
++      const bulkUsers = [validUser, { ...validUser, email: 'test2@example.com' }];
++      await expect(createUser(bulkUsers, 't1', 'ADMIN'))
++        .rejects.toMatchObject({ status: 403, code: 'QUOTA_EXCEEDED' });
++    });
++
++    it('should succeed if bulk array fits inside quota', async () => {
++      prisma.tenant.findUnique.mockResolvedValue({ maxUsers: 5 });
++      prisma.user.count.mockResolvedValue(3);
++      prisma.user.create.mockResolvedValue({ id: 'u1', isActive: true, role: 'ADMIN' });
++      
++      const bulkUsers = [validUser, { ...validUser, email: 'test2@example.com' }];
++      await createUser(bulkUsers, 't1', 'ADMIN');
++      
++      expect(prisma.user.create).toHaveBeenCalledTimes(2);
++    });
++  });
++
++  describe('Transaction concurrency lock', () => {
++    it('should execute SELECT FOR UPDATE raw query on tenant', async () => {
++      prisma.tenant.findUnique.mockResolvedValue({ maxUsers: 5 });
++      prisma.user.count.mockResolvedValue(1);
++      prisma.user.create.mockResolvedValue({ id: 'u1', isActive: true, role: 'ADMIN' });
++      
++      await createUser(validUser, 't1', 'ADMIN');
++      
++      expect(prisma.$queryRaw).toHaveBeenCalled();
++      const callArgs = prisma.$queryRaw.mock.calls[0][0];
++      // Test that the raw query uses FOR UPDATE (it's a Prisma.sql object)
++      expect(callArgs.text).toContain('FOR UPDATE');
++    });
++
++    it('should convert transaction timeout or deadlock errors into 409 Conflict', async () => {
++      prisma.$queryRaw.mockRejectedValue(new Error('timeout'));
++      
++      await expect(createUser(validUser, 't1', 'ADMIN'))
++        .rejects.toMatchObject({ status: 409, message: 'System busy, please try again' });
++    });
++  });
++});
+diff --git a/backend/src/utils/ApiError.js b/backend/src/utils/ApiError.js
+index 88abaac..66c3639 100644
+--- a/backend/src/utils/ApiError.js
++++ b/backend/src/utils/ApiError.js
+@@ -14,8 +14,8 @@ class ApiError extends Error {
+     return new ApiError(401, message, 'UNAUTHORIZED');
+   }
+ 
+-  static forbidden(message = 'Forbidden') {
+-    return new ApiError(403, message, 'FORBIDDEN');
++  static forbidden(message = 'Forbidden', code = 'FORBIDDEN') {
++    return new ApiError(403, message, code);
+   }
+ 
+   static notFound(message = 'Resource not found') {
+diff --git a/frontend/src/features/users/UserListPage.jsx b/frontend/src/features/users/UserListPage.jsx
+index 6b2813b..8dbc920 100644
+--- a/frontend/src/features/users/UserListPage.jsx
++++ b/frontend/src/features/users/UserListPage.jsx
+@@ -215,16 +215,24 @@ export default function UserListPage() {
+   const [loading, setLoading] = useState(true);
+   const [error, setError] = useState('');
+   const [editingUser, setEditingUser] = useState(null);
++  const [tenantProfile, setTenantProfile] = useState(null);
+   const user = useAuthStore((s) => s.user);
+ 
+   async function loadUsers(page = 1) {
+     setLoading(true);
+     setError('');
+     try {
+-      const params = new URLSearchParams({ page, limit: 20 });
+-      if (role) params.set('role', role);
+-      if (search) params.set('search', search);
+-      const res = await get(`/users?${params}`);
++      const [profileRes, usersRes] = await Promise.all([
++        get('/tenant/profile'),
++        get(`/users?${new URLSearchParams({ page, limit: 20, ...(role ? { role } : {}), ...(search ? { search } : {}) })}`)
++      ]);
++      
++      if (profileRes.ok) {
++        const pBody = await profileRes.json();
++        setTenantProfile(pBody.data);
++      }
++
++      const res = usersRes;
+       const body = await res.json();
+       if (!res.ok) {
+         if (res.status === 403) {
+@@ -257,13 +265,31 @@ export default function UserListPage() {
+     <div>
+       <div className="mb-6 flex items-center justify-between">
+         <h1 className="text-2xl font-semibold text-sales-slate-100">Usuarios</h1>
++        
+         {user?.role !== 'VENDOR' && (
+-          <a
+-            href="/users/new"
+-            className="rounded-lg bg-sales-orange px-4 py-2 text-sm font-medium text-white hover:bg-sales-orange-light transition-colors"
+-          >
+-            + Nuevo Usuario
+-          </a>
++          <div className="flex items-center gap-4">
++            {tenantProfile && tenantProfile.maxUsers !== -1 && (
++              <span className="text-sm font-medium text-sales-slate-300">
++                Asientos: {tenantProfile.currentUsersCount}/{tenantProfile.maxUsers}
++              </span>
++            )}
++            {tenantProfile && tenantProfile.maxUsers !== -1 && tenantProfile.currentUsersCount >= tenantProfile.maxUsers ? (
++              <button
++                disabled
++                className="rounded-lg bg-slate-700 px-4 py-2 text-sm font-medium text-sales-slate-400 cursor-not-allowed"
++                title="Límite de asientos alcanzado"
++              >
++                + Nuevo Usuario
++              </button>
++            ) : (
++              <a
++                href="/users/new"
++                className="rounded-lg bg-sales-orange px-4 py-2 text-sm font-medium text-white hover:bg-sales-orange-light transition-colors"
++              >
++                + Nuevo Usuario
++              </a>
++            )}
++          </div>
+         )}
+       </div>
+ 
+diff --git a/frontend/src/services/api.js b/frontend/src/services/api.js
+index 2afabf6..d53cebe 100644
+--- a/frontend/src/services/api.js
++++ b/frontend/src/services/api.js
+@@ -53,9 +53,28 @@ async function request(endpoint, options = {}, isFormData = false) {
+     const newToken = await refreshPromise;
+     headers.Authorization = `Bearer ${newToken}`;
+     const retryRes = await fetch(`${BASE_URL}${endpoint}`, { ...options, headers });
++    if (retryRes.status === 403) {
++      const cloned = retryRes.clone();
++      try {
++        const body = await cloned.json();
++        if (body.error?.code === 'QUOTA_EXCEEDED' && typeof window !== 'undefined') {
++          window.dispatchEvent(new CustomEvent('QUOTA_EXCEEDED_MODAL'));
++        }
++      } catch (e) {}
++    }
+     return retryRes;
+   }
+ 
++  if (res.status === 403) {
++    const cloned = res.clone();
++    try {
++      const body = await cloned.json();
++      if (body.error?.code === 'QUOTA_EXCEEDED' && typeof window !== 'undefined') {
++        window.dispatchEvent(new CustomEvent('QUOTA_EXCEEDED_MODAL'));
++      }
++    } catch (e) {}
++  }
++
+   return res;
+ }
+ 

@@ -96,6 +96,29 @@ so that se respete el modelo de negocio.
 - [Source: backend/src/services/users.service.js#L50-L100]
 - [Source: backend/src/utils/ApiError.js]
 
+### Review Findings
+
+- [ ] [Review][Patch] Unhandled Zod errors in `enforceQuota` cause 500 errors — Zod validation uses `.parse()` without catching, throwing raw ZodErrors instead of standard ApiErrors.
+- [ ] [Review][Patch] Swallowed database errors in row-level lock mask true failures — `try/catch` around `SELECT FOR UPDATE` throws generic "System busy", masking UUID cast errors and deadlocks.
+- [ ] [Review][Patch] Raw `SELECT FOR UPDATE` lock is not tied to Prisma ORM query — Executing raw lock then standard `findUnique` does not guarantee lock applies to ORM query.
+- [ ] [Review][Patch] `createBulkUsers` executes N+1 database queries in loop — Sequential `for...of` loop up to 10k items will hammer DB and cause timeouts.
+- [ ] [Review][Patch] Synchronous `bcrypt.hash` inside bulk loop blocks Node.js event loop — CPU-intensive operations inside loop freeze the application for all requests.
+- [ ] [Review][Patch] Race condition checking user state outside transaction — `reactivateUser` and `updateUser` fetch user outside transaction, bypassing quota checks for concurrent requests.
+- [ ] [Review][Patch] Admins can be created with groups — Role ADMIN and groupIds non-empty succeeds in creation, but is disallowed in update.
+- [ ] [Review][Patch] Unnecessary deletion and recreation of `groupVendor` records — In `updateUser`, relationships are deleted/recreated unconditionally, bloating replication logs.
+- [ ] [Review][Patch] Coordinators can bypass role restrictions via bulk creation and reactivation — Missing checks allow Coordinators to create/reactivate Admin users.
+- [ ] [Review][Patch] Vendors can be assigned multiple groups via bulk creation — Missing validation allows bypassing the single-group limitation.
+- [ ] [Review][Patch] Concurrent reactivations of the same user cause spurious QUOTA_EXCEEDED — Double counting user state leads to incorrect quota limits.
+- [ ] [Review][Patch] TypeError on null `groupIds` causes 500 error — Accessing `.length` on null crashes instead of validating.
+- [ ] [Review][Patch] Redundant tenant profile fetches in `UserListPage` — Fetched concurrently with user list on pagination/search, wasting bandwidth.
+- [ ] [Review][Patch] Swapping `<a>` for `<button>` degrades accessibility — Dynamically changing element types breaks browser behavior.
+- [ ] [Review][Patch] Haphazard 403 error interception in `api.js` — Duplicated logic risks double-firing modals; empty catch blocks swallow parsing errors.
+- [ ] [Review][Patch] Tenant caching mechanism is not invalidated — Violates Task 1: Caches not refreshed after user changes.
+- [ ] [Review][Patch] Transaction timeouts on broader Prisma queries not caught — Violates Task 1: 409 Conflict only handled on lock, not main transaction.
+- [ ] [Review][Patch] Quota state not exposed in GET `/tenant` — Violates Task 3: Backend does not send data expected by frontend `/tenant/profile`.
+- [ ] [Review][Patch] Create/Invite actions not fully disabled — Violates Task 4: Missing disabling logic in `CreateUserForm.jsx` and invitations.
+- [ ] [Review][Patch] Global "Upgrade Plan" modal is missing — Violates Task 4: Event dispatched but modal component is unimplemented.
+
 ## Dev Agent Record
 
 ### Agent Model Used

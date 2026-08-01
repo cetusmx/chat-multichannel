@@ -218,20 +218,22 @@ export default function UserListPage() {
   const [tenantProfile, setTenantProfile] = useState(null);
   const user = useAuthStore((s) => s.user);
 
+  async function loadTenantProfile() {
+    try {
+      const res = await get('/tenant/profile');
+      if (res.ok) {
+        const body = await res.json();
+        setTenantProfile(body.data);
+      }
+    } catch (err) {}
+  }
+
   async function loadUsers(page = 1) {
     setLoading(true);
     setError('');
     try {
-      const [profileRes, usersRes] = await Promise.all([
-        get('/tenant/profile'),
-        get(`/users?${new URLSearchParams({ page, limit: 20, ...(role ? { role } : {}), ...(search ? { search } : {}) })}`)
-      ]);
+      const usersRes = await get(`/users?${new URLSearchParams({ page, limit: 20, ...(role ? { role } : {}), ...(search ? { search } : {}) })}`);
       
-      if (profileRes.ok) {
-        const pBody = await profileRes.json();
-        setTenantProfile(pBody.data);
-      }
-
       const res = usersRes;
       const body = await res.json();
       if (!res.ok) {
@@ -255,11 +257,16 @@ export default function UserListPage() {
 
   function refreshAfterEdit() {
     loadUsers(meta.page);
+    loadTenantProfile();
   }
 
   useEffect(() => {
     loadUsers();
   }, [role]);
+
+  useEffect(() => {
+    loadTenantProfile();
+  }, []);
 
   return (
     <div>
@@ -274,13 +281,15 @@ export default function UserListPage() {
               </span>
             )}
             {tenantProfile && tenantProfile.maxUsers !== -1 && tenantProfile.currentUsersCount >= tenantProfile.maxUsers ? (
-              <button
-                disabled
+              <a
+                href={undefined}
+                aria-disabled={true}
                 className="rounded-lg bg-slate-700 px-4 py-2 text-sm font-medium text-sales-slate-400 cursor-not-allowed"
                 title="Límite de asientos alcanzado"
+                onClick={(e) => e.preventDefault()}
               >
                 + Nuevo Usuario
-              </button>
+              </a>
             ) : (
               <a
                 href="/users/new"
