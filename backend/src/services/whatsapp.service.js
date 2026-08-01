@@ -3,12 +3,26 @@ const env = require('../config/env');
 const socket = require('../socket');
 const { isOffHours } = require('../utils/date');
 const crypto = require('crypto');
+const logger = require('../utils/logger');
 const aiService = require('./ai.service');
 const assignmentService = require('./assignment.service');
 const prisma = new PrismaClient();
 
 const incomingLocks = new Map();
 const activeAiGenerations = new Set();
+const { getTenantStatusAsync } = require('../utils/tenant-cache.util');
+const ApiError = require('../utils/ApiError');
+
+async function isTenantSuspended(tenantId) {
+  try {
+    const status = await getTenantStatusAsync(tenantId);
+    return !status || status === 'suspended';
+  } catch (err) {
+    logger.error(`[WHATSAPP_SERVICE] Error checking tenant status for ${tenantId}:`, err);
+    // Fail safe to suspended if we can't query the database
+    return true;
+  }
+}
 
 /**
  * Servicio para integración con WhatsApp Business API.
@@ -28,12 +42,12 @@ const whatsappService = {
         try {
           config.accessToken = decrypt(config.accessToken);
         } catch (e) {
-          console.error(`[WHATSAPP_SERVICE] Error decrypting token for tenant ${tenantId}`, e);
+          logger.error(`[WHATSAPP_SERVICE] Error decrypting token for tenant ${tenantId}`, e);
         }
       }
       return config;
     } catch (error) {
-      console.error(`[WHATSAPP_SERVICE] Error fetching config for tenant ${tenantId}:`, error);
+      logger.error(`[WHATSAPP_SERVICE] Error fetching config for tenant ${tenantId}:`, error);
       throw error;
     }
   },
@@ -51,7 +65,7 @@ const whatsappService = {
         create: { ...data, tenantId }
       });
     } catch (error) {
-      console.error(`[WHATSAPP_SERVICE] Error updating config for tenant ${tenantId}:`, error);
+      logger.error(`[WHATSAPP_SERVICE] Error updating config for tenant ${tenantId}:`, error);
       throw error;
     }
   },
@@ -63,6 +77,11 @@ const whatsappService = {
    * @returns {string} El challenge si es exitoso.
    */
   async verifyWebhook(query, tenantId) {
+    if (!tenantId) {
+      const error = new Error('tenantId is required');
+      error.status = 400;
+      throw error;
+    }
     const { 'hub.mode': mode, 'hub.verify_token': token, 'hub.challenge': challenge } = query;
 
     if (mode === 'subscribe' && token) {
@@ -89,7 +108,16 @@ const whatsappService = {
    */
   async handleIncomingMessage(payload, tenantId) {
     try {
-      console.log(`[WHATSAPP_SERVICE] Webhook received for tenant: ${tenantId}`);
+      if (!tenantId) {
+        logger.error('[WHATSAPP_SERVICE] Incoming message payload missing tenantId.');
+        return false;
+      }
+      if (await isTenantSuspended(tenantId)) {
+        logger.info(`[WHATSAPP_SERVICE] Tenant ${tenantId} is suspended, discarding incoming webhook early.`);
+        return false;
+      }
+
+      logger.info(`[WHATSAPP_SERVICE] Webhook received for tenant: ${tenantId}`);
       
       if (payload.object !== 'whatsapp_business_account') return false;
       
@@ -103,7 +131,7 @@ const whatsappService = {
           if (value && value.statuses && value.statuses.length > 0) {
             for (const st of value.statuses) {
               if (st.status === 'failed' && st.id) {
-                console.error(`[WHATSAPP_SERVICE] Delivery failure status from Meta for waMessageId ${st.id}:`, JSON.stringify(st));
+                logger.error(`[WHATSAPP_SERVICE] Delivery failure status from Meta for waMessageId ${st.id}:`, JSON.stringify(st));
                 try {
                   const errObj = st.errors && st.errors[0];
                   const errCode = errObj ? errObj.code : 'Desconocido';
@@ -130,11 +158,11 @@ const whatsappService = {
                       const socket = require('../socket');
                       socket.getIo().of('/chat').to(`conversation:${msgRecord.conversationId}`).to(`tenant_${msgRecord.conversation.tenantId}_coordinators`).emit('message_updated', updatedMsg);
                     } catch (socErr) {
-                      console.error('[WHATSAPP_SERVICE] Error emitting message_updated socket:', socErr.message);
+                      logger.error('[WHATSAPP_SERVICE] Error emitting message_updated socket:', socErr.message);
                     }
                   }
                 } catch (e) {
-                  console.error('[WHATSAPP_SERVICE] Error processing status update:', e.message);
+                  logger.error('[WHATSAPP_SERVICE] Error processing status update:', e.message);
                 }
               }
             }
@@ -163,7 +191,7 @@ const whatsappService = {
                   filename: mediaObj.filename
                 };
               } else {
-                console.warn('[WHATSAPP_SERVICE] Webhook received media but no media ID found in payload:', JSON.stringify(message));
+                logger.warn('[WHATSAPP_SERVICE] Webhook received media but no media ID found in payload:', JSON.stringify(message));
               }
             }
 
@@ -182,7 +210,7 @@ const whatsappService = {
                 // Prepend quote to the incoming text
                 text = `> [Respuesta a]: "${snippet}"\n\n${text}`;
               } catch (ctxErr) {
-                console.error('[WHATSAPP_SERVICE] Error fetching context message:', ctxErr.message);
+                logger.error('[WHATSAPP_SERVICE] Error fetching context message:', ctxErr.message);
               }
             }
             
@@ -202,7 +230,7 @@ const whatsappService = {
               });
               
               if (client && client.isBlocked) {
-                console.log(`[WHATSAPP_SERVICE] Client ${clientPhone} is blocked. Ignoring message.`);
+                logger.info(`[WHATSAPP_SERVICE] Client ${clientPhone} is blocked. Ignoring message.`);
                 continue;
               }
               
@@ -231,14 +259,14 @@ const whatsappService = {
               try {
                 await assignmentService.autoAssign(tenantId, conversation.id);
               } catch (autoAssignErr) {
-                console.error(`[WHATSAPP_SERVICE] Error auto-assigning chat for tenant ${tenantId}, conversation ${conversation.id}:`, autoAssignErr);
+                logger.error(`[WHATSAPP_SERVICE] Error auto-assigning chat for tenant ${tenantId}, conversation ${conversation.id}:`, autoAssignErr);
               }
             } else {
               if (conversation.status === 'PENDING_ASSIGNMENT') {
                 try {
                   await assignmentService.autoAssign(tenantId, conversation.id);
                 } catch (autoAssignErr) {
-                  console.error(`[WHATSAPP_SERVICE] Error auto-assigning chat for tenant ${tenantId}, conversation ${conversation.id}:`, autoAssignErr);
+                  logger.error(`[WHATSAPP_SERVICE] Error auto-assigning chat for tenant ${tenantId}, conversation ${conversation.id}:`, autoAssignErr);
                 }
               }
               // Actualizar fecha del último mensaje
@@ -286,7 +314,7 @@ const whatsappService = {
                           timeout: 60000
                         });
                       } catch (downloadErr) {
-                         console.error('Failed to download from Meta API:', downloadErr.message);
+                         logger.error('Failed to download from Meta API:', downloadErr.message);
                          throw new Error(`Meta API download failed: ${downloadErr.message}`);
                       }
                       
@@ -339,20 +367,20 @@ const whatsappService = {
                         });
                         msgRecord.attachments = [attachment];
                       } else {
-                        console.error('Failed to download from Meta API:', fileRes ? fileRes.statusText : 'Unknown');
+                        logger.error('Failed to download from Meta API:', fileRes ? fileRes.statusText : 'Unknown');
                         throw new Error(`Meta API download failed: ${fileRes ? fileRes.status : 'Unknown'}`);
                       }
                     } else {
-                      console.error('Meta API returned JSON without url:', metaJson);
+                      logger.error('Meta API returned JSON without url:', metaJson);
                       throw new Error('Meta API returned JSON without url');
                     }
                   } else {
                     const errText = await metaRes.text();
-                    console.error(`Meta API error getting media URL. Status: ${metaRes.status}, Body: ${errText}`);
+                    logger.error(`Meta API error getting media URL. Status: ${metaRes.status}, Body: ${errText}`);
                     throw new Error(`Meta API error getting media URL: ${metaRes.status}. Body: ${errText}`);
                   }
                 } catch (mediaErr) {
-                  console.error('[WHATSAPP_SERVICE] Error downloading media:', mediaErr);
+                  logger.error('[WHATSAPP_SERVICE] Error downloading media:', mediaErr);
                   // Inject error into the message content so the user can see it in the UI
                   const errorMsg = `\n[Error de descarga: ${mediaErr.message}]`;
                   msgRecord = await prisma.message.update({
@@ -362,7 +390,7 @@ const whatsappService = {
                   });
                 }
               } else {
-                console.error('[WHATSAPP_SERVICE] No config or accessToken found for tenant:', tenantId);
+                logger.error('[WHATSAPP_SERVICE] No config or accessToken found for tenant:', tenantId);
                 const errorMsg = `\n[Error de descarga: Configuración o token faltante]`;
                 msgRecord = await prisma.message.update({
                   where: { id: msgRecord.id },
@@ -375,7 +403,7 @@ const whatsappService = {
             try {
               socket.getIo().of('/chat').to(`conversation:${conversation.id}`).to(`tenant_${tenantId}_coordinators`).emit('new_message', msgRecord);
             } catch (err) {
-              console.error('[WHATSAPP_SERVICE] No se pudo emitir por socket:', err.message);
+              logger.error('[WHATSAPP_SERVICE] No se pudo emitir por socket:', err.message);
             }
 
             // --- PUSH NOTIFICATION INTEGRATION ---
@@ -400,11 +428,11 @@ const whatsappService = {
                   data: { chatId: conversation.id, type: 'new_message' }
                 };
                 pushService.sendPushToVendor(updatedConv.vendorId, pushPayload).catch(err => {
-                  console.error('[PUSH_SERVICE] Error trigger:', err.message);
+                  logger.error('[PUSH_SERVICE] Error trigger:', err.message);
                 });
               }
             } catch (err) {
-              console.error('[PUSH_SERVICE] Failed to process push notification:', err.message);
+              logger.error('[PUSH_SERVICE] Failed to process push notification:', err.message);
             }
             // ------------------------------------
 
@@ -455,7 +483,7 @@ const whatsappService = {
                           .to(`tenant_${tenantId}_vendors`)
                           .emit('conversation_escalated', updatedConv);
                       } catch (e) {
-                        console.error('Socket notification error on silent escalation:', e);
+                        logger.error('Socket notification error on silent escalation:', e);
                       }
                       return;
                     }
@@ -508,13 +536,13 @@ const whatsappService = {
                             .to(`conversation:${conversation.id}`)
                             .emit('conversation_escalated', updatedConv);
                         } catch (err) {
-                          console.error('[WHATSAPP_SERVICE] Error emitting escalation event:', err.message);
+                          logger.error('[WHATSAPP_SERVICE] Error emitting escalation event:', err.message);
                         }
                       }
                     }
                   }
                 } catch (aiErr) {
-                  console.error('[WHATSAPP_SERVICE] AI auto-response failed:', aiErr.message);
+                  logger.error('[WHATSAPP_SERVICE] AI auto-response failed:', aiErr.message);
                 } finally {
                   activeAiGenerations.delete(conversation.id);
                 }
@@ -522,19 +550,19 @@ const whatsappService = {
             }
 
             } catch (innerErr) {
-              console.error('[WHATSAPP_SERVICE] Error processing specific message:', innerErr);
+              logger.error('[WHATSAPP_SERVICE] Error processing specific message:', innerErr);
             } finally {
               incomingLocks.delete(lockKey);
               if (releaseLock) releaseLock();
             }
             
-            console.log(`[WHATSAPP_SERVICE] Mensaje guardado correctamente de ${clientPhone}`);
+            logger.info(`[WHATSAPP_SERVICE] Mensaje guardado correctamente de ${clientPhone}`);
           }
         }
       }
       return true;
     } catch (error) {
-      console.error(`[WHATSAPP_SERVICE] Error processing incoming message:`, error);
+      logger.error(`[WHATSAPP_SERVICE] Error processing incoming message:`, error);
       throw error;
     }
   },
@@ -553,6 +581,10 @@ const whatsappService = {
       });
       if (!conversation) throw new Error('Conversación no encontrada');
       if (conversation.client.isBlocked) throw new Error('Client is blocked');
+      
+      if (await isTenantSuspended(conversation.tenantId)) {
+        throw new ApiError(403, 'Tenant is currently suspended.', 'TENANT_SUSPENDED');
+      }
       
       const config = await this.getConfig(conversation.tenantId);
       if (!config || !config.accessToken || !config.phoneNumberId) {
@@ -573,7 +605,7 @@ const whatsappService = {
         text: { preview_url: false, body: content }
       };
 
-      console.log('[WHATSAPP_SERVICE] Payload to Meta API (sendMessage):', JSON.stringify(payload, null, 2));
+      logger.info('[WHATSAPP_SERVICE] Payload to Meta API (sendMessage):', JSON.stringify(payload, null, 2));
 
       const response = await fetch(url, {
         method: 'POST',
@@ -608,12 +640,12 @@ const whatsappService = {
       try {
         socket.getIo().of('/chat').to(`conversation:${conversationId}`).to(`tenant_${conversation.tenantId}_coordinators`).emit('new_message', message);
       } catch (err) {
-        console.error('[WHATSAPP_SERVICE] No se pudo emitir por socket:', err.message);
+        logger.error('[WHATSAPP_SERVICE] No se pudo emitir por socket:', err.message);
       }
 
       return message;
     } catch (error) {
-      console.error(`[WHATSAPP_SERVICE] Error enviando mensaje a Meta:`, error);
+      logger.error(`[WHATSAPP_SERVICE] Error enviando mensaje a Meta:`, error);
       throw error;
     }
   },
@@ -635,6 +667,10 @@ const whatsappService = {
       });
       if (!conversation) throw new Error('Conversación no encontrada');
       if (conversation.client.isBlocked) throw new Error('Client is blocked');
+      
+      if (await isTenantSuspended(conversation.tenantId)) {
+        throw new ApiError(403, 'Tenant is currently suspended.', 'TENANT_SUSPENDED');
+      }
       
       const config = await this.getConfig(conversation.tenantId);
       if (!config || !config.accessToken || !config.phoneNumberId) {
@@ -659,7 +695,7 @@ const whatsappService = {
       
       const uploadData = await uploadRes.json();
       if (!uploadRes.ok) {
-        console.error('[WHATSAPP_SERVICE] Meta API Upload Error Data:', JSON.stringify(uploadData, null, 2));
+        logger.error('[WHATSAPP_SERVICE] Meta API Upload Error Data:', JSON.stringify(uploadData, null, 2));
         throw new Error(`Meta API Upload Error: ${uploadData.error?.message || 'Unknown error'}`);
       }
       
@@ -694,7 +730,7 @@ const whatsappService = {
         payload[mediaType].caption = trimmed.length > 1024 ? trimmed.substring(0, 1021) + '...' : trimmed;
       }
 
-      console.log('[WHATSAPP_SERVICE] Payload to Meta API (sendMedia):', JSON.stringify(payload, null, 2));
+      logger.info('[WHATSAPP_SERVICE] Payload to Meta API (sendMedia):', JSON.stringify(payload, null, 2));
 
       const response = await fetch(msgUrl, {
         method: 'POST',
@@ -746,17 +782,17 @@ const whatsappService = {
       await prisma.conversation.update({
         where: { id: conversationId },
         data: { lastMessageAt: new Date() }
-      }).catch(err => console.error('Error updating conversation lastMessageAt:', err.message));
+      }).catch(err => logger.error('Error updating conversation lastMessageAt:', err.message));
 
       try {
         socket.getIo().of('/chat').to(`conversation:${conversationId}`).to(`tenant_${conversation.tenantId}_coordinators`).emit('new_message', msgRecord);
       } catch (err) {
-        console.error('[WHATSAPP_SERVICE] No se pudo emitir por socket:', err.message);
+        logger.error('[WHATSAPP_SERVICE] No se pudo emitir por socket:', err.message);
       }
 
       return msgRecord;
     } catch (error) {
-      console.error(`[WHATSAPP_SERVICE] Error enviando media a Meta:`, error.response?.data || error.message);
+      logger.error(`[WHATSAPP_SERVICE] Error enviando media a Meta:`, error.response?.data || error.message);
       throw error;
     } finally {
       if (fileStream) fileStream.destroy();
@@ -767,7 +803,7 @@ const whatsappService = {
             await fsp.unlink(file.path);
           }
         } catch (err) {
-          console.error('Error unlinking temp file:', err.message);
+          logger.error('Error unlinking temp file:', err.message);
         }
       }
     }

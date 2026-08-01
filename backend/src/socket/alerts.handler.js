@@ -19,7 +19,7 @@ function setupAlerts(alertsNamespace) {
           socket.disconnect(true);
           return;
         }
-        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback_secret');
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
         if (decoded.tenantId !== tenantId && decoded.role !== 'ADMIN') {
           socket.emit('alerts:error', { message: 'Unauthorized access to tenant' });
           socket.disconnect(true);

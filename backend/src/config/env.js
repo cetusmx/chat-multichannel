@@ -4,6 +4,8 @@ const env = {
   databaseUrl: process.env.DATABASE_URL,
   jwtSecret: process.env.JWT_SECRET,
   jwtRefreshSecret: process.env.JWT_REFRESH_SECRET,
+  superadminJwtSecret: process.env.SUPERADMIN_JWT_SECRET || (process.env.NODE_ENV === 'test' ? 'test-secret' : (() => { throw new Error('SUPERADMIN_JWT_SECRET must be defined in environment'); })()),
+  superadminJwtExpiresIn: process.env.SUPERADMIN_JWT_EXPIRES_IN || '1h',
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '1h',
   jwtRefreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d',
   aiProvider: process.env.AI_PROVIDER || 'gemini',

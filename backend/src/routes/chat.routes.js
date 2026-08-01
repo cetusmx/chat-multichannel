@@ -109,9 +109,11 @@ router.post('/:conversationId/messages', authenticate, authorize('ADMIN', 'COORD
     } else {
       message = await whatsappService.sendMessage(conversationId, content, req.user.id, req.user.role);
     }
-    
     res.status(201).json({ data: message });
   } catch (error) {
+    if (error.code === 'TENANT_SUSPENDED') {
+      return res.status(403).json({ error: 'TENANT_SUSPENDED', message: error.message });
+    }
     next(error);
   }
 });
@@ -239,6 +241,9 @@ router.post('/:conversationId/media', authenticate, authorize('ADMIN', 'COORDINA
       } catch (err) {
         console.error('Error deleting orphaned file:', err.message);
       }
+    }
+    if (error.code === 'TENANT_SUSPENDED') {
+      return res.status(403).json({ error: 'TENANT_SUSPENDED', message: error.message });
     }
     next(error);
   }

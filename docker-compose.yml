@@ -39,6 +39,19 @@ services:
     volumes:
       - app_uploads:/app/backend/uploads
 
+  superadmin-frontend:
+    build:
+      context: ./superadmin-frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:4005}
+    container_name: salesflow-superadmin
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:4006:80"
+    depends_on:
+      - app
+
 volumes:
   postgres_data:
   app_uploads:

@@ -188,3 +188,17 @@
 - Mensajes fallidos se eliminan de la UI en vez de mostrar un estado "Fallido" — deferred, comportamiento de MVP
 - ChatListScreen no tiene socket en vivo y recarga ineficientemente en focus — deferred, comportamiento de MVP
 - KeyboardAvoidingView offset en iOS es frágil — deferred, comportamiento de MVP
+
+## Deferred from: code review of 1-1-autenticacion-base-superadmin.md (2026-07-28)
+- Useless Rate Limiter in Distributed Environments — deferred, pre-existing
+- Reverse Proxy Rate Limiting Blindness — deferred, pre-existing
+- Absence of Privileged Audit Logging — deferred, pre-existing
+- Incomplete Authentication Architecture (Refresh Tokens) — deferred, pre-existing
+
+## Deferred from: re-review of 1-1-autenticacion-base-superadmin.md (2026-07-28)
+- Synchronous setInterval blocking in rate limiter — deferred, edge case for high scale
+- Lack of account lockout for brute-force — deferred, out of scope for MVP
+- No Prisma migration files yet - deferred, done in a separate step
+
+## Deferred from: code review of 1-2-infraestructura-del-dashboard-spa.md (2026-07-28)
+- Dashboard usa dummy data — deferred, placeholder explícito para historias futuras

@@ -54,6 +54,13 @@ enum AttachmentType {
   VIDEO
 }
 
+enum LicenseType {
+  SUBSCRIPTION
+  LIFETIME
+
+  @@map("license_type")
+}
+
 model Tenant {
   id            String   @id @default(cuid())
   name          String
@@ -63,10 +70,14 @@ model Tenant {
   address       String?
   status        String   @default("active")
   businessHours Json?    @map("business_hours")
-  rfc           String?
-  bankDetails   Json?    @map("bank_details")
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
+  rfc                 String?
+  bankDetails         Json?       @map("bank_details")
+  maxUsers            Int         @default(1) @map("max_users")
+  maxAiTokens         Int         @default(0) @map("max_ai_tokens") /// 0 = disabled, -1 = unlimited
+  licenseType         LicenseType @default(LIFETIME) @map("license_type")
+  subscriptionEndDate DateTime?   @db.Timestamptz(3) @map("subscription_end_date") /// NULL is valid for LIFETIME or unbounded SUBSCRIPTION
+  createdAt           DateTime    @default(now()) @map("created_at")
+  updatedAt           DateTime    @updatedAt @map("updated_at")
 
   users          User[]
   branches       Branch[]
@@ -81,6 +92,7 @@ model Tenant {
   cannedResponses CannedResponse[]
   aiRules         AiRule[]
 
+  @@index([licenseType, subscriptionEndDate], map: "idx_tenant_license_end_date")
   @@map("tenants")
 }
 

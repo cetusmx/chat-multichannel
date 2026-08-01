@@ -8,6 +8,9 @@ jest.mock('@prisma/client', () => {
       findUnique: jest.fn(),
       upsert: jest.fn(),
     },
+    tenant: {
+      findUnique: jest.fn(),
+    },
   };
   return { PrismaClient: jest.fn(() => mPrismaClient) };
 });
@@ -71,6 +74,25 @@ describe('WhatsApp Service', () => {
       };
 
       await expect(whatsappService.verifyWebhook(query, 'tenant-123')).rejects.toThrow('Verification failed');
+    });
+  });
+
+  describe('handleIncomingMessage', () => {
+    it('should return false early if tenant is suspended', async () => {
+      // Mock tenant to be suspended
+      prisma.tenant.findUnique.mockResolvedValue({ status: 'suspended' });
+      
+      const payload = {
+        object: 'whatsapp_business_account',
+        entry: [{ changes: [{ value: { messages: [{ text: { body: 'hello' } }] } }] }]
+      };
+
+      const result = await whatsappService.handleIncomingMessage(payload, 'tenant-123');
+      expect(result).toBe(false);
+      expect(prisma.tenant.findUnique).toHaveBeenCalledWith({
+        where: { id: 'tenant-123' },
+        select: { status: true }
+      });
     });
   });
 });

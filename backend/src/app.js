@@ -8,6 +8,8 @@ const errorHandler = require('./middleware/errorHandler');
 const healthRoutes = require('./routes/health.routes');
 const swaggerRoutes = require('./routes/swagger.routes');
 const authRoutes = require('./routes/auth.routes');
+const superadminAuthRoutes = require('./routes/superadmin.auth.routes');
+const superadminTenantRoutes = require('./routes/superadmin.tenant.routes');
 const usersRoutes = require('./routes/users.routes');
 const groupsRoutes = require('./routes/groups.routes');
 const tenantRoutes = require('./routes/tenant.routes');
@@ -30,7 +32,24 @@ app.use(helmet({
     },
   },
 }));
-app.use(cors());
+const allowedOrigins = [
+  'http://localhost:3000',
+  'http://localhost:5173',
+  'http://localhost:5174',
+  'https://salesflow.algor.mx',
+  'https://admin.salesflow.app',
+  process.env.FRONTEND_URL?.replace(/\/$/, '')
+].filter(Boolean);
+
+app.use(cors({
+  origin: function (origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  }
+}));
 app.use(morgan('[:date[iso]] :remote-addr - :method :url :status :res[content-length] - :response-time ms'));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
@@ -45,6 +64,8 @@ app.use('/uploads', authenticate, (req, res, next) => {
 }, express.static(path.join(__dirname, '../uploads')));
 
 app.use('/api/auth', authRoutes);
+app.use('/api/superadmin/auth', superadminAuthRoutes);
+app.use('/api/superadmin/tenants', superadminTenantRoutes);
 app.use('/api/health', healthRoutes);
 app.use('/api/users', usersRoutes);
 app.use('/api/groups', groupsRoutes);

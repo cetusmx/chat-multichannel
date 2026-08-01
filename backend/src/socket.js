@@ -35,7 +35,7 @@ function setupSocket(server) {
       try {
         const token = socket.handshake.auth?.token;
         if (!token) return;
-        const decoded = require('jsonwebtoken').verify(token, process.env.JWT_SECRET || 'fallback_secret');
+        const decoded = require('jsonwebtoken').verify(token, process.env.JWT_SECRET);
         if (decoded.id !== vendorId && decoded.role !== 'ADMIN') return;
       } catch (e) {
         return;

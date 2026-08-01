@@ -30,7 +30,7 @@ async function login(email, password) {
       role: true,
       tenantId: true,
       isActive: true,
-      tenant: { select: { name: true } },
+      tenant: { select: { name: true, status: true } },
     },
   });
 
@@ -41,6 +41,10 @@ async function login(email, password) {
   const valid = await bcrypt.compare(password, user.passwordHash);
   if (!valid) {
     throw ApiError.unauthorized('Invalid email or password');
+  }
+
+  if (user.role !== 'SUPERADMIN' && (!user.tenant || user.tenant.status === 'suspended')) {
+    throw new ApiError(403, 'Tenant is suspended or invalid', 'TENANT_SUSPENDED');
   }
 
   await prisma.user.update({
@@ -59,7 +63,7 @@ async function login(email, password) {
       phone: user.phone,
       role: user.role,
       tenantId: user.tenantId,
-      tenantName: user.tenant.name,
+      tenantName: user.tenant?.name || null,
     },
     token,
     refreshToken,
@@ -74,9 +78,17 @@ async function refresh(token) {
     throw ApiError.unauthorized('Invalid or expired refresh token');
   }
 
-  const user = await prisma.user.findUnique({ where: { id: decoded.id } });
+  const user = await prisma.user.findUnique({ 
+    where: { id: decoded.id },
+    select: { id: true, tenantId: true, role: true, isActive: true, tenant: { select: { status: true } } }
+  });
+  
   if (!user || !user.isActive) {
     throw ApiError.unauthorized('User not found or inactive');
+  }
+
+  if (user.role !== 'SUPERADMIN' && (!user.tenant || user.tenant.status === 'suspended')) {
+    throw new ApiError(403, 'Tenant is suspended or invalid', 'TENANT_SUSPENDED');
   }
 
   const payload = { id: user.id, tenantId: user.tenantId, role: user.role };
