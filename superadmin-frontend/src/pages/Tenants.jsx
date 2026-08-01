@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import { Users, Server, Clock, Activity, Search, AlertCircle, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
 import { api } from '../services/api';
 import CreateTenantModal from '../components/CreateTenantModal';
@@ -60,6 +61,8 @@ export default function Tenants() {
   };
 
   const handleToggleStatus = async (tenant) => {
+    if (togglingTenantIds.has(tenant.id)) return;
+    
     const isCurrentlyActive = tenant.status?.toLowerCase() === 'active';
     const newStatus = isCurrentlyActive ? 'suspended' : 'active';
     const actionText = isCurrentlyActive ? 'suspender' : 'reactivar';
@@ -81,7 +84,7 @@ export default function Tenants() {
     } catch (err) {
       // Revert Optimistic Update
       setTenants(prev => prev.map(t => 
-        t.id === tenant.id ? { ...t, status: tenant.status } : t
+        t.id === tenant.id ? { ...t, status: isCurrentlyActive ? 'active' : 'suspended' } : t
       ));
       toast.error('Error al actualizar el estado del inquilino');
     } finally {
@@ -174,7 +177,11 @@ export default function Tenants() {
               ) : (
                 tenants.map(tenant => (
                   <tr key={tenant.id} className="hover:bg-slate-800/20 transition-colors">
-                    <td className="py-4 px-6 font-medium text-slate-200">{tenant.name}</td>
+                    <td className="py-4 px-6 font-medium text-slate-200">
+                      <Link to={`/tenants/${tenant.id}`} className="hover:text-blue-400 hover:underline transition-colors">
+                        {tenant.name}
+                      </Link>
+                    </td>
                     <td className="py-4 px-6 text-slate-400">{tenant.domain}</td>
                     <td className="py-4 px-6 text-slate-400">
                       {new Date(tenant.createdAt).toLocaleDateString()}

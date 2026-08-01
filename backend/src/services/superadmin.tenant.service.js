@@ -4,6 +4,7 @@ const { getIo } = require('../socket');
 const jwt = require('jsonwebtoken');
 const { setTenantStatus } = require('../utils/tenant-cache.util');
 const logger = require('../utils/logger');
+const env = require('../config/env');
 
 /**
  * Retrieves a paginated list of tenants for the Superadmin dashboard.
@@ -106,13 +107,8 @@ async function createTenantWithAdmin(data) {
  * @returns {Promise<Object>} Updated tenant
  */
 async function updateTenantStatus(id, status) {
-  const masterTenantId = process.env.MASTER_TENANT_ID;
+  const masterTenantId = env.masterTenantId;
   if (status === 'suspended') {
-    if (!masterTenantId) {
-      const error = new Error('Server configuration error: MASTER_TENANT_ID is not set');
-      error.statusCode = 500;
-      throw error;
-    }
     if (id === masterTenantId) {
       const error = new Error('Cannot suspend the master tenant');
       error.statusCode = 403;
@@ -154,7 +150,9 @@ async function updateTenantStatus(id, status) {
         const namespace = io.of(nsp);
         const sockets = await namespace.fetchSockets();
         
+        let count = 0;
         for (const socket of sockets) {
+          if (++count % 100 === 0) await new Promise(resolve => setImmediate(resolve));
           try {
             const token = socket.handshake.auth?.token;
             if (token) {
@@ -180,8 +178,113 @@ async function updateTenantStatus(id, status) {
   return updatedTenant;
 }
 
+/**
+ * Retrieves a tenant by ID, including current active users count.
+ *
+ * @param {string} id Tenant ID
+ * @returns {Promise<Object>} Tenant object with currentActiveUsers
+ */
+async function getTenantById(id) {
+  const tenant = await prisma.tenant.findUnique({
+    where: { id },
+  });
+
+  if (!tenant) {
+    const error = new Error('Tenant not found');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  const currentActiveUsers = await prisma.user.count({
+    where: {
+      tenantId: id,
+      isActive: true,
+    }
+  });
+
+  return { ...tenant, currentActiveUsers };
+}
+
+/**
+ * Updates the licenses of a tenant.
+ *
+ * @param {string} tenantId Tenant ID
+ * @param {Object} payload { maxUsers, maxAiTokens, licenseType }
+ * @param {string} superadminId The superadmin performing the action
+ * @returns {Promise<Object>} Updated tenant
+ */
+async function updateTenantLicenses(tenantId, payload, superadminId) {
+  let { maxUsers, maxAiTokens, licenseType } = payload;
+  
+  if (licenseType === 'LIFETIME') {
+    maxAiTokens = 0;
+  }
+
+  try {
+    const { Prisma } = require('@prisma/client');
+    return await prisma.$transaction(async (tx) => {
+      // Check if tenant exists inside tx
+      const tenant = await tx.tenant.findUnique({
+        where: { id: tenantId }
+      });
+      if (!tenant) {
+        const error = new Error('Tenant not found');
+        error.statusCode = 404;
+        throw error;
+      }
+
+      // Query active users
+      const activeUsersCount = await tx.user.count({
+        where: {
+          tenantId,
+          isActive: true
+        }
+      });
+
+      if (maxUsers !== -1 && maxUsers < activeUsersCount) {
+        const error = new Error('Cannot set limit below current active users');
+        error.statusCode = 400;
+        throw error;
+      }
+
+      const updatedTenant = await tx.tenant.update({
+        where: { id: tenantId },
+        data: { maxUsers, maxAiTokens, licenseType }
+      });
+
+      logger.info(JSON.stringify({
+        action: 'UPDATE_TENANT_LICENSES',
+        superadminId,
+        tenantId,
+        previousValues: {
+          maxUsers: tenant.maxUsers,
+          maxAiTokens: tenant.maxAiTokens,
+          licenseType: tenant.licenseType
+        },
+        newValues: { maxUsers, maxAiTokens, licenseType }
+      }));
+
+      return updatedTenant;
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 10000 });
+  } catch (err) {
+    if (err.code === 'P2034') {
+      const error = new Error('Concurrent modification conflict, please try again');
+      error.statusCode = 409;
+      throw error;
+    }
+    if (err.code === 'P2025') {
+      const error = new Error('Tenant not found');
+      error.statusCode = 404;
+      throw error;
+    }
+    throw err;
+  }
+}
+
 module.exports = {
   getTenants,
+  getTenantById,
   createTenantWithAdmin,
   updateTenantStatus,
+  updateTenantLicenses,
 };

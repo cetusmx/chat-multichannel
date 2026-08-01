@@ -3,6 +3,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Tenants from './pages/Tenants';
+import TenantDetails from './pages/TenantDetails';
 import SuperadminLayout from './components/SuperadminLayout';
 import useAuthStore from './store/authStore';
 
@@ -24,6 +25,7 @@ function App() {
           <Route element={<SuperadminLayout />}>
             <Route path="/" element={<Dashboard />} />
             <Route path="/tenants" element={<Tenants />} />
+            <Route path="/tenants/:id" element={<TenantDetails />} />
           </Route>
         </Route>
         

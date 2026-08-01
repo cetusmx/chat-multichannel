@@ -12,12 +12,29 @@ const createTenantSchema = z.object({
     .refine(val => !RESERVED_SLUGS.includes(val), { message: 'Reserved keyword cannot be used as slug' }),
   firstName: z.string().trim().min(2).max(100),
   lastName: z.string().trim().min(2).max(100),
-  email: z.string().trim().email().max(255),
-  password: z.string().min(8).max(50).regex(/[A-Z]/, 'Must contain at least one uppercase letter').regex(/[0-9]/, 'Must contain at least one number').regex(/[^A-Za-z0-9]/, 'Must contain at least one special character'),
+  email: z.string().trim().email('Invalid email address').max(255),
+  password: z.string().min(8, 'Password must be at least 8 characters').max(72, 'Password must be less than 72 characters')
+    .regex(/[A-Z]/, 'Must contain at least one uppercase letter').regex(/[0-9]/, 'Must contain at least one number').regex(/[^A-Za-z0-9]/, 'Must contain at least one special character'),
 });
 
 const updateTenantStatusSchema = z.object({
   status: z.enum(['active', 'suspended']),
+});
+
+const tenantIdSchema = z.string().uuid('Invalid tenant ID format');
+
+const updateTenantLicensesSchema = z.object({
+  maxUsers: z.number().int().min(-1).max(2147483647),
+  maxAiTokens: z.number().int().min(-1).max(2147483647),
+  licenseType: z.enum(['SUBSCRIPTION', 'LIFETIME']),
+}).strict().refine(data => {
+  if (data.licenseType === 'LIFETIME' && data.maxAiTokens > 0) {
+    return false;
+  }
+  return true;
+}, {
+  message: "LIFETIME licenses must have maxAiTokens set to 0",
+  path: ["maxAiTokens"],
 });
 
 async function getTenants(req, res, next) {
@@ -39,7 +56,15 @@ async function getTenants(req, res, next) {
 
 async function createTenant(req, res, next) {
   try {
-    const validatedData = createTenantSchema.parse(req.body);
+    const parsed = createTenantSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({
+        success: false,
+        message: 'Validation failed',
+        errors: parsed.error.errors,
+      });
+    }
+    const validatedData = parsed.data;
 
     const result = await superadminTenantService.createTenantWithAdmin({
       name: validatedData.name,
@@ -89,8 +114,25 @@ async function createTenant(req, res, next) {
 
 async function updateTenantStatus(req, res, next) {
   try {
-    const { id } = req.params;
-    const validatedData = updateTenantStatusSchema.parse(req.body);
+    const parsedId = tenantIdSchema.safeParse(req.params.id);
+    if (!parsedId.success) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid tenant ID format',
+        errors: parsedId.error.errors,
+      });
+    }
+    const id = parsedId.data;
+
+    const parsedData = updateTenantStatusSchema.safeParse(req.body);
+    if (!parsedData.success) {
+      return res.status(400).json({
+        success: false,
+        message: 'Validation failed',
+        errors: parsedData.error.errors,
+      });
+    }
+    const validatedData = parsedData.data;
 
     const result = await superadminTenantService.updateTenantStatus(id, validatedData.status);
     
@@ -119,8 +161,76 @@ async function updateTenantStatus(req, res, next) {
   }
 }
 
+async function getTenantById(req, res, next) {
+  try {
+    const parsedId = tenantIdSchema.safeParse(req.params.id);
+    if (!parsedId.success) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid tenant ID format',
+      });
+    }
+    const id = parsedId.data;
+
+    const result = await superadminTenantService.getTenantById(id);
+    success(res, result);
+  } catch (err) {
+    if (err.statusCode === 404) {
+      return res.status(404).json({ success: false, message: 'Tenant not found' });
+    }
+    const logger = require('../utils/logger');
+    logger.error(`Error getting tenant ${req.params.id}:`, err);
+    return res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+}
+
+async function updateTenantLicenses(req, res, next) {
+  try {
+    const parsedId = tenantIdSchema.safeParse(req.params.id);
+    if (!parsedId.success) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid tenant ID format',
+        errors: parsedId.error.errors,
+      });
+    }
+    const id = parsedId.data;
+
+    const parsedData = updateTenantLicensesSchema.safeParse(req.body);
+    if (!parsedData.success) {
+      return res.status(400).json({
+        success: false,
+        message: 'Validation failed',
+        errors: parsedData.error.errors,
+      });
+    }
+    const validatedData = parsedData.data;
+
+    const superadminId = req.user.id;
+
+    const result = await superadminTenantService.updateTenantLicenses(id, validatedData, superadminId);
+    
+    success(res, result);
+  } catch (err) {
+    if (err.statusCode === 404) {
+      return res.status(404).json({ success: false, message: 'Tenant not found' });
+    }
+    if (err.statusCode === 400 || err.statusCode === 409) {
+      return res.status(err.statusCode).json({ success: false, message: err.message });
+    }
+    const logger = require('../utils/logger');
+    logger.error(`Error updating tenant licenses for ${req.params.id}:`, err);
+    return res.status(500).json({
+      success: false,
+      message: 'Internal server error while updating tenant licenses',
+    });
+  }
+}
+
 module.exports = {
   getTenants,
   createTenant,
   updateTenantStatus,
+  getTenantById,
+  updateTenantLicenses,
 };
