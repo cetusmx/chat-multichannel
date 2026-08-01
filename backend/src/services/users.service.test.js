@@ -8,6 +8,7 @@ jest.mock('../config/database', () => ({
     findUnique: jest.fn(),
     findFirst: jest.fn(),
     create: jest.fn(),
+    createMany: jest.fn(),
     update: jest.fn(),
     count: jest.fn(),
     findMany: jest.fn(),
@@ -143,7 +144,7 @@ describe('users.service quota enforcement', () => {
       const bulkUsers = [validUser, { ...validUser, email: 'test2@example.com' }];
       await createUser(bulkUsers, 't1', 'ADMIN');
       
-      expect(prisma.user.create).toHaveBeenCalledTimes(2);
+      expect(prisma.user.createMany).toHaveBeenCalledTimes(1);
     });
   });
 

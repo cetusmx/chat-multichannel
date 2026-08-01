@@ -3,9 +3,10 @@ const { Prisma } = require('@prisma/client');
 const { z } = require('zod');
 const prisma = require('../config/database');
 const ApiError = require('../utils/ApiError');
+const { invalidateTenantCache } = require('../utils/tenant-cache.util');
 
 const SALT_ROUNDS = 10;
-const VALID_CREATOR_ROLES = ['ADMIN', 'COORDINATOR'];
+const VALID_CREATOR_ROLES = ['ADMIN', 'COORDINATOR', 'SUPERADMIN'];
 
 async function enforceQuota(tx, tenantId, newUsersCount = 1) {
   // strict Zod validation for bulk payload array length / sizes
@@ -84,12 +85,15 @@ async function createUser(data, tenantId, actorRole) {
     return createBulkUsers(data, tenantId, actorRole);
   }
 
-  if (!VALID_CREATOR_ROLES.includes(actorRole)) {
+  if (actorRole !== 'SUPERADMIN' && !VALID_CREATOR_ROLES.includes(actorRole)) {
     throw ApiError.forbidden('Insufficient permissions');
   }
 
-  if (!data.password || data.password.length < 6) {
-    throw ApiError.badRequest('Password must be at least 6 characters');
+  if (typeof data.password !== 'string' || data.password.length < 6) {
+    throw ApiError.badRequest('Password must be a string of at least 6 characters');
+  }
+  if (data.groupIds !== undefined && !Array.isArray(data.groupIds)) {
+    throw ApiError.badRequest('groupIds must be an array');
   }
 
   if (actorRole === 'COORDINATOR' && data.role !== 'VENDOR') {
@@ -98,7 +102,9 @@ async function createUser(data, tenantId, actorRole) {
 
   try {
     return await prisma.$transaction(async (tx) => {
-    await enforceQuota(tx, tenantId, 1);
+    if (actorRole !== 'SUPERADMIN') {
+      await enforceQuota(tx, tenantId, 1);
+    }
 
     const existing = await tx.user.findUnique({ where: { email: data.email } });
     if (existing) {
@@ -171,12 +177,12 @@ async function createUser(data, tenantId, actorRole) {
 }
 
 async function createBulkUsers(dataArray, tenantId, actorRole) {
-  if (!VALID_CREATOR_ROLES.includes(actorRole)) {
+  if (actorRole !== 'SUPERADMIN' && !VALID_CREATOR_ROLES.includes(actorRole)) {
     throw ApiError.forbidden('Insufficient permissions');
   }
 
   const processedData = await Promise.all(dataArray.map(async (data) => {
-    if (!data.password || data.password.length < 6) {
+    if (typeof data.password !== 'string' || data.password.length < 6) {
       throw ApiError.badRequest('Password must be at least 6 characters');
     }
     const passwordHash = await bcrypt.hash(data.password, SALT_ROUNDS);
@@ -185,7 +191,9 @@ async function createBulkUsers(dataArray, tenantId, actorRole) {
 
   try {
     return await prisma.$transaction(async (tx) => {
-      await enforceQuota(tx, tenantId, processedData.length);
+      if (actorRole !== 'SUPERADMIN') {
+        await enforceQuota(tx, tenantId, processedData.length);
+      }
 
       const emails = processedData.map(d => d.email);
       if (new Set(emails).size !== emails.length) {
@@ -198,12 +206,17 @@ async function createBulkUsers(dataArray, tenantId, actorRole) {
       }
 
       for (const data of processedData) {
+        if (data.groupIds && !Array.isArray(data.groupIds)) {
+          throw ApiError.badRequest('groupIds must be an array');
+        }
         if (data.groupIds && new Set(data.groupIds).size !== data.groupIds.length) {
           throw ApiError.badRequest('Duplicate group IDs in payload');
         }
       }
 
-      const createdUsers = [];
+      const usersToCreate = [];
+      const userGroupLinks = [];
+
       for (const data of processedData) {
         if (actorRole === 'COORDINATOR' && data.role !== 'VENDOR') {
           throw ApiError.forbidden('Coordinator can only create vendors');
@@ -241,27 +254,49 @@ async function createBulkUsers(dataArray, tenantId, actorRole) {
           await validateGroupCoordinatorLimit(tx, data.groupIds, tenantId);
         }
 
-        const user = await tx.user.create({
-          data: {
-            name: data.name,
-            email: data.email,
-            phone: data.phone || null,
-            passwordHash: data.passwordHash,
-            role: data.role,
-            tenantId,
-            coordinatorId,
-            groups: data.groupIds && data.groupIds.length > 0
-              ? { create: data.groupIds.map((groupId) => ({ groupId })) }
-              : undefined,
-          },
-          include: {
-            groups: { include: { group: { select: { id: true, name: true } } } },
-            coordinator: { select: { id: true, name: true, email: true } },
-          },
+        usersToCreate.push({
+          name: data.name,
+          email: data.email,
+          phone: data.phone || null,
+          passwordHash: data.passwordHash,
+          role: data.role,
+          tenantId,
+          coordinatorId
         });
-        createdUsers.push(formatUser(user));
+
+        if (data.groupIds && data.groupIds.length > 0) {
+          userGroupLinks.push({ email: data.email, groupIds: data.groupIds });
+        }
       }
-      return createdUsers;
+
+      await tx.user.createMany({ data: usersToCreate });
+
+      const createdUsersList = await tx.user.findMany({
+        where: { email: { in: processedData.map(d => d.email) }, tenantId },
+      });
+
+      const groupVendorData = [];
+      for (const link of userGroupLinks) {
+        const user = createdUsersList.find(u => u.email === link.email);
+        for (const groupId of link.groupIds) {
+          groupVendorData.push({ userId: user.id, groupId });
+        }
+      }
+
+      if (groupVendorData.length > 0) {
+        await tx.groupVendor.createMany({ data: groupVendorData });
+      }
+
+      const finalUsers = await tx.user.findMany({
+        where: { email: { in: processedData.map(d => d.email) }, tenantId },
+        include: {
+          groups: { include: { group: { select: { id: true, name: true } } } },
+          coordinator: { select: { id: true, name: true, email: true } },
+        },
+      });
+
+      invalidateTenantCache(tenantId);
+      return finalUsers.map(formatUser);
     });
   } catch (error) {
     if (error instanceof ApiError) throw error;
@@ -381,13 +416,14 @@ async function reactivateUser(id, tenantId, actorRole, actorId) {
           where: { userId: user.id },
           include: { group: true }
         });
-        if (groupVendor) {
-          const isCoordinator = await tx.groupVendor.findFirst({
-            where: { groupId: groupVendor.groupId, userId: actorId, user: { role: 'COORDINATOR' } }
-          });
-          if (!isCoordinator) {
-             throw ApiError.forbidden('Coordinator can only reactivate vendors in their own group');
-          }
+        if (!groupVendor) {
+          throw ApiError.forbidden('Coordinator cannot reactivate a vendor without a group');
+        }
+        const isCoordinator = await tx.groupVendor.findFirst({
+          where: { groupId: groupVendor.groupId, userId: actorId, user: { role: 'COORDINATOR' } }
+        });
+        if (!isCoordinator) {
+           throw ApiError.forbidden('Coordinator can only reactivate vendors in their own group');
         }
       }
 
@@ -405,6 +441,7 @@ async function reactivateUser(id, tenantId, actorRole, actorId) {
           coordinator: { select: { id: true, name: true, email: true } },
         },
       });
+      invalidateTenantCache(tenantId);
       return formatUser(updated);
     }, { timeout: 10000 });
   } catch (error) {
@@ -419,7 +456,8 @@ async function reactivateUser(id, tenantId, actorRole, actorId) {
 async function updateUser(id, tenantId, actorRole, data) {
   try {
     return await prisma.$transaction(async (tx) => {
-      const user = await tx.user.findFirst({ where: { id, tenantId } });
+      const users = await tx.$queryRaw`SELECT * FROM "users" WHERE id = ${id} AND "tenant_id" = ${tenantId} FOR UPDATE`;
+      const user = users[0];
       if (!user) {
         throw ApiError.notFound('User not found');
       }
@@ -446,6 +484,9 @@ async function updateUser(id, tenantId, actorRole, data) {
       let coordinatorValue;
       if (user.role === 'VENDOR') {
         if (data.groupIds !== undefined && data.groupIds !== null) {
+        if (!Array.isArray(data.groupIds)) {
+          throw ApiError.badRequest('groupIds must be an array');
+        }
           coordinatorValue = await resolveGroupCoordinator(tx, data.groupIds, tenantId);
         }
       } else if (data.coordinatorId !== undefined) {
