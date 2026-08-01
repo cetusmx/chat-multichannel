@@ -1,6 +1,7 @@
 process.env.ENCRYPTION_KEY = '12345678901234567890123456789012';
 const whatsappService = require('../src/services/whatsapp.service');
 const { PrismaClient } = require('@prisma/client');
+const logger = require('../src/utils/logger');
 
 jest.mock('@prisma/client', () => {
   const mPrismaClient = {
@@ -42,12 +43,12 @@ describe('WhatsApp Service', () => {
       const error = new Error('DB Error');
       prisma.whatsAppConfig.findUnique.mockRejectedValue(error);
 
-      // spy on console.error
-      const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+      // spy on logger.error
+      const loggerSpy = jest.spyOn(logger, 'error').mockImplementation(() => {});
 
       await expect(whatsappService.getConfig('tenant-123')).rejects.toThrow('DB Error');
-      expect(consoleSpy).toHaveBeenCalled();
-      consoleSpy.mockRestore();
+      expect(loggerSpy).toHaveBeenCalled();
+      loggerSpy.mockRestore();
     });
   });
 
