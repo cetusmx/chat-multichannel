@@ -1,0 +1,1110 @@
+diff --git a/backend/src/controllers/superadmin.tenant.controller.js b/backend/src/controllers/superadmin.tenant.controller.js
+new file mode 100644
+index 0000000..56ec521
+--- /dev/null
++++ b/backend/src/controllers/superadmin.tenant.controller.js
+@@ -0,0 +1,73 @@
++const superadminTenantService = require('../services/superadmin.tenant.service');
++const { success } = require('../utils/response');
++const { z } = require('zod');
++const bcrypt = require('bcryptjs');
++
++const createTenantSchema = z.object({
++  name: z.string().min(2).max(100),
++  slug: z.string().toLowerCase().regex(/^[a-z0-9]+$/).max(63),
++  firstName: z.string().min(2).max(100),
++  lastName: z.string().min(2).max(100),
++  email: z.string().email().max(255),
++  password: z.string().min(8).max(72).regex(/[A-Z]/, 'Must contain at least one uppercase letter').regex(/[0-9]/, 'Must contain at least one number'),
++});
++
++async function getTenants(req, res, next) {
++  try {
++    const { page, limit, sortBy, sortOrder } = req.query;
++    
++    const result = await superadminTenantService.getTenants({
++      page,
++      limit,
++      sortBy,
++      sortOrder,
++    });
++    
++    success(res, result);
++  } catch (err) {
++    next(err);
++  }
++}
++
++async function createTenant(req, res, next) {
++  try {
++    const validatedData = createTenantSchema.parse(req.body);
++
++    const salt = await bcrypt.genSalt(10);
++    const passwordHash = await bcrypt.hash(validatedData.password, salt);
++
++    const result = await superadminTenantService.createTenantWithAdmin({
++      name: validatedData.name,
++      domain: validatedData.slug,
++      adminName: `${validatedData.firstName} ${validatedData.lastName}`,
++      adminEmail: validatedData.email,
++      passwordHash,
++    });
++
++    // Strip passwordHash from user object
++    const userWithoutPassword = { ...result.user };
++    delete userWithoutPassword.passwordHash;
++
++    const safeResult = {
++      tenant: result.tenant,
++      user: userWithoutPassword,
++    };
++
++    res.status(201);
++    success(res, safeResult);
++  } catch (err) {
++    if (err.code === 'P2002' && err.meta?.target) {
++      const field = Array.isArray(err.meta.target) ? err.meta.target[0] : err.meta.target;
++      return res.status(409).json({
++        success: false,
++        message: `Conflict: ${field} already exists`,
++      });
++    }
++    next(err);
++  }
++}
++
++module.exports = {
++  getTenants,
++  createTenant,
++};
+diff --git a/backend/src/routes/superadmin.tenant.routes.js b/backend/src/routes/superadmin.tenant.routes.js
+new file mode 100644
+index 0000000..3e97f2e
+--- /dev/null
++++ b/backend/src/routes/superadmin.tenant.routes.js
+@@ -0,0 +1,12 @@
++const express = require('express');
++const superadminTenantController = require('../controllers/superadmin.tenant.controller');
++const superadminAuth = require('../middleware/superadmin.auth.middleware');
++
++const router = express.Router();
++
++router.use(superadminAuth);
++
++router.get('/', superadminTenantController.getTenants);
++router.post('/', superadminTenantController.createTenant);
++
++module.exports = router;
+diff --git a/backend/src/services/superadmin.tenant.service.js b/backend/src/services/superadmin.tenant.service.js
+new file mode 100644
+index 0000000..5c2d620
+--- /dev/null
++++ b/backend/src/services/superadmin.tenant.service.js
+@@ -0,0 +1,95 @@
++const prisma = require('../config/database');
++
++/**
++ * Retrieves a paginated list of tenants for the Superadmin dashboard.
++ *
++ * @param {Object} options Pagination and sorting options
++ * @param {number} [options.page=1] Page number
++ * @param {number} [options.limit=10] Items per page
++ * @param {string} [options.sortBy='createdAt'] Field to sort by
++ * @param {string} [options.sortOrder='desc'] Sort order ('asc' or 'desc')
++ * @returns {Promise<{ data: Array, meta: { total: number, page: number, limit: number } }>}
++ */
++async function getTenants({ page = 1, limit = 10, sortBy = 'createdAt', sortOrder = 'desc' }) {
++  const parsedPage = Math.max(1, parseInt(page, 10) || 1);
++  const parsedLimit = Math.min(100, Math.max(1, parseInt(limit, 10) || 10));
++  
++  const skip = (parsedPage - 1) * parsedLimit;
++  const take = parsedLimit;
++
++  // Validate sort field to prevent injection/errors
++  const validSortFields = ['createdAt', 'name', 'domain', 'status'];
++  const validSortField = validSortFields.includes(sortBy) ? sortBy : 'createdAt';
++  
++  const orderStr = typeof sortOrder === 'string' ? sortOrder.toLowerCase() : 'desc';
++  const validSortOrder = ['asc', 'desc'].includes(orderStr) ? orderStr : 'desc';
++
++  const [data, total] = await Promise.all([
++    prisma.tenant.findMany({
++      skip,
++      take,
++      orderBy: { [validSortField]: validSortOrder },
++      select: {
++        id: true,
++        name: true,
++        domain: true,
++        createdAt: true,
++        status: true,
++      },
++    }),
++    prisma.tenant.count(),
++  ]);
++
++  return {
++    data,
++    meta: {
++      total,
++      page: parsedPage,
++      limit: parsedLimit,
++    },
++  };
++}
++
++/**
++ * Creates a new tenant and its initial admin user within a single transaction.
++ *
++ * @param {Object} data Tenant and Admin data
++ * @param {string} data.name Tenant name
++ * @param {string} data.domain Tenant domain
++ * @param {string} data.adminName Admin name (first + last name)
++ * @param {string} data.adminEmail Admin email
++ * @param {string} data.passwordHash Admin hashed password
++ * @returns {Promise<{ tenant: Object, user: Object }>}
++ */
++async function createTenantWithAdmin(data) {
++  const { name, domain, adminName, adminEmail, passwordHash } = data;
++
++  // The transaction MUST use a timeout to prevent hanging connections
++  return prisma.$transaction(async (tx) => {
++    const tenant = await tx.tenant.create({
++      data: {
++        name,
++        domain,
++        status: 'ACTIVE', // ACTIVE status for Tenant
++      },
++    });
++
++    const user = await tx.user.create({
++      data: {
++        name: adminName,
++        email: adminEmail,
++        passwordHash,
++        role: 'ADMIN', // Role is 'ADMIN' in Prisma schema, not 'TENANT_ADMIN' (Wait, in story: role: 'TENANT_ADMIN' - wait, checking schema, enum RoleType is ADMIN, COORDINATOR, VENDOR. So it must be ADMIN)
++        tenantId: tenant.id,
++        isActive: true,
++      },
++    });
++
++    return { tenant, user };
++  }, { timeout: 10000 });
++}
++
++module.exports = {
++  getTenants,
++  createTenantWithAdmin,
++};
+diff --git a/backend/tests/unit/superadmin.tenant.controller.test.js b/backend/tests/unit/superadmin.tenant.controller.test.js
+new file mode 100644
+index 0000000..269b9ed
+--- /dev/null
++++ b/backend/tests/unit/superadmin.tenant.controller.test.js
+@@ -0,0 +1,153 @@
++const superadminTenantController = require('../../src/controllers/superadmin.tenant.controller');
++const superadminTenantService = require('../../src/services/superadmin.tenant.service');
++const { success } = require('../../src/utils/response');
++
++jest.mock('../../src/services/superadmin.tenant.service');
++jest.mock('../../src/utils/response');
++
++describe('Superadmin Tenant Controller', () => {
++  beforeEach(() => {
++    jest.clearAllMocks();
++  });
++
++  describe('getTenants', () => {
++    it('should retrieve tenants and return success response', async () => {
++      const mockResult = {
++        data: [{ id: '1', name: 'Tenant 1' }],
++        meta: { total: 1, page: 1, limit: 10 },
++      };
++      superadminTenantService.getTenants.mockResolvedValue(mockResult);
++
++      const req = {
++        query: { page: '1', limit: '10', sortBy: 'name', sortOrder: 'asc' },
++      };
++      const res = {};
++      const next = jest.fn();
++
++      await superadminTenantController.getTenants(req, res, next);
++
++      expect(superadminTenantService.getTenants).toHaveBeenCalledWith({
++        page: '1',
++        limit: '10',
++        sortBy: 'name',
++        sortOrder: 'asc',
++      });
++      expect(success).toHaveBeenCalledWith(res, mockResult);
++      expect(next).not.toHaveBeenCalled();
++    });
++
++    it('should handle missing query parameters gracefully', async () => {
++      const mockResult = {
++        data: [],
++        meta: { total: 0, page: 1, limit: 10 },
++      };
++      superadminTenantService.getTenants.mockResolvedValue(mockResult);
++
++      const req = { query: {} };
++      const res = {};
++      const next = jest.fn();
++
++      await superadminTenantController.getTenants(req, res, next);
++
++      expect(superadminTenantService.getTenants).toHaveBeenCalledWith({
++        page: undefined,
++        limit: undefined,
++        sortBy: undefined,
++        sortOrder: undefined,
++      });
++      expect(success).toHaveBeenCalledWith(res, mockResult);
++      expect(next).not.toHaveBeenCalled();
++    });
++
++    it('should call next with error if service throws', async () => {
++      const error = new Error('Database failure');
++      superadminTenantService.getTenants.mockRejectedValue(error);
++
++      const req = { query: {} };
++      const res = {};
++      const next = jest.fn();
++
++      await superadminTenantController.getTenants(req, res, next);
++
++      expect(next).toHaveBeenCalledWith(error);
++      expect(success).not.toHaveBeenCalled();
++    });
++  });
++
++  describe('createTenant', () => {
++    const validPayload = {
++      name: 'Acme Corp',
++      slug: 'acmecorp',
++      firstName: 'John',
++      lastName: 'Doe',
++      email: 'john@acme.com',
++      password: 'Password123',
++    };
++
++    it('should validate payload, hash password, create tenant, and return 201 stripped of passwordHash', async () => {
++      const mockResult = {
++        tenant: { id: 't1', name: 'Acme Corp', domain: 'acmecorp', status: 'ACTIVE' },
++        user: { id: 'u1', name: 'John Doe', email: 'john@acme.com', passwordHash: 'hashed', role: 'ADMIN' },
++      };
++      superadminTenantService.createTenantWithAdmin.mockResolvedValue(mockResult);
++
++      const req = { body: validPayload };
++      const res = { status: jest.fn().mockReturnThis() };
++      const next = jest.fn();
++
++      await superadminTenantController.createTenant(req, res, next);
++
++      expect(superadminTenantService.createTenantWithAdmin).toHaveBeenCalled();
++      expect(res.status).toHaveBeenCalledWith(201);
++      
++      const successArg = success.mock.calls[0][1];
++      expect(successArg.tenant).toBeDefined();
++      expect(successArg.user.passwordHash).toBeUndefined();
++      expect(successArg.user.name).toBe('John Doe');
++    });
++
++    it('should pass Zod validation errors to next', async () => {
++      const req = { body: { name: 'A' } }; // invalid name
++      const res = {};
++      const next = jest.fn();
++
++      await superadminTenantController.createTenant(req, res, next);
++
++      expect(next).toHaveBeenCalled();
++      const err = next.mock.calls[0][0];
++      expect(err.name).toBe('ZodError');
++    });
++
++    it('should return 409 for unique constraint violations (P2002)', async () => {
++      const dbError = new Error('Unique constraint failed on the fields: (`domain`)');
++      dbError.code = 'P2002';
++      dbError.meta = { target: ['domain'] };
++      superadminTenantService.createTenantWithAdmin.mockRejectedValue(dbError);
++
++      const req = { body: validPayload };
++      const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
++      const next = jest.fn();
++
++      await superadminTenantController.createTenant(req, res, next);
++
++      expect(res.status).toHaveBeenCalledWith(409);
++      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
++        success: false,
++        message: 'Conflict: domain already exists',
++      }));
++    });
++    
++    it('should pass other errors to next', async () => {
++      const dbError = new Error('Database Error');
++      superadminTenantService.createTenantWithAdmin.mockRejectedValue(dbError);
++
++      const req = { body: validPayload };
++      const res = {};
++      const next = jest.fn();
++
++      await superadminTenantController.createTenant(req, res, next);
++
++      expect(next).toHaveBeenCalledWith(dbError);
++    });
++  });
++});
+diff --git a/backend/tests/unit/superadmin.tenant.service.test.js b/backend/tests/unit/superadmin.tenant.service.test.js
+new file mode 100644
+index 0000000..2044364
+--- /dev/null
++++ b/backend/tests/unit/superadmin.tenant.service.test.js
+@@ -0,0 +1,148 @@
++const superadminTenantService = require('../../src/services/superadmin.tenant.service');
++const prisma = require('../../src/config/database');
++
++jest.mock('../../src/config/database', () => ({
++  $transaction: jest.fn(),
++  tenant: {
++    findMany: jest.fn(),
++    count: jest.fn(),
++    create: jest.fn(),
++  },
++  user: {
++    create: jest.fn(),
++  }
++}));
++
++describe('Superadmin Tenant Service', () => {
++  beforeEach(() => {
++    jest.clearAllMocks();
++  });
++
++  describe('getTenants', () => {
++    it('should return paginated tenants with default options', async () => {
++      const mockTenants = [{ id: '1', name: 'Tenant 1' }];
++      prisma.tenant.findMany.mockResolvedValue(mockTenants);
++      prisma.tenant.count.mockResolvedValue(1);
++
++      const result = await superadminTenantService.getTenants({});
++
++      expect(prisma.tenant.findMany).toHaveBeenCalledWith({
++        skip: 0,
++        take: 10,
++        orderBy: { createdAt: 'desc' },
++        select: {
++          id: true,
++          name: true,
++          domain: true,
++          createdAt: true,
++          status: true,
++        },
++      });
++      expect(prisma.tenant.count).toHaveBeenCalledWith();
++      expect(result).toEqual({
++        data: mockTenants,
++        meta: {
++          total: 1,
++          page: 1,
++          limit: 10,
++        },
++      });
++    });
++
++    it('should apply custom pagination and sorting', async () => {
++      const mockTenants = [{ id: '2', name: 'Tenant 2' }];
++      prisma.tenant.findMany.mockResolvedValue(mockTenants);
++      prisma.tenant.count.mockResolvedValue(5);
++
++      const result = await superadminTenantService.getTenants({
++        page: 2,
++        limit: 5,
++        sortBy: 'name',
++        sortOrder: 'asc',
++      });
++
++      expect(prisma.tenant.findMany).toHaveBeenCalledWith({
++        skip: 5,
++        take: 5,
++        orderBy: { name: 'asc' },
++        select: {
++          id: true,
++          name: true,
++          domain: true,
++          createdAt: true,
++          status: true,
++        },
++      });
++      expect(result.meta).toEqual({
++        total: 5,
++        page: 2,
++        limit: 5,
++      });
++    });
++  });
++
++  describe('createTenantWithAdmin', () => {
++    it('should create a tenant and an admin user within a transaction', async () => {
++      const mockTenant = { id: 't1', name: 'Acme', domain: 'acme', status: 'ACTIVE' };
++      const mockUser = {
++        id: 'u1',
++        name: 'John Doe',
++        email: 'john@acme.com',
++        role: 'ADMIN',
++        tenantId: 't1',
++        isActive: true,
++      };
++
++      prisma.$transaction = jest.fn().mockImplementation(async (callback) => {
++        return callback(prisma);
++      });
++      prisma.tenant.create = jest.fn().mockResolvedValue(mockTenant);
++      prisma.user.create = jest.fn().mockResolvedValue(mockUser);
++
++      const tenantData = {
++        name: 'Acme',
++        domain: 'acme',
++        adminName: 'John Doe',
++        adminEmail: 'john@acme.com',
++        passwordHash: 'hashed_password',
++      };
++
++      const result = await superadminTenantService.createTenantWithAdmin(tenantData);
++
++      expect(prisma.$transaction).toHaveBeenCalled();
++      expect(prisma.tenant.create).toHaveBeenCalledWith({
++        data: {
++          name: 'Acme',
++          domain: 'acme',
++          status: 'ACTIVE',
++        },
++      });
++      expect(prisma.user.create).toHaveBeenCalledWith({
++        data: {
++          name: 'John Doe',
++          email: 'john@acme.com',
++          passwordHash: 'hashed_password',
++          role: 'ADMIN',
++          tenantId: 't1',
++          isActive: true,
++        },
++      });
++      expect(result).toEqual({ tenant: mockTenant, user: mockUser });
++    });
++
++    it('should propagate errors from the transaction', async () => {
++      const dbError = new Error('Database Error');
++      prisma.$transaction = jest.fn().mockRejectedValue(dbError);
++
++      const tenantData = {
++        name: 'Acme',
++        domain: 'acme',
++        adminName: 'John Doe',
++        adminEmail: 'john@acme.com',
++        passwordHash: 'hashed_password',
++      };
++
++      await expect(superadminTenantService.createTenantWithAdmin(tenantData)).rejects.toThrow('Database Error');
++    });
++  });
++});
+diff --git a/superadmin-frontend/package.json b/superadmin-frontend/package.json
+new file mode 100644
+index 0000000..8d9564a
+--- /dev/null
++++ b/superadmin-frontend/package.json
+@@ -0,0 +1,33 @@
++{
++  "name": "superadmin-frontend",
++  "private": true,
++  "version": "0.0.0",
++  "type": "module",
++  "scripts": {
++    "dev": "vite",
++    "build": "vite build",
++    "lint": "oxlint",
++    "preview": "vite preview"
++  },
++  "dependencies": {
++    "@hookform/resolvers": "^5.5.7",
++    "crypto-js": "^4.2.0",
++    "lucide-react": "^0.577.0",
++    "react": "^19.2.7",
++    "react-dom": "^19.2.7",
++    "react-hook-form": "^7.83.0",
++    "react-router-dom": "^7.15.0",
++    "sonner": "^2.0.7",
++    "zod": "^3.25.76",
++    "zustand": "^5.0.14"
++  },
++  "devDependencies": {
++    "@tailwindcss/vite": "^4.2.4",
++    "@types/react": "^19.2.17",
++    "@types/react-dom": "^19.2.3",
++    "@vitejs/plugin-react": "^6.0.3",
++    "oxlint": "^1.71.0",
++    "tailwindcss": "^4.2.4",
++    "vite": "^8.1.1"
++  }
++}
+diff --git a/superadmin-frontend/src/App.jsx b/superadmin-frontend/src/App.jsx
+new file mode 100644
+index 0000000..bd7c303
+--- /dev/null
++++ b/superadmin-frontend/src/App.jsx
+@@ -0,0 +1,36 @@
++import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
++import ProtectedRoute from './components/ProtectedRoute';
++import Login from './pages/Login';
++import Dashboard from './pages/Dashboard';
++import Tenants from './pages/Tenants';
++import SuperadminLayout from './components/SuperadminLayout';
++import useAuthStore from './store/authStore';
++
++import { Toaster } from 'sonner';
++
++function App() {
++  const token = useAuthStore((state) => state.token);
++
++  return (
++    <BrowserRouter>
++      <Toaster position="top-right" richColors />
++      <Routes>
++        <Route 
++          path="/login" 
++          element={token ? <Navigate to="/" replace /> : <Login />} 
++        />
++        
++        <Route element={<ProtectedRoute />}>
++          <Route element={<SuperadminLayout />}>
++            <Route path="/" element={<Dashboard />} />
++            <Route path="/tenants" element={<Tenants />} />
++          </Route>
++        </Route>
++        
++        <Route path="*" element={<Navigate to="/" replace />} />
++      </Routes>
++    </BrowserRouter>
++  );
++}
++
++export default App;
+diff --git a/superadmin-frontend/src/components/CreateTenantModal.jsx b/superadmin-frontend/src/components/CreateTenantModal.jsx
+new file mode 100644
+index 0000000..ecbe68e
+--- /dev/null
++++ b/superadmin-frontend/src/components/CreateTenantModal.jsx
+@@ -0,0 +1,327 @@
++import React, { useEffect, useState, useRef, useCallback } from 'react';
++import { useForm } from 'react-hook-form';
++import { zodResolver } from '@hookform/resolvers/zod';
++import { z } from 'zod';
++import { X, Eye, EyeOff, KeyRound, Loader2 } from 'lucide-react';
++import { toast } from 'sonner';
++import api from '../services/api';
++
++const schema = z.object({
++  name: z.string().trim().min(2, 'Name must be at least 2 characters').max(100, 'Name must be less than 100 characters'),
++  slug: z.string().trim().toLowerCase().regex(/^[a-z0-9]+$/, 'Slug must be alphanumeric without spaces or special characters').max(63, 'Slug must be max 63 characters'),
++  firstName: z.string().trim().min(2, 'First name must be at least 2 characters').max(100, 'First name must be less than 100 characters'),
++  lastName: z.string().trim().min(2, 'Last name must be at least 2 characters').max(100, 'Last name must be less than 100 characters'),
++  email: z.string().trim().email('Invalid email address').max(255),
++  password: z.string().trim()
++    .min(8, 'Password must be at least 8 characters')
++    .max(72, 'Password must be max 72 characters')
++    .regex(/[A-Z]/, 'Must contain at least one uppercase letter')
++    .regex(/[0-9]/, 'Must contain at least one number'),
++});
++
++export default function CreateTenantModal({ isOpen, onClose, onSuccess, triggerRef }) {
++  const [showPassword, setShowPassword] = useState(false);
++  const [isSubmitting, setIsSubmitting] = useState(false);
++  const modalRef = useRef(null);
++  
++  const {
++    register,
++    handleSubmit,
++    reset,
++    watch,
++    setValue,
++    setError,
++    formState: { errors },
++  } = useForm({
++    resolver: zodResolver(schema),
++    defaultValues: {
++      name: '',
++      slug: '',
++      firstName: '',
++      lastName: '',
++      email: '',
++      password: '',
++    }
++  });
++
++  const slugValue = watch('slug');
++
++  const handleDismiss = useCallback(() => {
++    if (isSubmitting) return;
++    reset();
++    setShowPassword(false);
++    onClose();
++    if (triggerRef && triggerRef.current) {
++      triggerRef.current.focus();
++    }
++  }, [isSubmitting, reset, onClose, triggerRef]);
++
++  // Click outside and ESC handling
++  useEffect(() => {
++    if (!isOpen) return;
++
++    const handleKeyDown = (e) => {
++      if (e.key === 'Escape') {
++        handleDismiss();
++      }
++    };
++
++    const handleClickOutside = (e) => {
++      if (modalRef.current && !modalRef.current.contains(e.target)) {
++        handleDismiss();
++      }
++    };
++
++    document.addEventListener('keydown', handleKeyDown);
++    // Use mousedown instead of click to prevent issues with text selection ending outside
++    document.addEventListener('mousedown', handleClickOutside);
++
++    return () => {
++      document.removeEventListener('keydown', handleKeyDown);
++      document.removeEventListener('mousedown', handleClickOutside);
++    };
++  }, [isOpen, handleDismiss]);
++
++  // Auto focus on open
++  useEffect(() => {
++    if (isOpen) {
++      const firstInput = document.getElementById('tenant-name');
++      if (firstInput) {
++        firstInput.focus();
++      }
++    }
++  }, [isOpen]);
++
++  const generatePassword = () => {
++    const chars = "abcdefghijklmnopqrstuvwxyz";
++    const uppercase = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
++    const numbers = "0123456789";
++    
++    let pass = "";
++    pass += uppercase[Math.floor(Math.random() * uppercase.length)];
++    pass += numbers[Math.floor(Math.random() * numbers.length)];
++    
++    for (let i = 0; i < 8; i++) {
++      const all = chars + uppercase + numbers;
++      pass += all[Math.floor(Math.random() * all.length)];
++    }
++    
++    setValue('password', pass, { shouldValidate: true });
++    setShowPassword(true);
++  };
++
++  const onSubmit = async (data) => {
++    setIsSubmitting(true);
++    const abortController = new AbortController();
++
++    try {
++      await api.post('/api/superadmin/tenants', data, {
++        signal: abortController.signal
++      });
++
++      // 1. Close Modal
++      handleDismiss();
++      // 2. Reset form state (already done in handleDismiss)
++      // 3. Show success toast
++      toast.success('Inquilino creado exitosamente');
++      // 4. Trigger refresh
++      if (onSuccess) onSuccess();
++
++    } catch (error) {
++      if (error.name === 'AbortError') return;
++
++      if (error.status === 409) {
++        toast.error('El dominio ya existe');
++        setError('slug', { type: 'manual', message: 'Domain already exists' });
++      } else if (error.status === 400 && error.data?.errors) {
++        // map field errors
++        error.data.errors.forEach(err => {
++          if (err.path && err.path[0]) {
++            setError(err.path[0], { type: 'manual', message: err.message });
++          }
++        });
++        toast.error('Por favor revisa los errores en el formulario');
++      } else {
++        toast.error(error.data?.message || 'Error al crear el inquilino');
++      }
++    } finally {
++      setIsSubmitting(false);
++    }
++
++    return () => {
++      abortController.abort();
++    };
++  };
++
++  if (!isOpen) return null;
++
++  return (
++    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
++      <div 
++        ref={modalRef}
++        className="bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]"
++        role="dialog"
++        aria-modal="true"
++        aria-labelledby="modal-title"
++      >
++        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between sticky top-0 bg-white z-10">
++          <h2 id="modal-title" className="text-xl font-semibold text-gray-800">Nuevo Inquilino</h2>
++          <button 
++            onClick={handleDismiss}
++            disabled={isSubmitting}
++            className="text-gray-400 hover:text-gray-600 transition-colors p-1 disabled:opacity-50"
++            aria-label="Cerrar modal"
++          >
++            <X size={20} />
++          </button>
++        </div>
++
++        <div className="p-6 overflow-y-auto">
++          <form id="create-tenant-form" onSubmit={handleSubmit(onSubmit)} className="space-y-6">
++            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
++              
++              {/* Empresa */}
++              <div className="space-y-2">
++                <label htmlFor="tenant-name" className="block text-sm font-medium text-gray-700">Empresa *</label>
++                <input
++                  id="tenant-name"
++                  type="text"
++                  disabled={isSubmitting}
++                  className={`w-full px-3 py-2 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 ${errors.name ? 'border-red-500' : 'border-gray-300'}`}
++                  placeholder="Ej. Acme Corp"
++                  {...register('name')}
++                />
++                {errors.name && <p className="text-red-500 text-xs mt-1">{errors.name.message}</p>}
++              </div>
++
++              {/* Dominio */}
++              <div className="space-y-2">
++                <label htmlFor="tenant-slug" className="block text-sm font-medium text-gray-700">Dominio *</label>
++                <div className="relative">
++                  <input
++                    id="tenant-slug"
++                    type="text"
++                    disabled={isSubmitting}
++                    className={`w-full px-3 py-2 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 ${errors.slug ? 'border-red-500' : 'border-gray-300'}`}
++                    placeholder="acmecorp"
++                    {...register('slug')}
++                  />
++                  {slugValue && !errors.slug && (
++                    <p className="absolute -bottom-6 left-0 text-xs text-gray-500">
++                      {slugValue}.yourdomain.com
++                    </p>
++                  )}
++                </div>
++                {errors.slug && <p className="text-red-500 text-xs mt-1">{errors.slug.message}</p>}
++              </div>
++
++              {/* Nombre Admin */}
++              <div className="space-y-2 mt-4 md:mt-0">
++                <label htmlFor="admin-firstName" className="block text-sm font-medium text-gray-700">Nombre del Admin *</label>
++                <input
++                  id="admin-firstName"
++                  type="text"
++                  disabled={isSubmitting}
++                  className={`w-full px-3 py-2 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 ${errors.firstName ? 'border-red-500' : 'border-gray-300'}`}
++                  placeholder="John"
++                  {...register('firstName')}
++                />
++                {errors.firstName && <p className="text-red-500 text-xs mt-1">{errors.firstName.message}</p>}
++              </div>
++
++              {/* Apellido Admin */}
++              <div className="space-y-2 mt-4 md:mt-0">
++                <label htmlFor="admin-lastName" className="block text-sm font-medium text-gray-700">Apellido del Admin *</label>
++                <input
++                  id="admin-lastName"
++                  type="text"
++                  disabled={isSubmitting}
++                  className={`w-full px-3 py-2 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 ${errors.lastName ? 'border-red-500' : 'border-gray-300'}`}
++                  placeholder="Doe"
++                  {...register('lastName')}
++                />
++                {errors.lastName && <p className="text-red-500 text-xs mt-1">{errors.lastName.message}</p>}
++              </div>
++
++              {/* Email Admin */}
++              <div className="space-y-2 md:col-span-2 mt-4 md:mt-0">
++                <label htmlFor="admin-email" className="block text-sm font-medium text-gray-700">Email Admin *</label>
++                <input
++                  id="admin-email"
++                  type="email"
++                  disabled={isSubmitting}
++                  className={`w-full px-3 py-2 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 ${errors.email ? 'border-red-500' : 'border-gray-300'}`}
++                  placeholder="john@acmecorp.com"
++                  {...register('email')}
++                />
++                {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email.message}</p>}
++              </div>
++
++              {/* Contraseña */}
++              <div className="space-y-2 md:col-span-2">
++                <div className="flex justify-between items-center">
++                  <label htmlFor="admin-password" className="block text-sm font-medium text-gray-700">Contraseña *</label>
++                  <button 
++                    type="button" 
++                    onClick={generatePassword}
++                    disabled={isSubmitting}
++                    className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1 disabled:opacity-50"
++                  >
++                    <KeyRound size={12} />
++                    Generar segura
++                  </button>
++                </div>
++                <div className="relative">
++                  <input
++                    id="admin-password"
++                    type={showPassword ? 'text' : 'password'}
++                    disabled={isSubmitting}
++                    className={`w-full px-3 py-2 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 pr-10 ${errors.password ? 'border-red-500' : 'border-gray-300'}`}
++                    placeholder="••••••••"
++                    {...register('password')}
++                  />
++                  <button
++                    type="button"
++                    onClick={() => setShowPassword(!showPassword)}
++                    disabled={isSubmitting}
++                    className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600 disabled:opacity-50"
++                  >
++                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
++                  </button>
++                </div>
++                {errors.password && <p className="text-red-500 text-xs mt-1">{errors.password.message}</p>}
++              </div>
++
++            </div>
++          </form>
++        </div>
++
++        <div className="px-6 py-4 border-t border-gray-100 bg-gray-50 flex justify-end gap-3 sticky bottom-0 z-10">
++          <button
++            type="button"
++            onClick={handleDismiss}
++            disabled={isSubmitting}
++            className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium transition-colors disabled:opacity-50"
++          >
++            Cancel
++          </button>
++          <button
++            type="submit"
++            form="create-tenant-form"
++            disabled={isSubmitting}
++            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition-colors flex items-center disabled:opacity-70 disabled:cursor-not-allowed"
++          >
++            {isSubmitting ? (
++              <>
++                <Loader2 size={18} className="animate-spin mr-2" />
++                Creando...
++              </>
++            ) : (
++              'Crear Inquilino'
++            )}
++          </button>
++        </div>
++      </div>
++    </div>
++  );
++}
+diff --git a/superadmin-frontend/src/pages/Tenants.jsx b/superadmin-frontend/src/pages/Tenants.jsx
+new file mode 100644
+index 0000000..ef33266
+--- /dev/null
++++ b/superadmin-frontend/src/pages/Tenants.jsx
+@@ -0,0 +1,179 @@
++import { useState, useEffect, useRef, useCallback } from 'react';
++import { Users, Server, Clock, Activity, Search, AlertCircle, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
++import api from '../services/api';
++import CreateTenantModal from '../components/CreateTenantModal';
++export default function Tenants() {
++  const [tenants, setTenants] = useState([]);
++  const [loading, setLoading] = useState(true);
++  const [error, setError] = useState(null);
++  const [page, setPage] = useState(1);
++  const [meta, setMeta] = useState({ total: 0, page: 1, limit: 10 });
++  const [isModalOpen, setIsModalOpen] = useState(false);
++  const newTenantBtnRef = useRef(null);
++
++  const fetchTenants = useCallback(async () => {
++    try {
++      setLoading(true);
++      setError(null);
++      // api.get uses standard fetch wrapper
++      const response = await api.get(`/api/superadmin/tenants?page=${page}&limit=10&sortBy=createdAt&sortOrder=desc`);
++      if (!response) return;
++      setTenants(response.data);
++      setMeta(response.meta);
++    } catch (err) {
++      setError(err.message || 'Error al cargar los inquilinos');
++    } finally {
++      setLoading(false);
++    }
++  }, [page]);
++
++  useEffect(() => {
++    fetchTenants();
++  }, [fetchTenants]);
++
++  const handlePrevPage = () => {
++    if (page > 1) setPage(page - 1);
++  };
++
++  const handleNextPage = () => {
++    if (page < Math.ceil(meta.total / meta.limit)) setPage(page + 1);
++  };
++
++  return (
++    <div className="w-full">
++      <header className="mb-10 flex items-end justify-between">
++        <div>
++          <h2 className="text-3xl font-semibold tracking-tight">Inquilinos</h2>
++          <p className="text-slate-400 mt-1">Administración global de todos los tenants registrados.</p>
++        </div>
++        <button
++          ref={newTenantBtnRef}
++          onClick={() => setIsModalOpen(true)}
++          className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors shadow-sm"
++        >
++          <Plus size={18} />
++          Nuevo Inquilino
++        </button>
++      </header>
++
++      <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-sm overflow-hidden flex flex-col">
++        {/* Toolbar */}
++        <div className="p-4 border-b border-slate-800 flex items-center gap-4">
++          <div className="relative max-w-sm w-full">
++            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
++            <input 
++              type="text" 
++              placeholder="Buscar por nombre o dominio..." 
++              className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2 pl-10 pr-4 text-sm focus:outline-none focus:border-blue-500 transition-colors placeholder:text-slate-600"
++              disabled // Future implementation
++            />
++          </div>
++        </div>
++
++        {/* Table */}
++        <div className="overflow-x-auto">
++          <table className="w-full text-left text-sm text-slate-300">
++            <thead className="bg-slate-950/50 text-slate-400 border-b border-slate-800">
++              <tr>
++                <th className="py-4 px-6 font-medium">
++                  <div className="flex items-center gap-2"><Users size={16} /> Nombre</div>
++                </th>
++                <th className="py-4 px-6 font-medium">
++                  <div className="flex items-center gap-2"><Server size={16} /> Dominio</div>
++                </th>
++                <th className="py-4 px-6 font-medium">
++                  <div className="flex items-center gap-2"><Clock size={16} /> Creación</div>
++                </th>
++                <th className="py-4 px-6 font-medium">
++                  <div className="flex items-center gap-2"><Activity size={16} /> Estado</div>
++                </th>
++              </tr>
++            </thead>
++            <tbody className="divide-y divide-slate-800/50">
++              {loading ? (
++                // Skeletons
++                Array.from({ length: 5 }).map((_, idx) => (
++                  <tr key={idx}>
++                    <td className="py-4 px-6"><div className="h-5 bg-slate-800 rounded animate-pulse w-3/4"></div></td>
++                    <td className="py-4 px-6"><div className="h-5 bg-slate-800 rounded animate-pulse w-2/3"></div></td>
++                    <td className="py-4 px-6"><div className="h-5 bg-slate-800 rounded animate-pulse w-1/2"></div></td>
++                    <td className="py-4 px-6"><div className="h-6 bg-slate-800 rounded-full animate-pulse w-20"></div></td>
++                  </tr>
++                ))
++              ) : error ? (
++                <tr>
++                  <td colSpan="4" className="py-12 px-6 text-center text-red-400">
++                    <div className="flex flex-col items-center gap-2">
++                      <AlertCircle size={24} />
++                      <p>{error}</p>
++                    </div>
++                  </td>
++                </tr>
++              ) : tenants.length === 0 ? (
++                <tr>
++                  <td colSpan="4" className="py-12 px-6 text-center text-slate-500">
++                    No se encontraron inquilinos.
++                  </td>
++                </tr>
++              ) : (
++                tenants.map(tenant => (
++                  <tr key={tenant.id} className="hover:bg-slate-800/20 transition-colors">
++                    <td className="py-4 px-6 font-medium text-slate-200">{tenant.name}</td>
++                    <td className="py-4 px-6 text-slate-400">{tenant.domain}</td>
++                    <td className="py-4 px-6 text-slate-400">
++                      {new Date(tenant.createdAt).toLocaleDateString()}
++                    </td>
++                    <td className="py-4 px-6">
++                      <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${
++                        tenant.status === 'active' 
++                          ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' 
++                          : 'bg-slate-500/10 text-slate-400 border-slate-500/20'
++                      }`}>
++                        {tenant.status === 'active' ? 'Activo' : tenant.status}
++                      </span>
++                    </td>
++                  </tr>
++                ))
++              )}
++            </tbody>
++          </table>
++        </div>
++
++        {/* Pagination */}
++        <div className="p-4 border-t border-slate-800 flex items-center justify-between text-sm text-slate-400">
++          <div>
++            Mostrando {tenants.length} de {meta.total} resultados
++          </div>
++          <div className="flex items-center gap-2">
++            <button 
++              onClick={handlePrevPage}
++              disabled={page === 1 || loading}
++              className="p-1 rounded-md hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
++            >
++              <ChevronLeft size={20} />
++            </button>
++            <span className="px-2">Página {page} de {Math.max(1, Math.ceil(meta.total / meta.limit))}</span>
++            <button 
++              onClick={handleNextPage}
++              disabled={page >= Math.ceil(meta.total / meta.limit) || loading}
++              className="p-1 rounded-md hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
++            >
++              <ChevronRight size={20} />
++            </button>
++          </div>
++        </div>
++        </div>
++      </div>
++
++      <CreateTenantModal 
++        isOpen={isModalOpen}
++        onClose={() => setIsModalOpen(false)}
++        onSuccess={() => {
++          if (page === 1) fetchTenants();
++          else setPage(1); // Will trigger effect to fetch
++        }}
++        triggerRef={newTenantBtnRef}
++      />
++    </div>
++  );
++}

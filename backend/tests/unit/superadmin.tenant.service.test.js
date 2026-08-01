@@ -18,6 +18,22 @@ jest.mock('../../src/config/database', () => ({
   }
 }));
 
+jest.mock('../../src/utils/tenant-cache.util', () => ({
+  setTenantStatus: jest.fn()
+}));
+
+jest.mock('../../src/config/env', () => ({
+  masterTenantId: 'master-123'
+}));
+
+jest.mock('../../src/socket', () => ({
+  getIo: jest.fn().mockReturnValue({
+    of: jest.fn().mockReturnValue({
+      sockets: new Map()
+    })
+  })
+}));
+
 describe('Superadmin Tenant Service', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -149,6 +165,33 @@ describe('Superadmin Tenant Service', () => {
       };
 
       await expect(superadminTenantService.createTenantWithAdmin(tenantData)).rejects.toThrow('Database Error');
+    });
+  });
+
+  describe('updateTenantStatus', () => {
+    it('should update tenant status and clear cache', async () => {
+      const mockTenant = { id: 't1', status: 'suspended' };
+      prisma.tenant.findUnique = jest.fn().mockResolvedValue({ id: 't1', status: 'active' });
+      prisma.tenant.update = jest.fn().mockResolvedValue(mockTenant);
+      
+      const { setTenantStatus } = require('../../src/utils/tenant-cache.util');
+      
+      const result = await superadminTenantService.updateTenantStatus('t1', 'suspended');
+      
+      expect(prisma.tenant.update).toHaveBeenCalledWith({
+        where: { id: 't1' },
+        data: { status: 'suspended' }
+      });
+      expect(setTenantStatus).toHaveBeenCalledWith('t1', 'suspended');
+      expect(result).toEqual(mockTenant);
+    });
+
+    it('should block suspending the master tenant', async () => {
+      const { masterTenantId } = require('../../src/config/env');
+      
+      await expect(superadminTenantService.updateTenantStatus(masterTenantId, 'suspended'))
+        .rejects
+        .toThrow('Cannot suspend the master tenant');
     });
   });
 });

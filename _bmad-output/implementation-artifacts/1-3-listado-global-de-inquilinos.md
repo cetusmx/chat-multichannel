@@ -4,7 +4,7 @@ baseline_commit: "4fadef758ed47194d6a4578c52478c1429563295"
 
 # Story 1.3: Listado Global de Inquilinos
 
-Status: review
+Status: done
 
 ## Story
 

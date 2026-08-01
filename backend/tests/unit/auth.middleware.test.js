@@ -59,7 +59,7 @@ describe('Auth Middleware', () => {
     expect(getTenantStatusAsync).toHaveBeenCalledWith('tenant-1');
     expect(next).toHaveBeenCalledWith(expect.objectContaining({ 
       status: 403,
-      message: 'Tenant is suspended or not found'
+      message: 'Tenant is suspended'
     }));
   });
 

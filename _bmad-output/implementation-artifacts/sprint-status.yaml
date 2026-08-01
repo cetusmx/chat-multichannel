@@ -41,7 +41,7 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-07-04T19:33:21-06:00
-last_updated: 2026-07-31T21:59:00-06:00
+last_updated: 2026-08-01T11:12:06-06:00
 project: chat-multichannel-sales-ia
 project_key: NOKEY
 tracking_system: file-system
@@ -105,4 +105,5 @@ development_status:
   1-5-suspension-de-inquilinos: done
   epic-saas-2: in-progress
   saas-2-1-esquema-cuotas-licencias-bd: done
-  saas-2-2-interfaz-de-gestion-de-licencias: ready-for-dev
+  saas-2-2-interfaz-de-gestion-de-licencias: done
+  saas-2-3-enforcement-de-cuotas-de-asientos: done

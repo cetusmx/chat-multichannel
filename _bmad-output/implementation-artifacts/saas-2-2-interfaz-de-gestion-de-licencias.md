@@ -114,3 +114,8 @@ Antigravity 2.0
 ### Completion Notes List
 
 ### File List
+
+### Review Findings
+
+- [ ] [Review][Decision] Spec Contradiction regarding `min` attribute of `maxUsers` — AC 1 requires `min` to be `currentActiveUsers` to prevent errors, but AC 2 allows `-1` for unlimited. The code implements `min="-1"`. We need to decide if we keep `min="-1"` or implement a separate UI toggle for "Unlimited".
+- [ ] [Review][Patch] Logic bug in `isReducingUsers` and `isReducingTokens` [superadmin-frontend/src/pages/TenantDetails.jsx:423]

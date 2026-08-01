@@ -11,6 +11,9 @@ jest.mock('@prisma/client', () => {
     tenant: {
       findUnique: jest.fn(),
     },
+    conversation: {
+      findUnique: jest.fn(),
+    }
   };
   return { PrismaClient: jest.fn(() => mPrismaClient) };
 });
@@ -93,6 +96,29 @@ describe('WhatsApp Service', () => {
         where: { id: 'tenant-123' },
         select: { status: true }
       });
+    });
+  });
+
+  describe('sendMessage', () => {
+    it('should throw TENANT_SUSPENDED error if tenant is suspended', async () => {
+      prisma.conversation.findUnique.mockResolvedValue({ tenantId: 'tenant-123', client: { isBlocked: false } });
+      prisma.tenant.findUnique.mockResolvedValue({ status: 'suspended' });
+      await expect(whatsappService.sendMessage('tenant-123', 'client-123', 'hello'))
+        .rejects
+        .toMatchObject({ code: 'TENANT_SUSPENDED' });
+    });
+  });
+
+  describe('sendMedia', () => {
+    it('should throw TENANT_SUSPENDED error if tenant is suspended', async () => {
+      prisma.conversation.findUnique.mockResolvedValue({ tenantId: 'tenant-123', client: { isBlocked: false } });
+      prisma.tenant.findUnique.mockResolvedValue({ status: 'suspended' });
+      
+      const dummyFile = { path: '/tmp/test.jpg', mimetype: 'image/jpeg', originalname: 'test.jpg' };
+      
+      await expect(whatsappService.sendMedia('conv-123', dummyFile, 'caption', 'agent-1'))
+        .rejects
+        .toMatchObject({ code: 'TENANT_SUSPENDED' });
     });
   });
 });

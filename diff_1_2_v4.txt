@@ -1,0 +1,963 @@
+diff --git a/_bmad-output/implementation-artifacts/1-2-infraestructura-del-dashboard-spa.md b/_bmad-output/implementation-artifacts/1-2-infraestructura-del-dashboard-spa.md
+new file mode 100644
+index 0000000..318c2ad
+--- /dev/null
++++ b/_bmad-output/implementation-artifacts/1-2-infraestructura-del-dashboard-spa.md
+@@ -0,0 +1,135 @@
++---
++baseline_commit: 4fadef758ed47194d6a4578c52478c1429563295
++---
++
++# Story 1.2: Infraestructura del Dashboard SPA
++
++Status: done
++
++<!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
++
++## Story
++
++As a Superadmin,
++I want acceder a un portal web independiente,
++so that pueda gestionar la plataforma sin usar la interfaz de los vendedores.
++
++## Acceptance Criteria
++
++1. **Given** que el sistema está desplegado, **When** navego a `admin.salesflow.app`, **Then** veo una pantalla de inicio de sesión exclusiva para Superadmins.
++2. **Given** un inicio de sesión exitoso, **When** ingreso credenciales válidas, **Then** soy redirigido al Dashboard.
++
++## Tasks / Subtasks
++
++- [x] Task 1 (AC: 1, 2) Crear infraestructura SPA y UI Base
++  - [x] Subtask 1.1: Inicializar el proyecto con Vite 8 y React 19 en el directorio `superadmin-frontend/`. Copiar configuraciones base (vite, eslint, package.json dependencies) desde `frontend/` para mantener consistencia.
++  - [x] Subtask 1.2: Configurar el puerto explícito del dev server a `5174` en `vite.config.js` para asegurar consistencia de CORS.
++  - [x] Subtask 1.3: Configurar las variables de entorno (`.env` local) con `VITE_API_URL` apuntando al backend.
++  - [x] Subtask 1.4: Configurar `react-router-dom` (v7) para las rutas `/login` y `/`.
++  - [x] Subtask 1.5: Implementar un componente `ProtectedRoute` que intercepte usuarios no autenticados y redirija a `/login`.
++  - [x] Subtask 1.6: Implementar la vista de `/login` y su formulario utilizando TailwindCSS v4.
++  - [x] Subtask 1.7: Implementar un Dashboard `/` vacío protegido para probar la redirección, que incluya un botón de Logout básico para limpiar el token.
++
++- [x] Task 2 (AC: 2) Conectar la Autenticación con Backend
++  - [x] Subtask 2.1: Crear un cliente API basado en `fetch` nativo (sin Axios) que inyecte automáticamente el header `Authorization: Bearer <token>`, usando un patrón idéntico a `frontend/src/services/api.js`.
++  - [x] Subtask 2.2: Implementar la lógica de autenticación usando Zustand v5 para el manejo global del estado de sesión, consistente con el frontend principal.
++  - [x] Subtask 2.3: Enviar las credenciales del formulario al endpoint `/api/superadmin/auth/login`.
++  - [x] Subtask 2.4: Manejar estados de error de red y códigos de estado `429`, `401`, y `403`.
++  - [x] Subtask 2.5: Guardar el token de autenticación devuelto explícitamente en `localStorage` (gestionado a través de Zustand persist).
++  - [x] Subtask 2.6: Redirigir al Dashboard principal (`/`) al obtener un estado 200 OK.
++  - [x] Subtask 2.7: Actualizar la configuración CORS del backend para permitir solicitudes desde el nuevo SPA (`http://localhost:5174` y `admin.salesflow.app`).
++
++- [x] Task 3 (AC: 1) Containerización e Integración de la SPA (AD-3)
++  - [x] Subtask 3.1: Crear un `Dockerfile` en `superadmin-frontend/` que utilice una imagen base de Nginx para servir el build estático.
++  - [x] Subtask 3.2: Incluir un `nginx.conf` configurado para manejar el fallback de React Router (`try_files $uri $uri/ /index.html;`).
++  - [x] Subtask 3.3: Actualizar `docker-compose.yml` en la raíz para incluir el nuevo servicio `superadmin-frontend`, mapeando el puerto al host como `4006:80`, y orquestándolo junto al backend.
++
++## Dev Notes
++
++- **Relevant architecture patterns and constraints:**
++  - This is a standalone React SPA, completely isolated from the vendor frontend for security (FR-S1.1).
++  - Use TailwindCSS v4 to maintain styling ecosystem consistency with the main frontend, while keeping the UI visually distinct for the Superadmin persona.
++  - Maintain stack consistency with `frontend/`: React 19, Vite 8, Zustand 5, and native `fetch`. Do NOT introduce Axios or other redundant libraries.
++  - **AD-3 Compliance:** The SPA MUST be containerized using Docker and Nginx. This is mandatory, not optional.
++- **Source tree components to touch:**
++  - `superadmin-frontend/*` (Entirely new directory at root).
++  - `backend/` (Only to update CORS configuration).
++  - `docker-compose.yml` (To add the new service).
++- **Testing standards summary:**
++  - Ensure the local dev server can reach the API without CORS issues and that the `ProtectedRoute` correctly enforces authentication.
++
++### Project Structure Notes
++
++- **Alignment with unified project structure (paths, modules, naming):** `superadmin-frontend/` should be placed alongside `backend/` and any other frontends.
++- **Detected conflicts or variances (with rationale):** The Docker container for the SPA must include Nginx configuration for client-side routing, conforming to AD-3.
++
++### References
++
++- [Source: `_bmad-output/planning-artifacts/epics-superadmin-saas.md#Epic 1`] Epic 1 - Story 1.2.
++- Backend Endpoint created in Story 1.1: `POST /api/superadmin/auth/login`.
++
++## Dev Agent Record
++
++### Agent Model Used
++Gemini 2.5 Pro
++
++### Debug Log References
++- `e34477b6-e4b4-48ba-9b1a-9f6d90502b60`
++
++### Completion Notes List
++- Scaffolded Vite React SPA targeting port 5174.
++- Implemented Zustand auth store with localStorage persistence.
++- Built a native fetch wrapper for token injection matching main app patterns.
++- Created premium UI for Login and Dashboard using TailwindCSS v4.
++- Configured React Router v7 with ProtectedRoutes.
++- Backend CORS updated dynamically to allow the new domains.
++- Created Nginx docker configurations (Dockerfile & nginx.conf).
++- Added superadmin-frontend to `docker-compose.yml` with port 4006.
++
++### File List
++- `superadmin-frontend/package.json`
++- `superadmin-frontend/vite.config.js`
++- `superadmin-frontend/src/index.css`
++- `superadmin-frontend/src/App.jsx`
++- `superadmin-frontend/src/components/ProtectedRoute.jsx`
++- `superadmin-frontend/src/store/authStore.js`
++- `superadmin-frontend/src/services/api.js`
++- `superadmin-frontend/src/pages/Login.jsx`
++- `superadmin-frontend/src/pages/Dashboard.jsx`
++- `superadmin-frontend/nginx.conf`
++- `superadmin-frontend/Dockerfile`
++- `backend/src/app.js`
++- `docker-compose.yml`
++
++### Senior Developer Review (AI)
++#### Action Items
++- [x] [Review][Decision] Seguridad del Token en LocalStorage — Los tokens se guardan en texto plano en Zustand. ¿Deseas ofuscar/encriptar el storage o lo dejamos estándar por ahora?
++- [x] [Review][Patch] CORS vulnerable — El bloque else permite todos los orígenes [backend/src/app.js:46]
++- [x] [Review][Patch] Falta interceptor 401/403 global — Redirigir al login al expirar el token [superadmin-frontend/src/services/api.js:33]
++- [x] [Review][Patch] Fallos de red no manejados en fetch — Evitar crash si no hay respuesta de red [superadmin-frontend/src/services/api.js:20]
++- [x] [Review][Patch] Dockerfile omite ARG VITE_API_URL — Evitar fallback a localhost en prod [superadmin-frontend/Dockerfile:12]
++- [x] [Review][Patch] Parseo de JSON inseguro — Crash si la API devuelve 200 con cuerpo vacío [superadmin-frontend/src/services/api.js:43]
++- [x] [Review][Patch] Timeout de peticiones — Falta AbortController para peticiones colgadas [superadmin-frontend/src/services/api.js:18]
++- [x] [Review][Patch] Crash en Login por respuesta nula — Validar response antes de acceder a success [superadmin-frontend/src/pages/Login.jsx:23]
++- [x] [Review][Patch] Espacios en blanco en Email — Aplicar trim() al correo antes de enviar [superadmin-frontend/src/pages/Login.jsx:21]
++- [x] [Review][Patch] Dashboard usa <a> en lugar de <Link> — Rompe navegación de SPA [superadmin-frontend/src/pages/Dashboard.jsx:20]
++- [x] [Review][Patch] Headers de seguridad NGINX — Faltan CSP y HSTS [superadmin-frontend/nginx.conf]
++- [x] [Review][Patch] NGINX try_files omite query strings — Usar ?$args [superadmin-frontend/nginx.conf:10]
++- [x] [Review][Patch] docker-compose expone 4006 globalmente — Restringir a 127.0.0.1:4006 [docker-compose.yml:45]
++- [x] [Review][Patch] vite.config.js sin host:true — Dificulta ejecución futura en Docker [superadmin-frontend/vite.config.js:8]
++- [x] [Review][Defer] Dashboard usa dummy data — deferred, placeholder explícito para historias futuras
++
++### Senior Developer Review (Pass 2)
++#### Action Items
++- [x] [Review][Patch] Login.jsx llama ruta sin /api — Agregar prefijo /api/superadmin/auth/login [superadmin-frontend/src/pages/Login.jsx:21]
++- [x] [Review][Patch] Falta pasar ARG VITE_API_URL en docker-compose — Pasar args en el build block [docker-compose.yml]
++- [x] [Review][Patch] authStore guarda nulls encriptados en logout — Usar removeItem en vez de encriptar el null [superadmin-frontend/src/store/authStore.js]
++- [x] [Review][Patch] FRONTEND_URL con trailing slash rompe CORS — Limpiar trailing slash en app.js [backend/src/app.js]
++- [x] [Review][Defer] Vulnerabilidades menores (CORS !origin, root en Nginx, variables de entorno compiladas, UI no responsiva en Dashboard) — deferred, aceptable para MVP.
++
++### Senior Developer Review (Pass 3)
++#### Action Items
++- [x] [Review][Patch] Enlace erróneo en Dashboard — to="/dashboard" debe ser to="/" [superadmin-frontend/src/pages/Dashboard.jsx:18]
++- [x] [Review][Patch] Reload al fallar login — el interceptor 401 recarga la página al ingresar mal la contraseña [superadmin-frontend/src/services/api.js:40]
++- [x] [Review][Patch] CSP connect-src hardcodeado — rompe despliegues en otros dominios [superadmin-frontend/nginx.conf]
++- [x] [Review][Defer] oxlint en vez de eslint, crypto-js no solicitado — deferred, fue autorizado previamente.
+diff --git a/_bmad-output/implementation-artifacts/deferred-work.md b/_bmad-output/implementation-artifacts/deferred-work.md
+index b5b4df2..935faf3 100644
+--- a/_bmad-output/implementation-artifacts/deferred-work.md
++++ b/_bmad-output/implementation-artifacts/deferred-work.md
+@@ -188,3 +188,17 @@
+ - Mensajes fallidos se eliminan de la UI en vez de mostrar un estado "Fallido" — deferred, comportamiento de MVP
+ - ChatListScreen no tiene socket en vivo y recarga ineficientemente en focus — deferred, comportamiento de MVP
+ - KeyboardAvoidingView offset en iOS es frágil — deferred, comportamiento de MVP
++
++## Deferred from: code review of 1-1-autenticacion-base-superadmin.md (2026-07-28)
++- Useless Rate Limiter in Distributed Environments — deferred, pre-existing
++- Reverse Proxy Rate Limiting Blindness — deferred, pre-existing
++- Absence of Privileged Audit Logging — deferred, pre-existing
++- Incomplete Authentication Architecture (Refresh Tokens) — deferred, pre-existing
++
++## Deferred from: re-review of 1-1-autenticacion-base-superadmin.md (2026-07-28)
++- Synchronous setInterval blocking in rate limiter — deferred, edge case for high scale
++- Lack of account lockout for brute-force — deferred, out of scope for MVP
++- No Prisma migration files yet - deferred, done in a separate step
++
++## Deferred from: code review of 1-2-infraestructura-del-dashboard-spa.md (2026-07-28)
++- Dashboard usa dummy data — deferred, placeholder explícito para historias futuras
+diff --git a/_bmad-output/implementation-artifacts/sprint-status.yaml b/_bmad-output/implementation-artifacts/sprint-status.yaml
+index 4123b46..3049544 100644
+--- a/_bmad-output/implementation-artifacts/sprint-status.yaml
++++ b/_bmad-output/implementation-artifacts/sprint-status.yaml
+@@ -97,3 +97,9 @@ development_status:
+   6-3-mobile-chat-interface: done
+   6-4-mobile-ai-assistance: done
+   epic-6-retrospective: optional
++  epic-saas-1: in-progress
++  1-1-autenticacion-base-superadmin: done
++  1-2-infraestructura-del-dashboard-spa: done
++  1-3-listado-global-de-inquilinos: backlog
++  1-4-alta-de-inquilinos: backlog
++  1-5-suspension-de-inquilinos: backlog
+diff --git a/backend/src/app.js b/backend/src/app.js
+index 2465f32..b7c2ad8 100644
+--- a/backend/src/app.js
++++ b/backend/src/app.js
+@@ -8,6 +8,7 @@ const errorHandler = require('./middleware/errorHandler');
+ const healthRoutes = require('./routes/health.routes');
+ const swaggerRoutes = require('./routes/swagger.routes');
+ const authRoutes = require('./routes/auth.routes');
++const superadminAuthRoutes = require('./routes/superadmin.auth.routes');
+ const usersRoutes = require('./routes/users.routes');
+ const groupsRoutes = require('./routes/groups.routes');
+ const tenantRoutes = require('./routes/tenant.routes');
+@@ -30,7 +31,24 @@ app.use(helmet({
+     },
+   },
+ }));
+-app.use(cors());
++const allowedOrigins = [
++  'http://localhost:3000',
++  'http://localhost:5173',
++  'http://localhost:5174',
++  'https://salesflow.algor.mx',
++  'https://admin.salesflow.app',
++  process.env.FRONTEND_URL?.replace(/\/$/, '')
++].filter(Boolean);
++
++app.use(cors({
++  origin: function (origin, callback) {
++    if (!origin || allowedOrigins.includes(origin)) {
++      callback(null, true);
++    } else {
++      callback(new Error('Not allowed by CORS'));
++    }
++  }
++}));
+ app.use(morgan('[:date[iso]] :remote-addr - :method :url :status :res[content-length] - :response-time ms'));
+ app.use(express.json({ limit: '10mb' }));
+ app.use(express.urlencoded({ extended: true }));
+@@ -45,6 +63,7 @@ app.use('/uploads', authenticate, (req, res, next) => {
+ }, express.static(path.join(__dirname, '../uploads')));
+ 
+ app.use('/api/auth', authRoutes);
++app.use('/api/superadmin/auth', superadminAuthRoutes);
+ app.use('/api/health', healthRoutes);
+ app.use('/api/users', usersRoutes);
+ app.use('/api/groups', groupsRoutes);
+diff --git a/docker-compose.yml b/docker-compose.yml
+index 4feb521..7eec7d1 100644
+--- a/docker-compose.yml
++++ b/docker-compose.yml
+@@ -39,6 +39,19 @@ services:
+     volumes:
+       - app_uploads:/app/backend/uploads
+ 
++  superadmin-frontend:
++    build:
++      context: ./superadmin-frontend
++      dockerfile: Dockerfile
++      args:
++        VITE_API_URL: ${VITE_API_URL:-http://localhost:4005}
++    container_name: salesflow-superadmin
++    restart: unless-stopped
++    ports:
++      - "127.0.0.1:4006:80"
++    depends_on:
++      - app
++
+ volumes:
+   postgres_data:
+   app_uploads:
+diff --git a/superadmin-frontend/.gitignore b/superadmin-frontend/.gitignore
+new file mode 100644
+index 0000000..a547bf3
+--- /dev/null
++++ b/superadmin-frontend/.gitignore
+@@ -0,0 +1,24 @@
++# Logs
++logs
++*.log
++npm-debug.log*
++yarn-debug.log*
++yarn-error.log*
++pnpm-debug.log*
++lerna-debug.log*
++
++node_modules
++dist
++dist-ssr
++*.local
++
++# Editor directories and files
++.vscode/*
++!.vscode/extensions.json
++.idea
++.DS_Store
++*.suo
++*.ntvs*
++*.njsproj
++*.sln
++*.sw?
+diff --git a/superadmin-frontend/.oxlintrc.json b/superadmin-frontend/.oxlintrc.json
+new file mode 100644
+index 0000000..1255078
+--- /dev/null
++++ b/superadmin-frontend/.oxlintrc.json
+@@ -0,0 +1,8 @@
++{
++  "$schema": "./node_modules/oxlint/configuration_schema.json",
++  "plugins": ["react", "oxc"],
++  "rules": {
++    "react/rules-of-hooks": "error",
++    "react/only-export-components": ["warn", { "allowConstantExport": true }]
++  }
++}
+diff --git a/superadmin-frontend/Dockerfile b/superadmin-frontend/Dockerfile
+new file mode 100644
+index 0000000..2ec29ca
+--- /dev/null
++++ b/superadmin-frontend/Dockerfile
+@@ -0,0 +1,27 @@
++# Build stage
++FROM node:22-alpine AS build
++
++WORKDIR /app
++
++# Install dependencies
++COPY package*.json ./
++RUN npm ci
++
++# Copy source and build
++COPY . .
++ARG VITE_API_URL
++ENV VITE_API_URL=$VITE_API_URL
++RUN npm run build
++
++# Serve stage
++FROM nginx:alpine
++
++# Copy custom nginx config
++COPY nginx.conf /etc/nginx/conf.d/default.conf
++
++# Copy built assets from build stage
++COPY --from=build /app/dist /usr/share/nginx/html
++
++EXPOSE 80
++
++CMD ["nginx", "-g", "daemon off;"]
+diff --git a/superadmin-frontend/README.md b/superadmin-frontend/README.md
+new file mode 100644
+index 0000000..d937833
+--- /dev/null
++++ b/superadmin-frontend/README.md
+@@ -0,0 +1,16 @@
++# React + Vite
++
++This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
++
++Currently, two official plugins are available:
++
++- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
++- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
++
++## React Compiler
++
++The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
++
++## Expanding the Oxlint configuration
++
++If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+diff --git a/superadmin-frontend/index.html b/superadmin-frontend/index.html
+new file mode 100644
+index 0000000..8bbaf97
+--- /dev/null
++++ b/superadmin-frontend/index.html
+@@ -0,0 +1,13 @@
++<!doctype html>
++<html lang="en">
++  <head>
++    <meta charset="UTF-8" />
++    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
++    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
++    <title>superadmin-frontend</title>
++  </head>
++  <body>
++    <div id="root"></div>
++    <script type="module" src="/src/main.jsx"></script>
++  </body>
++</html>
+diff --git a/superadmin-frontend/nginx.conf b/superadmin-frontend/nginx.conf
+new file mode 100644
+index 0000000..b8b8199
+--- /dev/null
++++ b/superadmin-frontend/nginx.conf
+@@ -0,0 +1,31 @@
++server {
++    listen 80;
++    server_name localhost;
++
++    # Security Headers
++    add_header X-Content-Type-Options "nosniff" always;
++    add_header X-Frame-Options "SAMEORIGIN" always;
++    add_header X-XSS-Protection "1; mode=block" always;
++    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
++    add_header Content-Security-Policy "default-src 'self'; connect-src *; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;" always;
++
++    root /usr/share/nginx/html;
++    index index.html;
++
++    # Fallback to index.html for React Router
++    location / {
++        try_files $uri $uri/ /index.html?$args;
++    }
++
++    # Static assets caching
++    location /assets/ {
++        expires 1y;
++        add_header Cache-Control "public, max-age=31536000, immutable";
++    }
++
++    # Don't cache index.html
++    location = /index.html {
++        expires -1;
++        add_header Cache-Control "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0";
++    }
++}
+diff --git a/superadmin-frontend/package.json b/superadmin-frontend/package.json
+new file mode 100644
+index 0000000..0b84c52
+--- /dev/null
++++ b/superadmin-frontend/package.json
+@@ -0,0 +1,29 @@
++{
++  "name": "superadmin-frontend",
++  "private": true,
++  "version": "0.0.0",
++  "type": "module",
++  "scripts": {
++    "dev": "vite",
++    "build": "vite build",
++    "lint": "oxlint",
++    "preview": "vite preview"
++  },
++  "dependencies": {
++    "crypto-js": "^4.2.0",
++    "lucide-react": "^0.577.0",
++    "react": "^19.2.7",
++    "react-dom": "^19.2.7",
++    "react-router-dom": "^7.15.0",
++    "zustand": "^5.0.14"
++  },
++  "devDependencies": {
++    "@tailwindcss/vite": "^4.2.4",
++    "@types/react": "^19.2.17",
++    "@types/react-dom": "^19.2.3",
++    "@vitejs/plugin-react": "^6.0.3",
++    "oxlint": "^1.71.0",
++    "tailwindcss": "^4.2.4",
++    "vite": "^8.1.1"
++  }
++}
+diff --git a/superadmin-frontend/public/favicon.svg b/superadmin-frontend/public/favicon.svg
+new file mode 100644
+index 0000000..6893eb1
+--- /dev/null
++++ b/superadmin-frontend/public/favicon.svg
+@@ -0,0 +1 @@
++<svg xmlns="http://www.w3.org/2000/svg" width="48" height="46" fill="none" viewBox="0 0 48 46"><path fill="#863bff" d="M25.946 44.938c-.664.845-2.021.375-2.021-.698V33.937a2.26 2.26 0 0 0-2.262-2.262H10.287c-.92 0-1.456-1.04-.92-1.788l7.48-10.471c1.07-1.497 0-3.578-1.842-3.578H1.237c-.92 0-1.456-1.04-.92-1.788L10.013.474c.214-.297.556-.474.92-.474h28.894c.92 0 1.456 1.04.92 1.788l-7.48 10.471c-1.07 1.498 0 3.579 1.842 3.579h11.377c.943 0 1.473 1.088.89 1.83L25.947 44.94z" style="fill:#863bff;fill:color(display-p3 .5252 .23 1);fill-opacity:1"/><mask id="a" width="48" height="46" x="0" y="0" maskUnits="userSpaceOnUse" style="mask-type:alpha"><path fill="#000" d="M25.842 44.938c-.664.844-2.021.375-2.021-.698V33.937a2.26 2.26 0 0 0-2.262-2.262H10.183c-.92 0-1.456-1.04-.92-1.788l7.48-10.471c1.07-1.498 0-3.579-1.842-3.579H1.133c-.92 0-1.456-1.04-.92-1.787L9.91.473c.214-.297.556-.474.92-.474h28.894c.92 0 1.456 1.04.92 1.788l-7.48 10.471c-1.07 1.498 0 3.578 1.842 3.578h11.377c.943 0 1.473 1.088.89 1.832L25.843 44.94z" style="fill:#000;fill-opacity:1"/></mask><g mask="url(#a)"><g filter="url(#b)"><ellipse cx="5.508" cy="14.704" fill="#ede6ff" rx="5.508" ry="14.704" style="fill:#ede6ff;fill:color(display-p3 .9275 .9033 1);fill-opacity:1" transform="matrix(.00324 1 1 -.00324 -4.47 31.516)"/></g><g filter="url(#c)"><ellipse cx="10.399" cy="29.851" fill="#ede6ff" rx="10.399" ry="29.851" style="fill:#ede6ff;fill:color(display-p3 .9275 .9033 1);fill-opacity:1" transform="matrix(.00324 1 1 -.00324 -39.328 7.883)"/></g><g filter="url(#d)"><ellipse cx="5.508" cy="30.487" fill="#7e14ff" rx="5.508" ry="30.487" style="fill:#7e14ff;fill:color(display-p3 .4922 .0767 1);fill-opacity:1" transform="rotate(89.814 -25.913 -14.639)scale(1 -1)"/></g><g filter="url(#e)"><ellipse cx="5.508" cy="30.599" fill="#7e14ff" rx="5.508" ry="30.599" style="fill:#7e14ff;fill:color(display-p3 .4922 .0767 1);fill-opacity:1" transform="rotate(89.814 -32.644 -3.334)scale(1 -1)"/></g><g filter="url(#f)"><ellipse cx="5.508" cy="30.599" fill="#7e14ff" rx="5.508" ry="30.599" style="fill:#7e14ff;fill:color(display-p3 .4922 .0767 1);fill-opacity:1" transform="matrix(.00324 1 1 -.00324 -34.34 30.47)"/></g><g filter="url(#g)"><ellipse cx="14.072" cy="22.078" fill="#ede6ff" rx="14.072" ry="22.078" style="fill:#ede6ff;fill:color(display-p3 .9275 .9033 1);fill-opacity:1" transform="rotate(93.35 24.506 48.493)scale(-1 1)"/></g><g filter="url(#h)"><ellipse cx="3.47" cy="21.501" fill="#7e14ff" rx="3.47" ry="21.501" style="fill:#7e14ff;fill:color(display-p3 .4922 .0767 1);fill-opacity:1" transform="rotate(89.009 28.708 47.59)scale(-1 1)"/></g><g filter="url(#i)"><ellipse cx="3.47" cy="21.501" fill="#7e14ff" rx="3.47" ry="21.501" style="fill:#7e14ff;fill:color(display-p3 .4922 .0767 1);fill-opacity:1" transform="rotate(89.009 28.708 47.59)scale(-1 1)"/></g><g filter="url(#j)"><ellipse cx=".387" cy="8.972" fill="#7e14ff" rx="4.407" ry="29.108" style="fill:#7e14ff;fill:color(display-p3 .4922 .0767 1);fill-opacity:1" transform="rotate(39.51 .387 8.972)"/></g><g filter="url(#k)"><ellipse cx="47.523" cy="-6.092" fill="#7e14ff" rx="4.407" ry="29.108" style="fill:#7e14ff;fill:color(display-p3 .4922 .0767 1);fill-opacity:1" transform="rotate(37.892 47.523 -6.092)"/></g><g filter="url(#l)"><ellipse cx="41.412" cy="6.333" fill="#47bfff" rx="5.971" ry="9.665" style="fill:#47bfff;fill:color(display-p3 .2799 .748 1);fill-opacity:1" transform="rotate(37.892 41.412 6.333)"/></g><g filter="url(#m)"><ellipse cx="-1.879" cy="38.332" fill="#7e14ff" rx="4.407" ry="29.108" style="fill:#7e14ff;fill:color(display-p3 .4922 .0767 1);fill-opacity:1" transform="rotate(37.892 -1.88 38.332)"/></g><g filter="url(#n)"><ellipse cx="-1.879" cy="38.332" fill="#7e14ff" rx="4.407" ry="29.108" style="fill:#7e14ff;fill:color(display-p3 .4922 .0767 1);fill-opacity:1" transform="rotate(37.892 -1.88 38.332)"/></g><g filter="url(#o)"><ellipse cx="35.651" cy="29.907" fill="#7e14ff" rx="4.407" ry="29.108" style="fill:#7e14ff;fill:color(display-p3 .4922 .0767 1);fill-opacity:1" transform="rotate(37.892 35.651 29.907)"/></g><g filter="url(#p)"><ellipse cx="38.418" cy="32.4" fill="#47bfff" rx="5.971" ry="15.297" style="fill:#47bfff;fill:color(display-p3 .2799 .748 1);fill-opacity:1" transform="rotate(37.892 38.418 32.4)"/></g></g><defs><filter id="b" width="60.045" height="41.654" x="-19.77" y="16.149" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17158" stdDeviation="7.659"/></filter><filter id="c" width="90.34" height="51.437" x="-54.613" y="-7.533" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17158" stdDeviation="7.659"/></filter><filter id="d" width="79.355" height="29.4" x="-49.64" y="2.03" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17158" stdDeviation="4.596"/></filter><filter id="e" width="79.579" height="29.4" x="-45.045" y="20.029" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17158" stdDeviation="4.596"/></filter><filter id="f" width="79.579" height="29.4" x="-43.513" y="21.178" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17158" stdDeviation="4.596"/></filter><filter id="g" width="74.749" height="58.852" x="15.756" y="-17.901" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17158" stdDeviation="7.659"/></filter><filter id="h" width="61.377" height="25.362" x="23.548" y="2.284" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17158" stdDeviation="4.596"/></filter><filter id="i" width="61.377" height="25.362" x="23.548" y="2.284" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17158" stdDeviation="4.596"/></filter><filter id="j" width="56.045" height="63.649" x="-27.636" y="-22.853" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17158" stdDeviation="4.596"/></filter><filter id="k" width="54.814" height="64.646" x="20.116" y="-38.415" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17158" stdDeviation="4.596"/></filter><filter id="l" width="33.541" height="35.313" x="24.641" y="-11.323" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17158" stdDeviation="4.596"/></filter><filter id="m" width="54.814" height="64.646" x="-29.286" y="6.009" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17158" stdDeviation="4.596"/></filter><filter id="n" width="54.814" height="64.646" x="-29.286" y="6.009" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17158" stdDeviation="4.596"/></filter><filter id="o" width="54.814" height="64.646" x="8.244" y="-2.416" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17158" stdDeviation="4.596"/></filter><filter id="p" width="39.409" height="43.623" x="18.713" y="10.588" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17158" stdDeviation="4.596"/></filter></defs></svg>
+\ No newline at end of file
+diff --git a/superadmin-frontend/public/icons.svg b/superadmin-frontend/public/icons.svg
+new file mode 100644
+index 0000000..e952219
+--- /dev/null
++++ b/superadmin-frontend/public/icons.svg
+@@ -0,0 +1,24 @@
++<svg xmlns="http://www.w3.org/2000/svg">
++  <symbol id="bluesky-icon" viewBox="0 0 16 17">
++    <g clip-path="url(#bluesky-clip)"><path fill="#08060d" d="M7.75 7.735c-.693-1.348-2.58-3.86-4.334-5.097-1.68-1.187-2.32-.981-2.74-.79C.188 2.065.1 2.812.1 3.251s.241 3.602.398 4.13c.52 1.744 2.367 2.333 4.07 2.145-2.495.37-4.71 1.278-1.805 4.512 3.196 3.309 4.38-.71 4.987-2.746.608 2.036 1.307 5.91 4.93 2.746 2.72-2.746.747-4.143-1.747-4.512 1.702.189 3.55-.4 4.07-2.145.156-.528.397-3.691.397-4.13s-.088-1.186-.575-1.406c-.42-.19-1.06-.395-2.741.79-1.755 1.24-3.64 3.752-4.334 5.099"/></g>
++    <defs><clipPath id="bluesky-clip"><path fill="#fff" d="M.1.85h15.3v15.3H.1z"/></clipPath></defs>
++  </symbol>
++  <symbol id="discord-icon" viewBox="0 0 20 19">
++    <path fill="#08060d" d="M16.224 3.768a14.5 14.5 0 0 0-3.67-1.153c-.158.286-.343.67-.47.976a13.5 13.5 0 0 0-4.067 0c-.128-.306-.317-.69-.476-.976A14.4 14.4 0 0 0 3.868 3.77C1.546 7.28.916 10.703 1.231 14.077a14.7 14.7 0 0 0 4.5 2.306q.545-.748.965-1.587a9.5 9.5 0 0 1-1.518-.74q.191-.14.372-.293c2.927 1.369 6.107 1.369 8.999 0q.183.152.372.294-.723.437-1.52.74.418.838.963 1.588a14.6 14.6 0 0 0 4.504-2.308c.37-3.911-.63-7.302-2.644-10.309m-9.13 8.234c-.878 0-1.599-.82-1.599-1.82 0-.998.705-1.82 1.6-1.82.894 0 1.614.82 1.599 1.82.001 1-.705 1.82-1.6 1.82m5.91 0c-.878 0-1.599-.82-1.599-1.82 0-.998.705-1.82 1.6-1.82.893 0 1.614.82 1.599 1.82 0 1-.706 1.82-1.6 1.82"/>
++  </symbol>
++  <symbol id="documentation-icon" viewBox="0 0 21 20">
++    <path fill="none" stroke="#aa3bff" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.35" d="m15.5 13.333 1.533 1.322c.645.555.967.833.967 1.178s-.322.623-.967 1.179L15.5 18.333m-3.333-5-1.534 1.322c-.644.555-.966.833-.966 1.178s.322.623.966 1.179l1.534 1.321"/>
++    <path fill="none" stroke="#aa3bff" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.35" d="M17.167 10.836v-4.32c0-1.41 0-2.117-.224-2.68-.359-.906-1.118-1.621-2.08-1.96-.599-.21-1.349-.21-2.848-.21-2.623 0-3.935 0-4.983.369-1.684.591-3.013 1.842-3.641 3.428C3 6.449 3 7.684 3 10.154v2.122c0 2.558 0 3.838.706 4.726q.306.383.713.671c.76.536 1.79.64 3.581.66"/>
++    <path fill="none" stroke="#aa3bff" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.35" d="M3 10a2.78 2.78 0 0 1 2.778-2.778c.555 0 1.209.097 1.748-.047.48-.129.854-.503.982-.982.145-.54.048-1.194.048-1.749a2.78 2.78 0 0 1 2.777-2.777"/>
++  </symbol>
++  <symbol id="github-icon" viewBox="0 0 19 19">
++    <path fill="#08060d" fill-rule="evenodd" d="M9.356 1.85C5.05 1.85 1.57 5.356 1.57 9.694a7.84 7.84 0 0 0 5.324 7.44c.387.079.528-.168.528-.376 0-.182-.013-.805-.013-1.454-2.165.467-2.616-.935-2.616-.935-.349-.91-.864-1.143-.864-1.143-.71-.48.051-.48.051-.48.787.051 1.2.805 1.2.805.695 1.194 1.817.857 2.268.649.064-.507.27-.857.49-1.052-1.728-.182-3.545-.857-3.545-3.87 0-.857.31-1.558.8-2.104-.078-.195-.349-1 .077-2.078 0 0 .657-.208 2.14.805a7.5 7.5 0 0 1 1.946-.26c.657 0 1.328.092 1.946.26 1.483-1.013 2.14-.805 2.14-.805.426 1.078.155 1.883.078 2.078.502.546.799 1.247.799 2.104 0 3.013-1.818 3.675-3.558 3.87.284.247.528.714.528 1.454 0 1.052-.012 1.896-.012 2.156 0 .208.142.455.528.377a7.84 7.84 0 0 0 5.324-7.441c.013-4.338-3.48-7.844-7.773-7.844" clip-rule="evenodd"/>
++  </symbol>
++  <symbol id="social-icon" viewBox="0 0 20 20">
++    <path fill="none" stroke="#aa3bff" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.35" d="M12.5 6.667a4.167 4.167 0 1 0-8.334 0 4.167 4.167 0 0 0 8.334 0"/>
++    <path fill="none" stroke="#aa3bff" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.35" d="M2.5 16.667a5.833 5.833 0 0 1 8.75-5.053m3.837.474.513 1.035c.07.144.257.282.414.309l.93.155c.596.1.736.536.307.965l-.723.73a.64.64 0 0 0-.152.531l.207.903c.164.715-.213.991-.84.618l-.872-.52a.63.63 0 0 0-.577 0l-.872.52c-.624.373-1.003.094-.84-.618l.207-.903a.64.64 0 0 0-.152-.532l-.723-.729c-.426-.43-.289-.864.306-.964l.93-.156a.64.64 0 0 0 .412-.31l.513-1.034c.28-.562.735-.562 1.012 0"/>
++  </symbol>
++  <symbol id="x-icon" viewBox="0 0 19 19">
++    <path fill="#08060d" fill-rule="evenodd" d="M1.893 1.98c.052.072 1.245 1.769 2.653 3.77l2.892 4.114c.183.261.333.48.333.486s-.068.089-.152.183l-.522.593-.765.867-3.597 4.087c-.375.426-.734.834-.798.905a1 1 0 0 0-.118.148c0 .01.236.017.664.017h.663l.729-.83c.4-.457.796-.906.879-.999a692 692 0 0 0 1.794-2.038c.034-.037.301-.34.594-.675l.551-.624.345-.392a7 7 0 0 1 .34-.374c.006 0 .93 1.306 2.052 2.903l2.084 2.965.045.063h2.275c1.87 0 2.273-.003 2.266-.021-.008-.02-1.098-1.572-3.894-5.547-2.013-2.862-2.28-3.246-2.273-3.266.008-.019.282-.332 2.085-2.38l2-2.274 1.567-1.782c.022-.028-.016-.03-.65-.03h-.674l-.3.342a871 871 0 0 1-1.782 2.025c-.067.075-.405.458-.75.852a100 100 0 0 1-.803.91c-.148.172-.299.344-.99 1.127-.304.343-.32.358-.345.327-.015-.019-.904-1.282-1.976-2.808L6.365 1.85H1.8zm1.782.91 8.078 11.294c.772 1.08 1.413 1.973 1.425 1.984.016.017.241.02 1.05.017l1.03-.004-2.694-3.766L7.796 5.75 5.722 2.852l-1.039-.004-1.039-.004z" clip-rule="evenodd"/>
++  </symbol>
++</svg>
+diff --git a/superadmin-frontend/src/App.jsx b/superadmin-frontend/src/App.jsx
+new file mode 100644
+index 0000000..8687988
+--- /dev/null
++++ b/superadmin-frontend/src/App.jsx
+@@ -0,0 +1,28 @@
++import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
++import ProtectedRoute from './components/ProtectedRoute';
++import Login from './pages/Login';
++import Dashboard from './pages/Dashboard';
++import useAuthStore from './store/authStore';
++
++function App() {
++  const token = useAuthStore((state) => state.token);
++
++  return (
++    <BrowserRouter>
++      <Routes>
++        <Route 
++          path="/login" 
++          element={token ? <Navigate to="/" replace /> : <Login />} 
++        />
++        
++        <Route element={<ProtectedRoute />}>
++          <Route path="/" element={<Dashboard />} />
++        </Route>
++        
++        <Route path="*" element={<Navigate to="/" replace />} />
++      </Routes>
++    </BrowserRouter>
++  );
++}
++
++export default App;
+diff --git a/superadmin-frontend/src/assets/hero.png b/superadmin-frontend/src/assets/hero.png
+new file mode 100644
+index 0000000..02251f4
+Binary files /dev/null and b/superadmin-frontend/src/assets/hero.png differ
+diff --git a/superadmin-frontend/src/assets/react.svg b/superadmin-frontend/src/assets/react.svg
+new file mode 100644
+index 0000000..6c87de9
+--- /dev/null
++++ b/superadmin-frontend/src/assets/react.svg
+@@ -0,0 +1 @@
++<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" aria-hidden="true" role="img" class="iconify iconify--logos" width="35.93" height="32" preserveAspectRatio="xMidYMid meet" viewBox="0 0 256 228"><path fill="#00D8FF" d="M210.483 73.824a171.49 171.49 0 0 0-8.24-2.597c.465-1.9.893-3.777 1.273-5.621c6.238-30.281 2.16-54.676-11.769-62.708c-13.355-7.7-35.196.329-57.254 19.526a171.23 171.23 0 0 0-6.375 5.848a155.866 155.866 0 0 0-4.241-3.917C100.759 3.829 77.587-4.822 63.673 3.233C50.33 10.957 46.379 33.89 51.995 62.588a170.974 170.974 0 0 0 1.892 8.48c-3.28.932-6.445 1.924-9.474 2.98C17.309 83.498 0 98.307 0 113.668c0 15.865 18.582 31.778 46.812 41.427a145.52 145.52 0 0 0 6.921 2.165a167.467 167.467 0 0 0-2.01 9.138c-5.354 28.2-1.173 50.591 12.134 58.266c13.744 7.926 36.812-.22 59.273-19.855a145.567 145.567 0 0 0 5.342-4.923a168.064 168.064 0 0 0 6.92 6.314c21.758 18.722 43.246 26.282 56.54 18.586c13.731-7.949 18.194-32.003 12.4-61.268a145.016 145.016 0 0 0-1.535-6.842c1.62-.48 3.21-.974 4.76-1.488c29.348-9.723 48.443-25.443 48.443-41.52c0-15.417-17.868-30.326-45.517-39.844Zm-6.365 70.984c-1.4.463-2.836.91-4.3 1.345c-3.24-10.257-7.612-21.163-12.963-32.432c5.106-11 9.31-21.767 12.459-31.957c2.619.758 5.16 1.557 7.61 2.4c23.69 8.156 38.14 20.213 38.14 29.504c0 9.896-15.606 22.743-40.946 31.14Zm-10.514 20.834c2.562 12.94 2.927 24.64 1.23 33.787c-1.524 8.219-4.59 13.698-8.382 15.893c-8.067 4.67-25.32-1.4-43.927-17.412a156.726 156.726 0 0 1-6.437-5.87c7.214-7.889 14.423-17.06 21.459-27.246c12.376-1.098 24.068-2.894 34.671-5.345a134.17 134.17 0 0 1 1.386 6.193ZM87.276 214.515c-7.882 2.783-14.16 2.863-17.955.675c-8.075-4.657-11.432-22.636-6.853-46.752a156.923 156.923 0 0 1 1.869-8.499c10.486 2.32 22.093 3.988 34.498 4.994c7.084 9.967 14.501 19.128 21.976 27.15a134.668 134.668 0 0 1-4.877 4.492c-9.933 8.682-19.886 14.842-28.658 17.94ZM50.35 144.747c-12.483-4.267-22.792-9.812-29.858-15.863c-6.35-5.437-9.555-10.836-9.555-15.216c0-9.322 13.897-21.212 37.076-29.293c2.813-.98 5.757-1.905 8.812-2.773c3.204 10.42 7.406 21.315 12.477 32.332c-5.137 11.18-9.399 22.249-12.634 32.792a134.718 134.718 0 0 1-6.318-1.979Zm12.378-84.26c-4.811-24.587-1.616-43.134 6.425-47.789c8.564-4.958 27.502 2.111 47.463 19.835a144.318 144.318 0 0 1 3.841 3.545c-7.438 7.987-14.787 17.08-21.808 26.988c-12.04 1.116-23.565 2.908-34.161 5.309a160.342 160.342 0 0 1-1.76-7.887Zm110.427 27.268a347.8 347.8 0 0 0-7.785-12.803c8.168 1.033 15.994 2.404 23.343 4.08c-2.206 7.072-4.956 14.465-8.193 22.045a381.151 381.151 0 0 0-7.365-13.322Zm-45.032-43.861c5.044 5.465 10.096 11.566 15.065 18.186a322.04 322.04 0 0 0-30.257-.006c4.974-6.559 10.069-12.652 15.192-18.18ZM82.802 87.83a323.167 323.167 0 0 0-7.227 13.238c-3.184-7.553-5.909-14.98-8.134-22.152c7.304-1.634 15.093-2.97 23.209-3.984a321.524 321.524 0 0 0-7.848 12.897Zm8.081 65.352c-8.385-.936-16.291-2.203-23.593-3.793c2.26-7.3 5.045-14.885 8.298-22.6a321.187 321.187 0 0 0 7.257 13.246c2.594 4.48 5.28 8.868 8.038 13.147Zm37.542 31.03c-5.184-5.592-10.354-11.779-15.403-18.433c4.902.192 9.899.29 14.978.29c5.218 0 10.376-.117 15.453-.343c-4.985 6.774-10.018 12.97-15.028 18.486Zm52.198-57.817c3.422 7.8 6.306 15.345 8.596 22.52c-7.422 1.694-15.436 3.058-23.88 4.071a382.417 382.417 0 0 0 7.859-13.026a347.403 347.403 0 0 0 7.425-13.565Zm-16.898 8.101a358.557 358.557 0 0 1-12.281 19.815a329.4 329.4 0 0 1-23.444.823c-7.967 0-15.716-.248-23.178-.732a310.202 310.202 0 0 1-12.513-19.846h.001a307.41 307.41 0 0 1-10.923-20.627a310.278 310.278 0 0 1 10.89-20.637l-.001.001a307.318 307.318 0 0 1 12.413-19.761c7.613-.576 15.42-.876 23.31-.876H128c7.926 0 15.743.303 23.354.883a329.357 329.357 0 0 1 12.335 19.695a358.489 358.489 0 0 1 11.036 20.54a329.472 329.472 0 0 1-11 20.722Zm22.56-122.124c8.572 4.944 11.906 24.881 6.52 51.026c-.344 1.668-.73 3.367-1.15 5.09c-10.622-2.452-22.155-4.275-34.23-5.408c-7.034-10.017-14.323-19.124-21.64-27.008a160.789 160.789 0 0 1 5.888-5.4c18.9-16.447 36.564-22.941 44.612-18.3ZM128 90.808c12.625 0 22.86 10.235 22.86 22.86s-10.235 22.86-22.86 22.86s-22.86-10.235-22.86-22.86s10.235-22.86 22.86-22.86Z"></path></svg>
+\ No newline at end of file
+diff --git a/superadmin-frontend/src/assets/vite.svg b/superadmin-frontend/src/assets/vite.svg
+new file mode 100644
+index 0000000..5101b67
+--- /dev/null
++++ b/superadmin-frontend/src/assets/vite.svg
+@@ -0,0 +1 @@
++<svg xmlns="http://www.w3.org/2000/svg" width="77" height="47" fill="none" aria-labelledby="vite-logo-title" viewBox="0 0 77 47"><title id="vite-logo-title">Vite</title><style>.parenthesis{fill:#000}@media (prefers-color-scheme:dark){.parenthesis{fill:#fff}}</style><path fill="#9135ff" d="M40.151 45.71c-.663.844-2.02.374-2.02-.699V34.708a2.26 2.26 0 0 0-2.262-2.262H24.493c-.92 0-1.457-1.04-.92-1.788l7.479-10.471c1.07-1.498 0-3.578-1.842-3.578H15.443c-.92 0-1.456-1.04-.92-1.788l9.696-13.576c.213-.297.556-.474.92-.474h28.894c.92 0 1.456 1.04.92 1.788l-7.48 10.472c-1.07 1.497 0 3.578 1.842 3.578h11.376c.944 0 1.474 1.087.89 1.83L40.153 45.712z"/><mask id="a" width="48" height="47" x="14" y="0" maskUnits="userSpaceOnUse" style="mask-type:alpha"><path fill="#000" d="M40.047 45.71c-.663.843-2.02.374-2.02-.699V34.708a2.26 2.26 0 0 0-2.262-2.262H24.389c-.92 0-1.457-1.04-.92-1.788l7.479-10.472c1.07-1.497 0-3.578-1.842-3.578H15.34c-.92 0-1.456-1.04-.92-1.788l9.696-13.575c.213-.297.556-.474.92-.474H53.93c.92 0 1.456 1.04.92 1.788L47.37 13.03c-1.07 1.498 0 3.578 1.842 3.578h11.376c.944 0 1.474 1.088.89 1.831L40.049 45.712z"/></mask><g mask="url(#a)"><g filter="url(#b)"><ellipse cx="5.508" cy="14.704" fill="#eee6ff" rx="5.508" ry="14.704" transform="rotate(269.814 20.96 11.29)scale(-1 1)"/></g><g filter="url(#c)"><ellipse cx="10.399" cy="29.851" fill="#eee6ff" rx="10.399" ry="29.851" transform="rotate(89.814 -16.902 -8.275)scale(1 -1)"/></g><g filter="url(#d)"><ellipse cx="5.508" cy="30.487" fill="#8900ff" rx="5.508" ry="30.487" transform="rotate(89.814 -19.197 -7.127)scale(1 -1)"/></g><g filter="url(#e)"><ellipse cx="5.508" cy="30.599" fill="#8900ff" rx="5.508" ry="30.599" transform="rotate(89.814 -25.928 4.177)scale(1 -1)"/></g><g filter="url(#f)"><ellipse cx="5.508" cy="30.599" fill="#8900ff" rx="5.508" ry="30.599" transform="rotate(89.814 -25.738 5.52)scale(1 -1)"/></g><g filter="url(#g)"><ellipse cx="14.072" cy="22.078" fill="#eee6ff" rx="14.072" ry="22.078" transform="rotate(93.35 31.245 55.578)scale(-1 1)"/></g><g filter="url(#h)"><ellipse cx="3.47" cy="21.501" fill="#8900ff" rx="3.47" ry="21.501" transform="rotate(89.009 35.419 55.202)scale(-1 1)"/></g><g filter="url(#i)"><ellipse cx="3.47" cy="21.501" fill="#8900ff" rx="3.47" ry="21.501" transform="rotate(89.009 35.419 55.202)scale(-1 1)"/></g><g filter="url(#j)"><ellipse cx="14.592" cy="9.743" fill="#8900ff" rx="4.407" ry="29.108" transform="rotate(39.51 14.592 9.743)"/></g><g filter="url(#k)"><ellipse cx="61.728" cy="-5.321" fill="#8900ff" rx="4.407" ry="29.108" transform="rotate(37.892 61.728 -5.32)"/></g><g filter="url(#l)"><ellipse cx="55.618" cy="7.104" fill="#00c2ff" rx="5.971" ry="9.665" transform="rotate(37.892 55.618 7.104)"/></g><g filter="url(#m)"><ellipse cx="12.326" cy="39.103" fill="#8900ff" rx="4.407" ry="29.108" transform="rotate(37.892 12.326 39.103)"/></g><g filter="url(#n)"><ellipse cx="12.326" cy="39.103" fill="#8900ff" rx="4.407" ry="29.108" transform="rotate(37.892 12.326 39.103)"/></g><g filter="url(#o)"><ellipse cx="49.857" cy="30.678" fill="#8900ff" rx="4.407" ry="29.108" transform="rotate(37.892 49.857 30.678)"/></g><g filter="url(#p)"><ellipse cx="52.623" cy="33.171" fill="#00c2ff" rx="5.971" ry="15.297" transform="rotate(37.892 52.623 33.17)"/></g></g><path d="M6.919 0c-9.198 13.166-9.252 33.575 0 46.789h6.215c-9.25-13.214-9.196-33.623 0-46.789zm62.424 0h-6.215c9.198 13.166 9.252 33.575 0 46.789h6.215c9.25-13.214 9.196-33.623 0-46.789" class="parenthesis"/><defs><filter id="b" width="60.045" height="41.654" x="-5.564" y="16.92" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17286" stdDeviation="7.659"/></filter><filter id="c" width="90.34" height="51.437" x="-40.407" y="-6.762" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17286" stdDeviation="7.659"/></filter><filter id="d" width="79.355" height="29.4" x="-35.435" y="2.801" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17286" stdDeviation="4.596"/></filter><filter id="e" width="79.579" height="29.4" x="-30.84" y="20.8" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17286" stdDeviation="4.596"/></filter><filter id="f" width="79.579" height="29.4" x="-29.307" y="21.949" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17286" stdDeviation="4.596"/></filter><filter id="g" width="74.749" height="58.852" x="29.961" y="-17.13" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17286" stdDeviation="7.659"/></filter><filter id="h" width="61.377" height="25.362" x="37.754" y="3.055" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17286" stdDeviation="4.596"/></filter><filter id="i" width="61.377" height="25.362" x="37.754" y="3.055" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17286" stdDeviation="4.596"/></filter><filter id="j" width="56.045" height="63.649" x="-13.43" y="-22.082" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17286" stdDeviation="4.596"/></filter><filter id="k" width="54.814" height="64.646" x="34.321" y="-37.644" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17286" stdDeviation="4.596"/></filter><filter id="l" width="33.541" height="35.313" x="38.847" y="-10.552" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17286" stdDeviation="4.596"/></filter><filter id="m" width="54.814" height="64.646" x="-15.081" y="6.78" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17286" stdDeviation="4.596"/></filter><filter id="n" width="54.814" height="64.646" x="-15.081" y="6.78" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17286" stdDeviation="4.596"/></filter><filter id="o" width="54.814" height="64.646" x="22.45" y="-1.645" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17286" stdDeviation="4.596"/></filter><filter id="p" width="39.409" height="43.623" x="32.919" y="11.36" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17286" stdDeviation="4.596"/></filter></defs></svg>
+diff --git a/superadmin-frontend/src/components/ProtectedRoute.jsx b/superadmin-frontend/src/components/ProtectedRoute.jsx
+new file mode 100644
+index 0000000..c5b3649
+--- /dev/null
++++ b/superadmin-frontend/src/components/ProtectedRoute.jsx
+@@ -0,0 +1,12 @@
++import { Navigate, Outlet } from 'react-router-dom';
++import useAuthStore from '../store/authStore';
++
++export default function ProtectedRoute() {
++  const token = useAuthStore((state) => state.token);
++
++  if (!token) {
++    return <Navigate to="/login" replace />;
++  }
++
++  return <Outlet />;
++}
+diff --git a/superadmin-frontend/src/index.css b/superadmin-frontend/src/index.css
+new file mode 100644
+index 0000000..75395c3
+--- /dev/null
++++ b/superadmin-frontend/src/index.css
+@@ -0,0 +1,12 @@
++@import "tailwindcss";
++
++:root {
++  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
++  line-height: 1.5;
++  font-weight: 400;
++}
++
++body {
++  margin: 0;
++  min-height: 100vh;
++}
+diff --git a/superadmin-frontend/src/main.jsx b/superadmin-frontend/src/main.jsx
+new file mode 100644
+index 0000000..b9a1a6d
+--- /dev/null
++++ b/superadmin-frontend/src/main.jsx
+@@ -0,0 +1,10 @@
++import { StrictMode } from 'react'
++import { createRoot } from 'react-dom/client'
++import './index.css'
++import App from './App.jsx'
++
++createRoot(document.getElementById('root')).render(
++  <StrictMode>
++    <App />
++  </StrictMode>,
++)
+diff --git a/superadmin-frontend/src/pages/Dashboard.jsx b/superadmin-frontend/src/pages/Dashboard.jsx
+new file mode 100644
+index 0000000..00f9d44
+--- /dev/null
++++ b/superadmin-frontend/src/pages/Dashboard.jsx
+@@ -0,0 +1,80 @@
++import useAuthStore from '../store/authStore';
++import { Link } from 'react-router-dom';
++import { LogOut, LayoutDashboard, Users, CreditCard } from 'lucide-react';
++
++export default function Dashboard() {
++  const { user, logout } = useAuthStore();
++
++  return (
++    <div className="min-h-screen bg-slate-950 text-white flex">
++      {/* Sidebar */}
++      <aside className="w-64 border-r border-slate-800 bg-slate-900/50 p-6 flex flex-col h-screen sticky top-0">
++        <div className="mb-10">
++          <h1 className="text-xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
++            Superadmin
++          </h1>
++          <p className="text-xs text-slate-500 mt-1 uppercase tracking-wider font-semibold">Salesflow Platform</p>
++        </div>
++
++        <nav className="flex-1 space-y-2">
++          <Link to="/" className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-blue-500/10 text-blue-400 font-medium">
++            <LayoutDashboard size={18} />
++            Dashboard
++          </Link>
++          <Link to="/tenants" className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800/50 transition-colors">
++            <Users size={18} />
++            Inquilinos
++          </Link>
++          <Link to="/licenses" className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800/50 transition-colors">
++            <CreditCard size={18} />
++            Licencias
++          </Link>
++        </nav>
++
++        <div className="mt-auto pt-6 border-t border-slate-800">
++          <div className="flex items-center justify-between">
++            <div className="overflow-hidden">
++              <p className="text-sm font-medium truncate">{user?.name || 'Admin'}</p>
++              <p className="text-xs text-slate-500 truncate">{user?.email}</p>
++            </div>
++            <button
++              onClick={logout}
++              className="p-2 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
++              title="Cerrar sesión"
++            >
++              <LogOut size={18} />
++            </button>
++          </div>
++        </div>
++      </aside>
++
++      {/* Main Content */}
++      <main className="flex-1 p-8 lg:p-12 overflow-y-auto">
++        <header className="mb-10">
++          <h2 className="text-3xl font-semibold tracking-tight">Bienvenido de nuevo</h2>
++          <p className="text-slate-400 mt-1">Aquí puedes monitorear y administrar toda la plataforma SaaS.</p>
++        </header>
++
++        {/* Empty State Grid */}
++        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
++          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-sm">
++            <h3 className="text-slate-400 text-sm font-medium mb-2">Total Tenants</h3>
++            <p className="text-3xl font-bold">--</p>
++          </div>
++          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-sm">
++            <h3 className="text-slate-400 text-sm font-medium mb-2">Tokens IA (Mensual)</h3>
++            <p className="text-3xl font-bold">--</p>
++          </div>
++          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-sm">
++            <h3 className="text-slate-400 text-sm font-medium mb-2">Usuarios Activos</h3>
++            <p className="text-3xl font-bold">--</p>
++          </div>
++        </div>
++        
++        <div className="mt-8 border-2 border-dashed border-slate-800 rounded-2xl h-64 flex items-center justify-center text-slate-500">
++          El resto del dashboard se implementará en historias futuras.
++        </div>
++      </main>
++    </div>
++  );
++}
+diff --git a/superadmin-frontend/src/pages/Login.jsx b/superadmin-frontend/src/pages/Login.jsx
+new file mode 100644
+index 0000000..f29ab7f
+--- /dev/null
++++ b/superadmin-frontend/src/pages/Login.jsx
+@@ -0,0 +1,119 @@
++import { useState } from 'react';
++import { useNavigate } from 'react-router-dom';
++import { Shield, KeyRound, ArrowRight, Loader2 } from 'lucide-react';
++import { api } from '../services/api';
++import useAuthStore from '../store/authStore';
++
++export default function Login() {
++  const [email, setEmail] = useState('');
++  const [password, setPassword] = useState('');
++  const [error, setError] = useState('');
++  const [loading, setLoading] = useState(false);
++  const navigate = useNavigate();
++  const setAuth = useAuthStore((state) => state.setAuth);
++
++  const handleSubmit = async (e) => {
++    e.preventDefault();
++    setError('');
++    setLoading(true);
++
++    try {
++      const response = await api.post('/api/superadmin/auth/login', { email: email.trim(), password });
++      
++      if (response && response.success && response.data) {
++        setAuth(response.data.token, response.data.admin);
++        navigate('/');
++      } else {
++        throw new Error('Formato de respuesta inválido');
++      }
++    } catch (err) {
++      if (err.status === 429) {
++        setError('Demasiados intentos. Por favor, espere un minuto.');
++      } else if (err.status === 401 || err.status === 403) {
++        setError('Credenciales inválidas o acceso denegado.');
++      } else {
++        setError(err.message || 'Ocurrió un error al iniciar sesión.');
++      }
++    } finally {
++      setLoading(false);
++    }
++  };
++
++  return (
++    <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4 relative overflow-hidden">
++      {/* Background decoration */}
++      <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] bg-blue-600/20 rounded-full blur-[120px] pointer-events-none"></div>
++      <div className="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] bg-purple-600/20 rounded-full blur-[120px] pointer-events-none"></div>
++
++      <div className="w-full max-w-md bg-slate-900/60 backdrop-blur-xl border border-slate-800 rounded-2xl shadow-2xl p-8 relative z-10">
++        <div className="text-center mb-10">
++          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-blue-500/10 text-blue-400 mb-6 border border-blue-500/20 shadow-[0_0_15px_rgba(59,130,246,0.15)]">
++            <Shield size={32} strokeWidth={1.5} />
++          </div>
++          <h1 className="text-3xl font-bold text-white tracking-tight">Superadmin Portal</h1>
++          <p className="text-slate-400 mt-2 text-sm">Identifícate para gestionar la plataforma</p>
++        </div>
++
++        {error && (
++          <div className="mb-6 p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm font-medium animate-in fade-in slide-in-from-top-2">
++            {error}
++          </div>
++        )}
++
++        <form onSubmit={handleSubmit} className="space-y-6">
++          <div className="space-y-2">
++            <label className="text-sm font-medium text-slate-300 ml-1">Correo Electrónico</label>
++            <div className="relative">
++              <input
++                type="email"
++                required
++                value={email}
++                onChange={(e) => setEmail(e.target.value)}
++                className="w-full bg-slate-950/50 border border-slate-700 text-white rounded-xl px-4 py-3.5 outline-none transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
++                placeholder="admin@salesflow.app"
++              />
++            </div>
++          </div>
++
++          <div className="space-y-2">
++            <label className="text-sm font-medium text-slate-300 ml-1">Contraseña</label>
++            <div className="relative">
++              <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none text-slate-500">
++                <KeyRound size={18} />
++              </div>
++              <input
++                type="password"
++                required
++                value={password}
++                onChange={(e) => setPassword(e.target.value)}
++                className="w-full bg-slate-950/50 border border-slate-700 text-white rounded-xl pl-11 pr-4 py-3.5 outline-none transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
++                placeholder="••••••••••••"
++              />
++            </div>
++          </div>
++
++          <button
++            type="submit"
++            disabled={loading}
++            className="w-full relative group bg-blue-600 hover:bg-blue-500 text-white font-medium rounded-xl px-4 py-3.5 transition-all overflow-hidden disabled:opacity-70 disabled:cursor-not-allowed mt-2"
++          >
++            <div className="absolute inset-0 bg-white/20 group-hover:translate-x-full transition-transform duration-500 -translate-x-full" />
++            <span className="relative flex items-center justify-center gap-2">
++              {loading ? (
++                <>
++                  <Loader2 size={18} className="animate-spin" />
++                  Verificando...
++                </>
++              ) : (
++                <>
++                  Iniciar Sesión
++                  <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
++                </>
++              )}
++            </span>
++          </button>
++        </form>
++      </div>
++    </div>
++  );
++}
+diff --git a/superadmin-frontend/src/services/api.js b/superadmin-frontend/src/services/api.js
+new file mode 100644
+index 0000000..d0ca719
+--- /dev/null
++++ b/superadmin-frontend/src/services/api.js
+@@ -0,0 +1,95 @@
++import useAuthStore from '../store/authStore';
++
++const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4005';
++
++export const api = {
++  async fetch(endpoint, options = {}) {
++    const token = useAuthStore.getState().token;
++    
++    const headers = {
++      'Content-Type': 'application/json',
++      ...options.headers,
++    };
++
++    if (token) {
++      headers['Authorization'] = `Bearer ${token}`;
++    }
++
++    const controller = new AbortController();
++    const timeoutId = setTimeout(() => controller.abort(), 15000);
++    const signal = options.signal || controller.signal;
++
++    let response;
++    try {
++      response = await fetch(`${API_URL}${endpoint}`, {
++        ...options,
++        headers,
++        signal,
++      });
++    } catch (err) {
++      if (err.name === 'AbortError') {
++        throw new Error('La petición ha tardado demasiado (timeout).');
++      }
++      throw new Error('No se pudo conectar con el servidor.');
++    } finally {
++      clearTimeout(timeoutId);
++    }
++
++    if (!response.ok) {
++      if ((response.status === 401 || response.status === 403) && !window.location.pathname.includes('/login')) {
++        useAuthStore.getState().logout();
++        window.location.href = '/login';
++        return null;
++      }
++
++      // Intentar extraer el mensaje de error del backend, si existe.
++      let errorMessage = 'Network response was not ok';
++      try {
++        const errorData = await response.json();
++        errorMessage = errorData.message || errorMessage;
++      } catch (e) {
++        // Ignorar si no es JSON
++      }
++
++      const error = new Error(errorMessage);
++      error.status = response.status;
++      throw error;
++    }
++
++    // Para respuestas 204 No Content
++    if (response.status === 204) {
++      return null;
++    }
++
++    try {
++      const text = await response.text();
++      return text ? JSON.parse(text) : null;
++    } catch (e) {
++      return null;
++    }
++  },
++
++  get(endpoint, options) {
++    return this.fetch(endpoint, { ...options, method: 'GET' });
++  },
++
++  post(endpoint, body, options) {
++    return this.fetch(endpoint, {
++      ...options,
++      method: 'POST',
++      body: JSON.stringify(body),
++    });
++  },
++
++  put(endpoint, body, options) {
++    return this.fetch(endpoint, {
++      ...options,
++      method: 'PUT',
++      body: JSON.stringify(body),
++    });
++  },
++
++  delete(endpoint, options) {
++    return this.fetch(endpoint, { ...options, method: 'DELETE' });
++  },
++};
+diff --git a/superadmin-frontend/src/store/authStore.js b/superadmin-frontend/src/store/authStore.js
+new file mode 100644
+index 0000000..02af574
+--- /dev/null
++++ b/superadmin-frontend/src/store/authStore.js
+@@ -0,0 +1,47 @@
++import { create } from 'zustand';
++import { persist, createJSONStorage } from 'zustand/middleware';
++import CryptoJS from 'crypto-js';
++
++const SECRET = 'superadmin-local-encryption-key';
++
++const secureStorage = {
++  getItem: (name) => {
++    const str = localStorage.getItem(name);
++    if (!str) return null;
++    try {
++      const bytes = CryptoJS.AES.decrypt(str, SECRET);
++      return bytes.toString(CryptoJS.enc.Utf8);
++    } catch (e) {
++      return null;
++    }
++  },
++  setItem: (name, value) => {
++    try {
++      const parsed = JSON.parse(value);
++      if (!parsed?.state?.token) {
++        localStorage.removeItem(name);
++        return;
++      }
++    } catch(e) {}
++    const encrypted = CryptoJS.AES.encrypt(value, SECRET).toString();
++    localStorage.setItem(name, encrypted);
++  },
++  removeItem: (name) => localStorage.removeItem(name),
++};
++
++const useAuthStore = create(
++  persist(
++    (set) => ({
++      token: null,
++      user: null,
++      setAuth: (token, user) => set({ token, user }),
++      logout: () => set({ token: null, user: null }),
++    }),
++    {
++      name: 'superadmin-auth-storage',
++      storage: createJSONStorage(() => secureStorage),
++    }
++  )
++);
++
++export default useAuthStore;
+diff --git a/superadmin-frontend/vite.config.js b/superadmin-frontend/vite.config.js
+new file mode 100644
+index 0000000..3ac0b37
+--- /dev/null
++++ b/superadmin-frontend/vite.config.js
+@@ -0,0 +1,12 @@
++import { defineConfig } from 'vite';
++import react from '@vitejs/plugin-react';
++import tailwindcss from '@tailwindcss/vite';
++
++// https://vite.dev/config/
++export default defineConfig({
++  plugins: [react(), tailwindcss()],
++  server: {
++    port: 5174,
++    host: true,
++  },
++});

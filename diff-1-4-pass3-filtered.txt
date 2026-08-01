@@ -1,0 +1,1969 @@
+diff --git a/backend/prisma/schema.prisma b/backend/prisma/schema.prisma
+index 374ac30..74cef4d 100644
+--- a/backend/prisma/schema.prisma
++++ b/backend/prisma/schema.prisma
+@@ -386,3 +386,14 @@ model AiRule {
+   @@unique([tenantId, term])
+   @@map("ai_rules")
+ }
++
++model Superadmin {
++  id           String   @id @default(cuid())
++  email        String   @unique
++  passwordHash String   @map("password_hash")
++  name         String
++  createdAt    DateTime @default(now()) @map("created_at")
++  updatedAt    DateTime @updatedAt @map("updated_at")
++
++  @@map("superadmins")
++}
+diff --git a/backend/prisma/seed.js b/backend/prisma/seed.js
+index 12fe626..37aaec2 100644
+--- a/backend/prisma/seed.js
++++ b/backend/prisma/seed.js
+@@ -69,7 +69,17 @@ async function main() {
+     create: { groupId: group.id, userId: vendor.id },
+   });
+ 
+-  console.log('Seed completed:', { tenant: tenant.id, admin: admin.id, coord: coord.id, vendor: vendor.id });
++  const superadmin = await prisma.superadmin.upsert({
++    where: { email: 'admin@salesflow.app' },
++    update: {},
++    create: {
++      name: 'Super Admin',
++      email: 'admin@salesflow.app',
++      passwordHash: await bcrypt.hash('superpassword', 10),
++    },
++  });
++
++  console.log('Seed completed:', { tenant: tenant.id, admin: admin.id, coord: coord.id, vendor: vendor.id, superadmin: superadmin.id });
+ }
+ 
+ main()
+diff --git a/backend/src/app.js b/backend/src/app.js
+index 2465f32..0b78dd0 100644
+--- a/backend/src/app.js
++++ b/backend/src/app.js
+@@ -8,6 +8,8 @@ const errorHandler = require('./middleware/errorHandler');
+ const healthRoutes = require('./routes/health.routes');
+ const swaggerRoutes = require('./routes/swagger.routes');
+ const authRoutes = require('./routes/auth.routes');
++const superadminAuthRoutes = require('./routes/superadmin.auth.routes');
++const superadminTenantRoutes = require('./routes/superadmin.tenant.routes');
+ const usersRoutes = require('./routes/users.routes');
+ const groupsRoutes = require('./routes/groups.routes');
+ const tenantRoutes = require('./routes/tenant.routes');
+@@ -30,7 +32,24 @@ app.use(helmet({
+     },
+   },
+ }));
+-app.use(cors());
++const allowedOrigins = [
++  'http://localhost:3000',
++  'http://localhost:5173',
++  'http://localhost:5174',
++  'https://salesflow.algor.mx',
++  'https://admin.salesflow.app',
++  process.env.FRONTEND_URL?.replace(/\/$/, '')
++].filter(Boolean);
++
++app.use(cors({
++  origin: function (origin, callback) {
++    if (!origin || allowedOrigins.includes(origin)) {
++      callback(null, true);
++    } else {
++      callback(new Error('Not allowed by CORS'));
++    }
++  }
++}));
+ app.use(morgan('[:date[iso]] :remote-addr - :method :url :status :res[content-length] - :response-time ms'));
+ app.use(express.json({ limit: '10mb' }));
+ app.use(express.urlencoded({ extended: true }));
+@@ -45,6 +64,8 @@ app.use('/uploads', authenticate, (req, res, next) => {
+ }, express.static(path.join(__dirname, '../uploads')));
+ 
+ app.use('/api/auth', authRoutes);
++app.use('/api/superadmin/auth', superadminAuthRoutes);
++app.use('/api/superadmin/tenants', superadminTenantRoutes);
+ app.use('/api/health', healthRoutes);
+ app.use('/api/users', usersRoutes);
+ app.use('/api/groups', groupsRoutes);
+diff --git a/backend/src/config/env.js b/backend/src/config/env.js
+index ad79d5e..42706ad 100644
+--- a/backend/src/config/env.js
++++ b/backend/src/config/env.js
+@@ -4,6 +4,8 @@ const env = {
+   databaseUrl: process.env.DATABASE_URL,
+   jwtSecret: process.env.JWT_SECRET,
+   jwtRefreshSecret: process.env.JWT_REFRESH_SECRET,
++  superadminJwtSecret: process.env.SUPERADMIN_JWT_SECRET || (process.env.NODE_ENV === 'test' ? 'test-secret' : (() => { throw new Error('SUPERADMIN_JWT_SECRET must be defined in environment'); })()),
++  superadminJwtExpiresIn: process.env.SUPERADMIN_JWT_EXPIRES_IN || '1h',
+   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '1h',
+   jwtRefreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d',
+   aiProvider: process.env.AI_PROVIDER || 'gemini',
+diff --git a/backend/src/controllers/superadmin.auth.controller.js b/backend/src/controllers/superadmin.auth.controller.js
+new file mode 100644
+index 0000000..4fff4f4
+--- /dev/null
++++ b/backend/src/controllers/superadmin.auth.controller.js
+@@ -0,0 +1,82 @@
++const superadminAuthService = require('../services/superadmin.auth.service');
++const ApiError = require('../utils/ApiError');
++const { success } = require('../utils/response');
++
++const loginAttempts = new Map();
++const WINDOW_MS = 60 * 1000;
++const MAX_ATTEMPTS = 10;
++const MAX_MAP_SIZE = 10000;
++
++// Cleanup memory leak
++setInterval(() => {
++  const now = Date.now();
++  for (const [ip, timestamps] of loginAttempts.entries()) {
++    const active = timestamps.filter((t) => now - t < WINDOW_MS);
++    if (active.length === 0) {
++      loginAttempts.delete(ip);
++    } else {
++      loginAttempts.set(ip, active);
++    }
++  }
++}, WINDOW_MS * 2).unref();
++
++function rateLimitLogin(req, res, next) {
++  const ip = req.ip || (req.connection && req.connection.remoteAddress) || (req.socket && req.socket.remoteAddress) || 'unknown';
++  
++  if (ip === 'unknown') {
++    return next(); // Bypass rate limiting for unresolvable IPs to prevent collateral blocking
++  }
++
++  const now = Date.now();
++
++  if (!loginAttempts.has(ip)) {
++    // Prevent unbounded memory growth DoS
++    if (loginAttempts.size >= MAX_MAP_SIZE) {
++      loginAttempts.delete(loginAttempts.keys().next().value);
++    }
++    loginAttempts.set(ip, []);
++  }
++
++  const timestamps = loginAttempts.get(ip).filter((t) => now - t < WINDOW_MS);
++  
++  if (timestamps.length >= MAX_ATTEMPTS) {
++    return next(ApiError.rateLimited('Demasiados intentos. Intente más tarde.'));
++  }
++  
++  timestamps.push(now);
++  loginAttempts.set(ip, timestamps);
++
++  next();
++}
++
++async function login(req, res, next) {
++  try {
++    const { email, password } = req.body || {};
++    
++    // Validate types to prevent 500s or NoSQL injections
++    if (!email || !password || typeof email !== 'string' || typeof password !== 'string') {
++      throw ApiError.badRequest('Email y contraseña son requeridos y deben ser texto');
++    }
++    
++    // Enforce max password length for bcrypt safety
++    if (password.length > 72) {
++      throw ApiError.badRequest('Contraseña excede el límite permitido');
++    }
++    
++    // Basic email validation
++    if (!/^\S+@\S+\.\S+$/.test(email)) {
++      throw ApiError.badRequest('Formato de email inválido');
++    }
++
++    const normalizedEmail = email.toLowerCase();
++    const result = await superadminAuthService.login(normalizedEmail, password);
++    success(res, result);
++  } catch (err) {
++    next(err);
++  }
++}
++
++module.exports = {
++  rateLimitLogin,
++  login,
++};
+diff --git a/backend/src/controllers/superadmin.tenant.controller.js b/backend/src/controllers/superadmin.tenant.controller.js
+new file mode 100644
+index 0000000..60a73f6
+--- /dev/null
++++ b/backend/src/controllers/superadmin.tenant.controller.js
+@@ -0,0 +1,80 @@
++const superadminTenantService = require('../services/superadmin.tenant.service');
++const { success } = require('../utils/response');
++const { z } = require('zod');
++const bcrypt = require('bcryptjs');
++
++const createTenantSchema = z.object({
++  name: z.string().trim().min(2).max(100),
++  slug: z.string().trim().toLowerCase().regex(/^[a-z0-9]+$/).max(63),
++  firstName: z.string().trim().min(2).max(100),
++  lastName: z.string().trim().min(2).max(100),
++  email: z.string().trim().email().max(255),
++  password: z.string().min(8).max(72).regex(/[A-Z]/, 'Must contain at least one uppercase letter').regex(/[0-9]/, 'Must contain at least one number'),
++});
++
++async function getTenants(req, res, next) {
++  try {
++    const { page, limit, sortBy, sortOrder } = req.query;
++    
++    const result = await superadminTenantService.getTenants({
++      page,
++      limit,
++      sortBy,
++      sortOrder,
++    });
++    
++    success(res, result);
++  } catch (err) {
++    next(err);
++  }
++}
++
++async function createTenant(req, res, next) {
++  try {
++    const validatedData = createTenantSchema.parse(req.body);
++
++    const salt = await bcrypt.genSalt(10);
++    const passwordHash = await bcrypt.hash(validatedData.password, salt);
++
++    const result = await superadminTenantService.createTenantWithAdmin({
++      name: validatedData.name,
++      domain: validatedData.slug,
++      adminName: `${validatedData.firstName} ${validatedData.lastName}`,
++      adminEmail: validatedData.email,
++      passwordHash,
++    });
++
++    // Strip passwordHash from user object
++    const userWithoutPassword = { ...result.user };
++    delete userWithoutPassword.passwordHash;
++
++    const safeResult = {
++      tenant: result.tenant,
++      user: userWithoutPassword,
++    };
++
++    res.status(201);
++    success(res, safeResult);
++  } catch (err) {
++    if (err.code === 'P2002' && err.meta?.target) {
++      const field = Array.isArray(err.meta.target) ? err.meta.target[0] : err.meta.target;
++      return res.status(409).json({
++        success: false,
++        message: `Conflict: ${field} already exists`,
++        field,
++      });
++    }
++    if (err instanceof z.ZodError) {
++      return next(err);
++    }
++    return res.status(500).json({
++      success: false,
++      message: 'Internal server error while creating tenant',
++    });
++  }
++}
++
++module.exports = {
++  getTenants,
++  createTenant,
++};
+diff --git a/backend/src/middleware/superadmin.auth.middleware.js b/backend/src/middleware/superadmin.auth.middleware.js
+new file mode 100644
+index 0000000..1879cb8
+--- /dev/null
++++ b/backend/src/middleware/superadmin.auth.middleware.js
+@@ -0,0 +1,30 @@
++const jwt = require('jsonwebtoken');
++const env = require('../config/env');
++const ApiError = require('../utils/ApiError');
++
++function isSuperadmin(req, res, next) {
++  const authHeader = req.headers.authorization;
++  if (!authHeader || !authHeader.startsWith('Bearer ')) {
++    return next(ApiError.unauthorized('Token no provisto'));
++  }
++
++  const token = authHeader.split(' ')[1];
++
++  try {
++    const decoded = jwt.verify(token, env.superadminJwtSecret);
++    
++    if (decoded.role !== 'SUPERADMIN') {
++      return next(ApiError.forbidden('Acceso denegado: Se requiere rol SUPERADMIN'));
++    }
++
++    req.superadmin = decoded;
++    next();
++  } catch (err) {
++    if (err.name === 'JsonWebTokenError' && err.message === 'invalid signature') {
++      return next(ApiError.forbidden('Firma de token inválida para esta ruta'));
++    }
++    return next(ApiError.unauthorized('Token inválido o expirado'));
++  }
++}
++
++module.exports = isSuperadmin;
+diff --git a/backend/src/routes/superadmin.auth.routes.js b/backend/src/routes/superadmin.auth.routes.js
+new file mode 100644
+index 0000000..c0638cd
+--- /dev/null
++++ b/backend/src/routes/superadmin.auth.routes.js
+@@ -0,0 +1,8 @@
++const { Router } = require('express');
++const superadminAuthController = require('../controllers/superadmin.auth.controller');
++
++const router = Router();
++
++router.post('/login', superadminAuthController.rateLimitLogin, superadminAuthController.login);
++
++module.exports = router;
+diff --git a/backend/src/routes/superadmin.tenant.routes.js b/backend/src/routes/superadmin.tenant.routes.js
+new file mode 100644
+index 0000000..3e97f2e
+--- /dev/null
++++ b/backend/src/routes/superadmin.tenant.routes.js
+@@ -0,0 +1,12 @@
++const express = require('express');
++const superadminTenantController = require('../controllers/superadmin.tenant.controller');
++const superadminAuth = require('../middleware/superadmin.auth.middleware');
++
++const router = express.Router();
++
++router.use(superadminAuth);
++
++router.get('/', superadminTenantController.getTenants);
++router.post('/', superadminTenantController.createTenant);
++
++module.exports = router;
+diff --git a/backend/src/services/superadmin.auth.service.js b/backend/src/services/superadmin.auth.service.js
+new file mode 100644
+index 0000000..0c39d29
+--- /dev/null
++++ b/backend/src/services/superadmin.auth.service.js
+@@ -0,0 +1,42 @@
++const bcrypt = require('bcryptjs');
++const jwt = require('jsonwebtoken');
++const prisma = require('../config/database');
++const env = require('../config/env');
++const ApiError = require('../utils/ApiError');
++
++// Dummy hash to prevent timing attacks (hash of 'dummy')
++const DUMMY_HASH = '$2a$10$C.Xv.hFqL1N.O3X.pX.0.e9Q.Q3.8.v.p.r.x.v.v.v.v.v.v.v';
++
++function generateTokens(payload) {
++  const expiresIn = env.superadminJwtExpiresIn;
++  const token = jwt.sign(payload, env.superadminJwtSecret, { expiresIn });
++  return { token };
++}
++
++async function login(email, password) {
++  const admin = await prisma.superadmin.findUnique({
++    where: { email },
++  });
++
++  const hashToCompare = admin ? admin.passwordHash : DUMMY_HASH;
++  const valid = await bcrypt.compare(password, hashToCompare);
++
++  if (!admin || !valid) {
++    throw ApiError.unauthorized('Credenciales inválidas');
++  }
++
++  const payload = { id: admin.id, role: 'SUPERADMIN' };
++  const { token } = generateTokens(payload);
++
++  return {
++    admin: {
++      id: admin.id,
++      name: admin.name,
++      email: admin.email,
++      role: 'SUPERADMIN',
++    },
++    token,
++  };
++}
++
++module.exports = { login };
+diff --git a/backend/src/services/superadmin.tenant.service.js b/backend/src/services/superadmin.tenant.service.js
+new file mode 100644
+index 0000000..ec7e591
+--- /dev/null
++++ b/backend/src/services/superadmin.tenant.service.js
+@@ -0,0 +1,96 @@
++const prisma = require('../config/database');
++
++/**
++ * Retrieves a paginated list of tenants for the Superadmin dashboard.
++ *
++ * @param {Object} options Pagination and sorting options
++ * @param {number} [options.page=1] Page number
++ * @param {number} [options.limit=10] Items per page
++ * @param {string} [options.sortBy='createdAt'] Field to sort by
++ * @param {string} [options.sortOrder='desc'] Sort order ('asc' or 'desc')
++ * @returns {Promise<{ data: Array, meta: { total: number, page: number, limit: number } }>}
++ */
++async function getTenants({ page = 1, limit = 10, sortBy = 'createdAt', sortOrder = 'desc' }) {
++  const parsedPage = Math.max(1, parseInt(page, 10) || 1);
++  const parsedLimit = Math.min(100, Math.max(1, parseInt(limit, 10) || 10));
++  
++  const skip = (parsedPage - 1) * parsedLimit;
++  const take = parsedLimit;
++
++  // Validate sort field to prevent injection/errors
++  const validSortFields = ['createdAt', 'name', 'domain', 'status'];
++  const validSortField = validSortFields.includes(sortBy) ? sortBy : 'createdAt';
++  
++  const orderStr = typeof sortOrder === 'string' ? sortOrder.toLowerCase() : 'desc';
++  const validSortOrder = ['asc', 'desc'].includes(orderStr) ? orderStr : 'desc';
++
++  const [data, total] = await Promise.all([
++    prisma.tenant.findMany({
++      skip,
++      take,
++      orderBy: { [validSortField]: validSortOrder },
++      select: {
++        id: true,
++        name: true,
++        domain: true,
++        createdAt: true,
++        status: true,
++      },
++    }),
++    prisma.tenant.count(),
++  ]);
++
++  return {
++    data,
++    meta: {
++      total,
++      page: parsedPage,
++      limit: parsedLimit,
++    },
++  };
++}
++
++/**
++ * Creates a new tenant and its initial admin user within a single transaction.
++ *
++ * @param {Object} data Tenant and Admin data
++ * @param {string} data.name Tenant name
++ * @param {string} data.domain Tenant domain
++ * @param {string} data.adminName Admin name (first + last name)
++ * @param {string} data.adminEmail Admin email
++ * @param {string} data.passwordHash Admin hashed password
++ * @returns {Promise<{ tenant: Object, user: Object }>}
++ */
++async function createTenantWithAdmin(data) {
++  const { name, domain, adminName, adminEmail, passwordHash } = data;
++
++  // The transaction MUST use a timeout to prevent hanging connections
++  return prisma.$transaction(async (tx) => {
++    const tenant = await tx.tenant.create({
++      data: {
++        name,
++        domain,
++        status: 'ACTIVE', // ACTIVE status for Tenant
++      },
++    });
++
++    const user = await tx.user.create({
++      data: {
++        name: adminName,
++        email: adminEmail,
++        passwordHash,
++        role: 'ADMIN',
++        tenantId: tenant.id,
++        isActive: true,
++        emailVerified: new Date(),
++      },
++    });
++
++    return { tenant, user };
++  }, { timeout: 10000 });
++}
++
++module.exports = {
++  getTenants,
++  createTenantWithAdmin,
++};
+diff --git a/backend/test-superadmin-auth.js b/backend/test-superadmin-auth.js
+new file mode 100644
+index 0000000..915d40f
+--- /dev/null
++++ b/backend/test-superadmin-auth.js
+@@ -0,0 +1,39 @@
++require('dotenv').config({ path: '.env' });
++const jwt = require('jsonwebtoken');
++const isSuperadmin = require('./src/middleware/superadmin.auth.middleware');
++const env = require('./src/config/env');
++
++const mockRes = {
++  status: (code) => {
++    return {
++      json: (data) => console.log('Response JSON:', data)
++    }
++  }
++};
++
++const mockNext = (err) => {
++  if (err) {
++    console.error('Middleware Error:', err.message);
++  } else {
++    console.log('Middleware Passed: User is authorized');
++  }
++};
++
++const normalSecret = env.jwtSecret || 'normal';
++const superSecret = env.superadminJwtSecret;
++
++console.log('--- TEST 1: No Token ---');
++isSuperadmin({ headers: {} }, mockRes, mockNext);
++
++console.log('\n--- TEST 2: Normal JWT (Tenant Admin) ---');
++const normalToken = jwt.sign({ id: 'user1', role: 'ADMIN' }, normalSecret);
++isSuperadmin({ headers: { authorization: `Bearer ${normalToken}` } }, mockRes, mockNext);
++
++console.log('\n--- TEST 3: Valid Superadmin JWT ---');
++const superadminToken = jwt.sign({ id: 'super1', role: 'SUPERADMIN' }, superSecret);
++const validReq = { headers: { authorization: `Bearer ${superadminToken}` } };
++isSuperadmin(validReq, mockRes, mockNext);
++
++console.log('\n--- TEST 4: Superadmin secret but WRONG ROLE ---');
++const wrongRoleToken = jwt.sign({ id: 'super2', role: 'ADMIN' }, superSecret);
++isSuperadmin({ headers: { authorization: `Bearer ${wrongRoleToken}` } }, mockRes, mockNext);
+diff --git a/backend/tests/unit/superadmin.tenant.controller.test.js b/backend/tests/unit/superadmin.tenant.controller.test.js
+new file mode 100644
+index 0000000..5d97490
+--- /dev/null
++++ b/backend/tests/unit/superadmin.tenant.controller.test.js
+@@ -0,0 +1,157 @@
++const superadminTenantController = require('../../src/controllers/superadmin.tenant.controller');
++const superadminTenantService = require('../../src/services/superadmin.tenant.service');
++const { success } = require('../../src/utils/response');
++
++jest.mock('../../src/services/superadmin.tenant.service');
++jest.mock('../../src/utils/response');
++
++describe('Superadmin Tenant Controller', () => {
++  beforeEach(() => {
++    jest.clearAllMocks();
++  });
++
++  describe('getTenants', () => {
++    it('should retrieve tenants and return success response', async () => {
++      const mockResult = {
++        data: [{ id: '1', name: 'Tenant 1' }],
++        meta: { total: 1, page: 1, limit: 10 },
++      };
++      superadminTenantService.getTenants.mockResolvedValue(mockResult);
++
++      const req = {
++        query: { page: '1', limit: '10', sortBy: 'name', sortOrder: 'asc' },
++      };
++      const res = {};
++      const next = jest.fn();
++
++      await superadminTenantController.getTenants(req, res, next);
++
++      expect(superadminTenantService.getTenants).toHaveBeenCalledWith({
++        page: '1',
++        limit: '10',
++        sortBy: 'name',
++        sortOrder: 'asc',
++      });
++      expect(success).toHaveBeenCalledWith(res, mockResult);
++      expect(next).not.toHaveBeenCalled();
++    });
++
++    it('should handle missing query parameters gracefully', async () => {
++      const mockResult = {
++        data: [],
++        meta: { total: 0, page: 1, limit: 10 },
++      };
++      superadminTenantService.getTenants.mockResolvedValue(mockResult);
++
++      const req = { query: {} };
++      const res = {};
++      const next = jest.fn();
++
++      await superadminTenantController.getTenants(req, res, next);
++
++      expect(superadminTenantService.getTenants).toHaveBeenCalledWith({
++        page: undefined,
++        limit: undefined,
++        sortBy: undefined,
++        sortOrder: undefined,
++      });
++      expect(success).toHaveBeenCalledWith(res, mockResult);
++      expect(next).not.toHaveBeenCalled();
++    });
++
++    it('should call next with error if service throws', async () => {
++      const error = new Error('Database failure');
++      superadminTenantService.getTenants.mockRejectedValue(error);
++
++      const req = { query: {} };
++      const res = {};
++      const next = jest.fn();
++
++      await superadminTenantController.getTenants(req, res, next);
++
++      expect(next).toHaveBeenCalledWith(error);
++      expect(success).not.toHaveBeenCalled();
++    });
++  });
++
++  describe('createTenant', () => {
++    const validPayload = {
++      name: 'Acme Corp',
++      slug: 'acmecorp',
++      firstName: 'John',
++      lastName: 'Doe',
++      email: 'john@acme.com',
++      password: 'Password123',
++    };
++
++    it('should validate payload, hash password, create tenant, and return 201 stripped of passwordHash', async () => {
++      const mockResult = {
++        tenant: { id: 't1', name: 'Acme Corp', domain: 'acmecorp', status: 'ACTIVE' },
++        user: { id: 'u1', name: 'John Doe', email: 'john@acme.com', passwordHash: 'hashed', role: 'ADMIN' },
++      };
++      superadminTenantService.createTenantWithAdmin.mockResolvedValue(mockResult);
++
++      const req = { body: validPayload };
++      const res = { status: jest.fn().mockReturnThis() };
++      const next = jest.fn();
++
++      await superadminTenantController.createTenant(req, res, next);
++
++      expect(superadminTenantService.createTenantWithAdmin).toHaveBeenCalled();
++      expect(res.status).toHaveBeenCalledWith(201);
++      
++      const successArg = success.mock.calls[0][1];
++      expect(successArg.tenant).toBeDefined();
++      expect(successArg.user.passwordHash).toBeUndefined();
++      expect(successArg.user.name).toBe('John Doe');
++    });
++
++    it('should pass Zod validation errors to next', async () => {
++      const req = { body: { name: 'A' } }; // invalid name
++      const res = {};
++      const next = jest.fn();
++
++      await superadminTenantController.createTenant(req, res, next);
++
++      expect(next).toHaveBeenCalled();
++      const err = next.mock.calls[0][0];
++      expect(err.name).toBe('ZodError');
++    });
++
++    it('should return 409 for unique constraint violations (P2002)', async () => {
++      const dbError = new Error('Unique constraint failed on the fields: (`domain`)');
++      dbError.code = 'P2002';
++      dbError.meta = { target: ['domain'] };
++      superadminTenantService.createTenantWithAdmin.mockRejectedValue(dbError);
++
++      const req = { body: validPayload };
++      const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
++      const next = jest.fn();
++
++      await superadminTenantController.createTenant(req, res, next);
++
++      expect(res.status).toHaveBeenCalledWith(409);
++      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
++        success: false,
++        message: 'Conflict: domain already exists',
++      }));
++    });
++    
++    it('should return 500 for other errors', async () => {
++      const dbError = new Error('Database Error');
++      superadminTenantService.createTenantWithAdmin.mockRejectedValue(dbError);
++
++      const req = { body: validPayload };
++      const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
++      const next = jest.fn();
++
++      await superadminTenantController.createTenant(req, res, next);
++
++      expect(res.status).toHaveBeenCalledWith(500);
++      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
++        success: false,
++        message: 'Internal server error while creating tenant',
++      }));
++    });
++  });
++});
+diff --git a/backend/tests/unit/superadmin.tenant.service.test.js b/backend/tests/unit/superadmin.tenant.service.test.js
+new file mode 100644
+index 0000000..b2787b7
+--- /dev/null
++++ b/backend/tests/unit/superadmin.tenant.service.test.js
+@@ -0,0 +1,149 @@
++const superadminTenantService = require('../../src/services/superadmin.tenant.service');
++const prisma = require('../../src/config/database');
++
++jest.mock('../../src/config/database', () => ({
++  $transaction: jest.fn(),
++  tenant: {
++    findMany: jest.fn(),
++    count: jest.fn(),
++    create: jest.fn(),
++  },
++  user: {
++    create: jest.fn(),
++  }
++}));
++
++describe('Superadmin Tenant Service', () => {
++  beforeEach(() => {
++    jest.clearAllMocks();
++  });
++
++  describe('getTenants', () => {
++    it('should return paginated tenants with default options', async () => {
++      const mockTenants = [{ id: '1', name: 'Tenant 1' }];
++      prisma.tenant.findMany.mockResolvedValue(mockTenants);
++      prisma.tenant.count.mockResolvedValue(1);
++
++      const result = await superadminTenantService.getTenants({});
++
++      expect(prisma.tenant.findMany).toHaveBeenCalledWith({
++        skip: 0,
++        take: 10,
++        orderBy: { createdAt: 'desc' },
++        select: {
++          id: true,
++          name: true,
++          domain: true,
++          createdAt: true,
++          status: true,
++        },
++      });
++      expect(prisma.tenant.count).toHaveBeenCalledWith();
++      expect(result).toEqual({
++        data: mockTenants,
++        meta: {
++          total: 1,
++          page: 1,
++          limit: 10,
++        },
++      });
++    });
++
++    it('should apply custom pagination and sorting', async () => {
++      const mockTenants = [{ id: '2', name: 'Tenant 2' }];
++      prisma.tenant.findMany.mockResolvedValue(mockTenants);
++      prisma.tenant.count.mockResolvedValue(5);
++
++      const result = await superadminTenantService.getTenants({
++        page: 2,
++        limit: 5,
++        sortBy: 'name',
++        sortOrder: 'asc',
++      });
++
++      expect(prisma.tenant.findMany).toHaveBeenCalledWith({
++        skip: 5,
++        take: 5,
++        orderBy: { name: 'asc' },
++        select: {
++          id: true,
++          name: true,
++          domain: true,
++          createdAt: true,
++          status: true,
++        },
++      });
++      expect(result.meta).toEqual({
++        total: 5,
++        page: 2,
++        limit: 5,
++      });
++    });
++  });
++
++  describe('createTenantWithAdmin', () => {
++    it('should create a tenant and an admin user within a transaction', async () => {
++      const mockTenant = { id: 't1', name: 'Acme', domain: 'acme', status: 'ACTIVE' };
++      const mockUser = {
++        id: 'u1',
++        name: 'John Doe',
++        email: 'john@acme.com',
++        role: 'ADMIN',
++        tenantId: 't1',
++        isActive: true,
++      };
++
++      prisma.$transaction = jest.fn().mockImplementation(async (callback) => {
++        return callback(prisma);
++      });
++      prisma.tenant.create = jest.fn().mockResolvedValue(mockTenant);
++      prisma.user.create = jest.fn().mockResolvedValue(mockUser);
++
++      const tenantData = {
++        name: 'Acme',
++        domain: 'acme',
++        adminName: 'John Doe',
++        adminEmail: 'john@acme.com',
++        passwordHash: 'hashed_password',
++      };
++
++      const result = await superadminTenantService.createTenantWithAdmin(tenantData);
++
++      expect(prisma.$transaction).toHaveBeenCalled();
++      expect(prisma.tenant.create).toHaveBeenCalledWith({
++        data: {
++          name: 'Acme',
++          domain: 'acme',
++          status: 'ACTIVE',
++        },
++      });
++      expect(prisma.user.create).toHaveBeenCalledWith({
++        data: {
++          name: 'John Doe',
++          email: 'john@acme.com',
++          passwordHash: 'hashed_password',
++          role: 'ADMIN',
++          tenantId: 't1',
++          isActive: true,
++          emailVerified: expect.any(Date),
++        },
++      });
++      expect(result).toEqual({ tenant: mockTenant, user: mockUser });
++    });
++
++    it('should propagate errors from the transaction', async () => {
++      const dbError = new Error('Database Error');
++      prisma.$transaction = jest.fn().mockRejectedValue(dbError);
++
++      const tenantData = {
++        name: 'Acme',
++        domain: 'acme',
++        adminName: 'John Doe',
++        adminEmail: 'john@acme.com',
++        passwordHash: 'hashed_password',
++      };
++
++      await expect(superadminTenantService.createTenantWithAdmin(tenantData)).rejects.toThrow('Database Error');
++    });
++  });
++});
+diff --git a/superadmin-frontend/package.json b/superadmin-frontend/package.json
+new file mode 100644
+index 0000000..ff74f21
+--- /dev/null
++++ b/superadmin-frontend/package.json
+@@ -0,0 +1,32 @@
++{
++  "name": "superadmin-frontend",
++  "private": true,
++  "version": "0.0.0",
++  "type": "module",
++  "scripts": {
++    "dev": "vite",
++    "build": "vite build",
++    "lint": "oxlint",
++    "preview": "vite preview"
++  },
++  "dependencies": {
++    "@hookform/resolvers": "^5.5.7",
++    "lucide-react": "^0.577.0",
++    "react": "^19.2.7",
++    "react-dom": "^19.2.7",
++    "react-hook-form": "^7.83.0",
++    "react-router-dom": "^7.15.0",
++    "sonner": "^2.0.7",
++    "zod": "^3.25.76",
++    "zustand": "^5.0.14"
++  },
++  "devDependencies": {
++    "@tailwindcss/vite": "^4.2.4",
++    "@types/react": "^19.2.17",
++    "@types/react-dom": "^19.2.3",
++    "@vitejs/plugin-react": "^6.0.3",
++    "oxlint": "^1.71.0",
++    "tailwindcss": "^4.2.4",
++    "vite": "^8.1.1"
++  }
++}
+diff --git a/superadmin-frontend/src/App.jsx b/superadmin-frontend/src/App.jsx
+new file mode 100644
+index 0000000..bd7c303
+--- /dev/null
++++ b/superadmin-frontend/src/App.jsx
+@@ -0,0 +1,36 @@
++import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
++import ProtectedRoute from './components/ProtectedRoute';
++import Login from './pages/Login';
++import Dashboard from './pages/Dashboard';
++import Tenants from './pages/Tenants';
++import SuperadminLayout from './components/SuperadminLayout';
++import useAuthStore from './store/authStore';
++
++import { Toaster } from 'sonner';
++
++function App() {
++  const token = useAuthStore((state) => state.token);
++
++  return (
++    <BrowserRouter>
++      <Toaster position="top-right" richColors />
++      <Routes>
++        <Route 
++          path="/login" 
++          element={token ? <Navigate to="/" replace /> : <Login />} 
++        />
++        
++        <Route element={<ProtectedRoute />}>
++          <Route element={<SuperadminLayout />}>
++            <Route path="/" element={<Dashboard />} />
++            <Route path="/tenants" element={<Tenants />} />
++          </Route>
++        </Route>
++        
++        <Route path="*" element={<Navigate to="/" replace />} />
++      </Routes>
++    </BrowserRouter>
++  );
++}
++
++export default App;
+diff --git a/superadmin-frontend/src/assets/hero.png b/superadmin-frontend/src/assets/hero.png
+new file mode 100644
+index 0000000..02251f4
+Binary files /dev/null and b/superadmin-frontend/src/assets/hero.png differ
+diff --git a/superadmin-frontend/src/assets/react.svg b/superadmin-frontend/src/assets/react.svg
+new file mode 100644
+index 0000000..6c87de9
+--- /dev/null
++++ b/superadmin-frontend/src/assets/react.svg
+@@ -0,0 +1 @@
++<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" aria-hidden="true" role="img" class="iconify iconify--logos" width="35.93" height="32" preserveAspectRatio="xMidYMid meet" viewBox="0 0 256 228"><path fill="#00D8FF" d="M210.483 73.824a171.49 171.49 0 0 0-8.24-2.597c.465-1.9.893-3.777 1.273-5.621c6.238-30.281 2.16-54.676-11.769-62.708c-13.355-7.7-35.196.329-57.254 19.526a171.23 171.23 0 0 0-6.375 5.848a155.866 155.866 0 0 0-4.241-3.917C100.759 3.829 77.587-4.822 63.673 3.233C50.33 10.957 46.379 33.89 51.995 62.588a170.974 170.974 0 0 0 1.892 8.48c-3.28.932-6.445 1.924-9.474 2.98C17.309 83.498 0 98.307 0 113.668c0 15.865 18.582 31.778 46.812 41.427a145.52 145.52 0 0 0 6.921 2.165a167.467 167.467 0 0 0-2.01 9.138c-5.354 28.2-1.173 50.591 12.134 58.266c13.744 7.926 36.812-.22 59.273-19.855a145.567 145.567 0 0 0 5.342-4.923a168.064 168.064 0 0 0 6.92 6.314c21.758 18.722 43.246 26.282 56.54 18.586c13.731-7.949 18.194-32.003 12.4-61.268a145.016 145.016 0 0 0-1.535-6.842c1.62-.48 3.21-.974 4.76-1.488c29.348-9.723 48.443-25.443 48.443-41.52c0-15.417-17.868-30.326-45.517-39.844Zm-6.365 70.984c-1.4.463-2.836.91-4.3 1.345c-3.24-10.257-7.612-21.163-12.963-32.432c5.106-11 9.31-21.767 12.459-31.957c2.619.758 5.16 1.557 7.61 2.4c23.69 8.156 38.14 20.213 38.14 29.504c0 9.896-15.606 22.743-40.946 31.14Zm-10.514 20.834c2.562 12.94 2.927 24.64 1.23 33.787c-1.524 8.219-4.59 13.698-8.382 15.893c-8.067 4.67-25.32-1.4-43.927-17.412a156.726 156.726 0 0 1-6.437-5.87c7.214-7.889 14.423-17.06 21.459-27.246c12.376-1.098 24.068-2.894 34.671-5.345a134.17 134.17 0 0 1 1.386 6.193ZM87.276 214.515c-7.882 2.783-14.16 2.863-17.955.675c-8.075-4.657-11.432-22.636-6.853-46.752a156.923 156.923 0 0 1 1.869-8.499c10.486 2.32 22.093 3.988 34.498 4.994c7.084 9.967 14.501 19.128 21.976 27.15a134.668 134.668 0 0 1-4.877 4.492c-9.933 8.682-19.886 14.842-28.658 17.94ZM50.35 144.747c-12.483-4.267-22.792-9.812-29.858-15.863c-6.35-5.437-9.555-10.836-9.555-15.216c0-9.322 13.897-21.212 37.076-29.293c2.813-.98 5.757-1.905 8.812-2.773c3.204 10.42 7.406 21.315 12.477 32.332c-5.137 11.18-9.399 22.249-12.634 32.792a134.718 134.718 0 0 1-6.318-1.979Zm12.378-84.26c-4.811-24.587-1.616-43.134 6.425-47.789c8.564-4.958 27.502 2.111 47.463 19.835a144.318 144.318 0 0 1 3.841 3.545c-7.438 7.987-14.787 17.08-21.808 26.988c-12.04 1.116-23.565 2.908-34.161 5.309a160.342 160.342 0 0 1-1.76-7.887Zm110.427 27.268a347.8 347.8 0 0 0-7.785-12.803c8.168 1.033 15.994 2.404 23.343 4.08c-2.206 7.072-4.956 14.465-8.193 22.045a381.151 381.151 0 0 0-7.365-13.322Zm-45.032-43.861c5.044 5.465 10.096 11.566 15.065 18.186a322.04 322.04 0 0 0-30.257-.006c4.974-6.559 10.069-12.652 15.192-18.18ZM82.802 87.83a323.167 323.167 0 0 0-7.227 13.238c-3.184-7.553-5.909-14.98-8.134-22.152c7.304-1.634 15.093-2.97 23.209-3.984a321.524 321.524 0 0 0-7.848 12.897Zm8.081 65.352c-8.385-.936-16.291-2.203-23.593-3.793c2.26-7.3 5.045-14.885 8.298-22.6a321.187 321.187 0 0 0 7.257 13.246c2.594 4.48 5.28 8.868 8.038 13.147Zm37.542 31.03c-5.184-5.592-10.354-11.779-15.403-18.433c4.902.192 9.899.29 14.978.29c5.218 0 10.376-.117 15.453-.343c-4.985 6.774-10.018 12.97-15.028 18.486Zm52.198-57.817c3.422 7.8 6.306 15.345 8.596 22.52c-7.422 1.694-15.436 3.058-23.88 4.071a382.417 382.417 0 0 0 7.859-13.026a347.403 347.403 0 0 0 7.425-13.565Zm-16.898 8.101a358.557 358.557 0 0 1-12.281 19.815a329.4 329.4 0 0 1-23.444.823c-7.967 0-15.716-.248-23.178-.732a310.202 310.202 0 0 1-12.513-19.846h.001a307.41 307.41 0 0 1-10.923-20.627a310.278 310.278 0 0 1 10.89-20.637l-.001.001a307.318 307.318 0 0 1 12.413-19.761c7.613-.576 15.42-.876 23.31-.876H128c7.926 0 15.743.303 23.354.883a329.357 329.357 0 0 1 12.335 19.695a358.489 358.489 0 0 1 11.036 20.54a329.472 329.472 0 0 1-11 20.722Zm22.56-122.124c8.572 4.944 11.906 24.881 6.52 51.026c-.344 1.668-.73 3.367-1.15 5.09c-10.622-2.452-22.155-4.275-34.23-5.408c-7.034-10.017-14.323-19.124-21.64-27.008a160.789 160.789 0 0 1 5.888-5.4c18.9-16.447 36.564-22.941 44.612-18.3ZM128 90.808c12.625 0 22.86 10.235 22.86 22.86s-10.235 22.86-22.86 22.86s-22.86-10.235-22.86-22.86s10.235-22.86 22.86-22.86Z"></path></svg>
+\ No newline at end of file
+diff --git a/superadmin-frontend/src/assets/vite.svg b/superadmin-frontend/src/assets/vite.svg
+new file mode 100644
+index 0000000..5101b67
+--- /dev/null
++++ b/superadmin-frontend/src/assets/vite.svg
+@@ -0,0 +1 @@
++<svg xmlns="http://www.w3.org/2000/svg" width="77" height="47" fill="none" aria-labelledby="vite-logo-title" viewBox="0 0 77 47"><title id="vite-logo-title">Vite</title><style>.parenthesis{fill:#000}@media (prefers-color-scheme:dark){.parenthesis{fill:#fff}}</style><path fill="#9135ff" d="M40.151 45.71c-.663.844-2.02.374-2.02-.699V34.708a2.26 2.26 0 0 0-2.262-2.262H24.493c-.92 0-1.457-1.04-.92-1.788l7.479-10.471c1.07-1.498 0-3.578-1.842-3.578H15.443c-.92 0-1.456-1.04-.92-1.788l9.696-13.576c.213-.297.556-.474.92-.474h28.894c.92 0 1.456 1.04.92 1.788l-7.48 10.472c-1.07 1.497 0 3.578 1.842 3.578h11.376c.944 0 1.474 1.087.89 1.83L40.153 45.712z"/><mask id="a" width="48" height="47" x="14" y="0" maskUnits="userSpaceOnUse" style="mask-type:alpha"><path fill="#000" d="M40.047 45.71c-.663.843-2.02.374-2.02-.699V34.708a2.26 2.26 0 0 0-2.262-2.262H24.389c-.92 0-1.457-1.04-.92-1.788l7.479-10.472c1.07-1.497 0-3.578-1.842-3.578H15.34c-.92 0-1.456-1.04-.92-1.788l9.696-13.575c.213-.297.556-.474.92-.474H53.93c.92 0 1.456 1.04.92 1.788L47.37 13.03c-1.07 1.498 0 3.578 1.842 3.578h11.376c.944 0 1.474 1.088.89 1.831L40.049 45.712z"/></mask><g mask="url(#a)"><g filter="url(#b)"><ellipse cx="5.508" cy="14.704" fill="#eee6ff" rx="5.508" ry="14.704" transform="rotate(269.814 20.96 11.29)scale(-1 1)"/></g><g filter="url(#c)"><ellipse cx="10.399" cy="29.851" fill="#eee6ff" rx="10.399" ry="29.851" transform="rotate(89.814 -16.902 -8.275)scale(1 -1)"/></g><g filter="url(#d)"><ellipse cx="5.508" cy="30.487" fill="#8900ff" rx="5.508" ry="30.487" transform="rotate(89.814 -19.197 -7.127)scale(1 -1)"/></g><g filter="url(#e)"><ellipse cx="5.508" cy="30.599" fill="#8900ff" rx="5.508" ry="30.599" transform="rotate(89.814 -25.928 4.177)scale(1 -1)"/></g><g filter="url(#f)"><ellipse cx="5.508" cy="30.599" fill="#8900ff" rx="5.508" ry="30.599" transform="rotate(89.814 -25.738 5.52)scale(1 -1)"/></g><g filter="url(#g)"><ellipse cx="14.072" cy="22.078" fill="#eee6ff" rx="14.072" ry="22.078" transform="rotate(93.35 31.245 55.578)scale(-1 1)"/></g><g filter="url(#h)"><ellipse cx="3.47" cy="21.501" fill="#8900ff" rx="3.47" ry="21.501" transform="rotate(89.009 35.419 55.202)scale(-1 1)"/></g><g filter="url(#i)"><ellipse cx="3.47" cy="21.501" fill="#8900ff" rx="3.47" ry="21.501" transform="rotate(89.009 35.419 55.202)scale(-1 1)"/></g><g filter="url(#j)"><ellipse cx="14.592" cy="9.743" fill="#8900ff" rx="4.407" ry="29.108" transform="rotate(39.51 14.592 9.743)"/></g><g filter="url(#k)"><ellipse cx="61.728" cy="-5.321" fill="#8900ff" rx="4.407" ry="29.108" transform="rotate(37.892 61.728 -5.32)"/></g><g filter="url(#l)"><ellipse cx="55.618" cy="7.104" fill="#00c2ff" rx="5.971" ry="9.665" transform="rotate(37.892 55.618 7.104)"/></g><g filter="url(#m)"><ellipse cx="12.326" cy="39.103" fill="#8900ff" rx="4.407" ry="29.108" transform="rotate(37.892 12.326 39.103)"/></g><g filter="url(#n)"><ellipse cx="12.326" cy="39.103" fill="#8900ff" rx="4.407" ry="29.108" transform="rotate(37.892 12.326 39.103)"/></g><g filter="url(#o)"><ellipse cx="49.857" cy="30.678" fill="#8900ff" rx="4.407" ry="29.108" transform="rotate(37.892 49.857 30.678)"/></g><g filter="url(#p)"><ellipse cx="52.623" cy="33.171" fill="#00c2ff" rx="5.971" ry="15.297" transform="rotate(37.892 52.623 33.17)"/></g></g><path d="M6.919 0c-9.198 13.166-9.252 33.575 0 46.789h6.215c-9.25-13.214-9.196-33.623 0-46.789zm62.424 0h-6.215c9.198 13.166 9.252 33.575 0 46.789h6.215c9.25-13.214 9.196-33.623 0-46.789" class="parenthesis"/><defs><filter id="b" width="60.045" height="41.654" x="-5.564" y="16.92" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17286" stdDeviation="7.659"/></filter><filter id="c" width="90.34" height="51.437" x="-40.407" y="-6.762" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17286" stdDeviation="7.659"/></filter><filter id="d" width="79.355" height="29.4" x="-35.435" y="2.801" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17286" stdDeviation="4.596"/></filter><filter id="e" width="79.579" height="29.4" x="-30.84" y="20.8" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17286" stdDeviation="4.596"/></filter><filter id="f" width="79.579" height="29.4" x="-29.307" y="21.949" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17286" stdDeviation="4.596"/></filter><filter id="g" width="74.749" height="58.852" x="29.961" y="-17.13" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17286" stdDeviation="7.659"/></filter><filter id="h" width="61.377" height="25.362" x="37.754" y="3.055" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17286" stdDeviation="4.596"/></filter><filter id="i" width="61.377" height="25.362" x="37.754" y="3.055" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17286" stdDeviation="4.596"/></filter><filter id="j" width="56.045" height="63.649" x="-13.43" y="-22.082" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17286" stdDeviation="4.596"/></filter><filter id="k" width="54.814" height="64.646" x="34.321" y="-37.644" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17286" stdDeviation="4.596"/></filter><filter id="l" width="33.541" height="35.313" x="38.847" y="-10.552" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17286" stdDeviation="4.596"/></filter><filter id="m" width="54.814" height="64.646" x="-15.081" y="6.78" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17286" stdDeviation="4.596"/></filter><filter id="n" width="54.814" height="64.646" x="-15.081" y="6.78" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17286" stdDeviation="4.596"/></filter><filter id="o" width="54.814" height="64.646" x="22.45" y="-1.645" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17286" stdDeviation="4.596"/></filter><filter id="p" width="39.409" height="43.623" x="32.919" y="11.36" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17286" stdDeviation="4.596"/></filter></defs></svg>
+diff --git a/superadmin-frontend/src/components/CreateTenantModal.jsx b/superadmin-frontend/src/components/CreateTenantModal.jsx
+new file mode 100644
+index 0000000..fbada38
+--- /dev/null
++++ b/superadmin-frontend/src/components/CreateTenantModal.jsx
+@@ -0,0 +1,347 @@
++import React, { useEffect, useState, useRef, useCallback } from 'react';
++import { useForm } from 'react-hook-form';
++import { zodResolver } from '@hookform/resolvers/zod';
++import { z } from 'zod';
++import { X, Eye, EyeOff, KeyRound, Loader2 } from 'lucide-react';
++import { toast } from 'sonner';
++import api from '../services/api';
++
++const schema = z.object({
++  name: z.string().trim().min(2, 'Name must be at least 2 characters').max(100, 'Name must be less than 100 characters'),
++  slug: z.string().trim().toLowerCase().regex(/^[a-z0-9]+$/, 'Slug must be alphanumeric without spaces or special characters').max(63, 'Slug must be max 63 characters'),
++  firstName: z.string().trim().min(2, 'First name must be at least 2 characters').max(100, 'First name must be less than 100 characters'),
++  lastName: z.string().trim().min(2, 'Last name must be at least 2 characters').max(100, 'Last name must be less than 100 characters'),
++  email: z.string().trim().email('Invalid email address').max(255),
++  password: z.string()
++    .min(8, 'Password must be at least 8 characters')
++    .max(72, 'Password must be max 72 characters')
++    .regex(/[A-Z]/, 'Must contain at least one uppercase letter')
++    .regex(/[0-9]/, 'Must contain at least one number'),
++});
++
++export default function CreateTenantModal({ isOpen, onClose, onSuccess, triggerRef }) {
++  const [showPassword, setShowPassword] = useState(false);
++  const [isSubmitting, setIsSubmitting] = useState(false);
++  const modalRef = useRef(null);
++  const abortControllerRef = useRef(null);
++  
++  useEffect(() => {
++    return () => {
++      if (abortControllerRef.current) {
++        abortControllerRef.current.abort();
++      }
++    };
++  }, []);
++  
++  const {
++    register,
++    handleSubmit,
++    reset,
++    watch,
++    setValue,
++    setError,
++    formState: { errors },
++  } = useForm({
++    resolver: zodResolver(schema),
++    defaultValues: {
++      name: '',
++      slug: '',
++      firstName: '',
++      lastName: '',
++      email: '',
++      password: '',
++    }
++  });
++
++  const slugValue = watch('slug');
++
++  const handleDismiss = useCallback(() => {
++    if (isSubmitting) return;
++    reset();
++    setShowPassword(false);
++    onClose();
++    if (triggerRef && triggerRef.current) {
++      triggerRef.current.focus();
++    }
++  }, [isSubmitting, reset, onClose, triggerRef]);
++
++  // Click outside and ESC handling
++  useEffect(() => {
++    if (!isOpen) return;
++
++    const handleKeyDown = (e) => {
++      if (e.key === 'Escape') {
++        handleDismiss();
++      }
++    };
++
++    const handleClickOutside = (e) => {
++      if (modalRef.current && !modalRef.current.contains(e.target)) {
++        handleDismiss();
++      }
++    };
++
++    document.addEventListener('keydown', handleKeyDown);
++    // Use mousedown instead of click to prevent issues with text selection ending outside
++    document.addEventListener('mousedown', handleClickOutside);
++
++    return () => {
++      document.removeEventListener('keydown', handleKeyDown);
++      document.removeEventListener('mousedown', handleClickOutside);
++    };
++  }, [isOpen, handleDismiss]);
++
++  // Auto focus on open
++  useEffect(() => {
++    if (isOpen) {
++      const firstInput = document.getElementById('tenant-name');
++      if (firstInput) {
++        firstInput.focus();
++      }
++    }
++  }, [isOpen]);
++
++  const generatePassword = () => {
++    const chars = "abcdefghijklmnopqrstuvwxyz";
++    const uppercase = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
++    const numbers = "0123456789";
++    
++    let pass = "";
++    const getRandomChar = (str) => {
++      const array = new Uint8Array(1);
++      let rand;
++      do {
++        window.crypto.getRandomValues(array);
++        rand = array[0];
++      } while (rand >= 256 - (256 % str.length));
++      return str[rand % str.length];
++    };
++
++    pass += getRandomChar(uppercase);
++    pass += getRandomChar(numbers);
++    
++    for (let i = 0; i < 8; i++) {
++      const all = chars + uppercase + numbers;
++      pass += getRandomChar(all);
++    }
++    
++    setValue('password', pass, { shouldValidate: true });
++    setShowPassword(true);
++  };
++
++  const onSubmit = async (data) => {
++    setIsSubmitting(true);
++    abortControllerRef.current = new AbortController();
++
++    try {
++      await api.post('/api/superadmin/tenants', data, {
++        signal: abortControllerRef.current.signal
++      });
++
++      // 1. Close Modal
++      handleDismiss();
++      // 2. Reset form state (already done in handleDismiss)
++      // 3. Show success toast
++      toast.success('Inquilino creado exitosamente');
++      // 4. Trigger refresh
++      if (onSuccess) onSuccess();
++
++    } catch (error) {
++      if (error.name === 'AbortError') return;
++
++      if (error.status === 409) {
++        const isEmail = error.data?.field === 'email' || error.data?.message?.includes('email');
++        const field = isEmail ? 'email' : 'slug';
++        const msg = isEmail ? 'El email ya está en uso' : 'El dominio ya existe';
++        
++        toast.error(msg);
++        setError(field, { type: 'manual', message: msg });
++      } else if (error.status === 400 && Array.isArray(error.data?.errors)) {
++        // map field errors
++        error.data.errors.forEach(err => {
++          if (err.path && err.path[0]) {
++            setError(err.path[0], { type: 'manual', message: err.message });
++          }
++        });
++        toast.error('Por favor revisa los errores en el formulario');
++      } else {
++        toast.error(error.data?.message || 'Error al crear el inquilino');
++      }
++    } finally {
++      setIsSubmitting(false);
++    }
++
++  };
++
++  if (!isOpen) return null;
++
++  return (
++    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
++      <div 
++        ref={modalRef}
++        className="bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]"
++        role="dialog"
++        aria-modal="true"
++        aria-labelledby="modal-title"
++      >
++        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between sticky top-0 bg-white z-10">
++          <h2 id="modal-title" className="text-xl font-semibold text-gray-800">Nuevo Inquilino</h2>
++          <button 
++            onClick={handleDismiss}
++            disabled={isSubmitting}
++            className="text-gray-400 hover:text-gray-600 transition-colors p-1 disabled:opacity-50"
++            aria-label="Cerrar modal"
++          >
++            <X size={20} />
++          </button>
++        </div>
++
++        <div className="p-6 overflow-y-auto">
++          <form id="create-tenant-form" onSubmit={handleSubmit(onSubmit)} className="space-y-6">
++            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
++              
++              {/* Empresa */}
++              <div className="space-y-2">
++                <label htmlFor="tenant-name" className="block text-sm font-medium text-gray-700">Empresa *</label>
++                <input
++                  id="tenant-name"
++                  type="text"
++                  disabled={isSubmitting}
++                  className={`w-full px-3 py-2 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 ${errors.name ? 'border-red-500' : 'border-gray-300'}`}
++                  placeholder="Ej. Acme Corp"
++                  {...register('name')}
++                />
++                {errors.name && <p className="text-red-500 text-xs mt-1">{errors.name.message}</p>}
++              </div>
++
++              {/* Dominio */}
++              <div className="space-y-2">
++                <label htmlFor="tenant-slug" className="block text-sm font-medium text-gray-700">Dominio *</label>
++                <div className="relative">
++                  <input
++                    id="tenant-slug"
++                    type="text"
++                    disabled={isSubmitting}
++                    className={`w-full px-3 py-2 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 ${errors.slug ? 'border-red-500' : 'border-gray-300'}`}
++                    placeholder="acmecorp"
++                    {...register('slug')}
++                  />
++                  {slugValue && !errors.slug && (
++                    <p className="absolute -bottom-6 left-0 text-xs text-gray-500">
++                      {slugValue}.yourdomain.com
++                    </p>
++                  )}
++                </div>
++                {errors.slug && <p className="text-red-500 text-xs mt-1">{errors.slug.message}</p>}
++              </div>
++
++              {/* Nombre Admin */}
++              <div className="space-y-2 mt-4 md:mt-0">
++                <label htmlFor="admin-firstName" className="block text-sm font-medium text-gray-700">Nombre del Admin *</label>
++                <input
++                  id="admin-firstName"
++                  type="text"
++                  disabled={isSubmitting}
++                  className={`w-full px-3 py-2 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 ${errors.firstName ? 'border-red-500' : 'border-gray-300'}`}
++                  placeholder="John"
++                  {...register('firstName')}
++                />
++                {errors.firstName && <p className="text-red-500 text-xs mt-1">{errors.firstName.message}</p>}
++              </div>
++
++              {/* Apellido Admin */}
++              <div className="space-y-2 mt-4 md:mt-0">
++                <label htmlFor="admin-lastName" className="block text-sm font-medium text-gray-700">Apellido del Admin *</label>
++                <input
++                  id="admin-lastName"
++                  type="text"
++                  disabled={isSubmitting}
++                  className={`w-full px-3 py-2 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 ${errors.lastName ? 'border-red-500' : 'border-gray-300'}`}
++                  placeholder="Doe"
++                  {...register('lastName')}
++                />
++                {errors.lastName && <p className="text-red-500 text-xs mt-1">{errors.lastName.message}</p>}
++              </div>
++
++              {/* Email Admin */}
++              <div className="space-y-2 md:col-span-2 mt-4 md:mt-0">
++                <label htmlFor="admin-email" className="block text-sm font-medium text-gray-700">Email Admin *</label>
++                <input
++                  id="admin-email"
++                  type="email"
++                  disabled={isSubmitting}
++                  className={`w-full px-3 py-2 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 ${errors.email ? 'border-red-500' : 'border-gray-300'}`}
++                  placeholder="john@acmecorp.com"
++                  {...register('email')}
++                />
++                {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email.message}</p>}
++              </div>
++
++              {/* Contraseña */}
++              <div className="space-y-2 md:col-span-2">
++                <div className="flex justify-between items-center">
++                  <label htmlFor="admin-password" className="block text-sm font-medium text-gray-700">Contraseña *</label>
++                  <button 
++                    type="button" 
++                    onClick={generatePassword}
++                    disabled={isSubmitting}
++                    className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1 disabled:opacity-50"
++                  >
++                    <KeyRound size={12} />
++                    Generar segura
++                  </button>
++                </div>
++                <div className="relative">
++                  <input
++                    id="admin-password"
++                    type={showPassword ? 'text' : 'password'}
++                    disabled={isSubmitting}
++                    className={`w-full px-3 py-2 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 pr-10 ${errors.password ? 'border-red-500' : 'border-gray-300'}`}
++                    placeholder="••••••••"
++                    {...register('password')}
++                  />
++                  <button
++                    type="button"
++                    onClick={() => setShowPassword(!showPassword)}
++                    disabled={isSubmitting}
++                    className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600 disabled:opacity-50"
++                  >
++                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
++                  </button>
++                </div>
++                {errors.password && <p className="text-red-500 text-xs mt-1">{errors.password.message}</p>}
++              </div>
++
++            </div>
++          </form>
++        </div>
++
++        <div className="px-6 py-4 border-t border-gray-100 bg-gray-50 flex justify-end gap-3 sticky bottom-0 z-10">
++          <button
++            type="button"
++            onClick={handleDismiss}
++            disabled={isSubmitting}
++            className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium transition-colors disabled:opacity-50"
++          >
++            Cancel
++          </button>
++          <button
++            type="submit"
++            form="create-tenant-form"
++            disabled={isSubmitting}
++            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition-colors flex items-center disabled:opacity-70 disabled:cursor-not-allowed"
++          >
++            {isSubmitting ? (
++              <>
++                <Loader2 size={18} className="animate-spin mr-2" />
++                Creando...
++              </>
++            ) : (
++              'Crear Inquilino'
++            )}
++          </button>
++        </div>
++      </div>
++    </div>
++  );
++}
+diff --git a/superadmin-frontend/src/components/ProtectedRoute.jsx b/superadmin-frontend/src/components/ProtectedRoute.jsx
+new file mode 100644
+index 0000000..c5b3649
+--- /dev/null
++++ b/superadmin-frontend/src/components/ProtectedRoute.jsx
+@@ -0,0 +1,12 @@
++import { Navigate, Outlet } from 'react-router-dom';
++import useAuthStore from '../store/authStore';
++
++export default function ProtectedRoute() {
++  const token = useAuthStore((state) => state.token);
++
++  if (!token) {
++    return <Navigate to="/login" replace />;
++  }
++
++  return <Outlet />;
++}
+diff --git a/superadmin-frontend/src/components/SuperadminLayout.jsx b/superadmin-frontend/src/components/SuperadminLayout.jsx
+new file mode 100644
+index 0000000..1a523f0
+--- /dev/null
++++ b/superadmin-frontend/src/components/SuperadminLayout.jsx
+@@ -0,0 +1,70 @@
++import { Outlet, Link, useLocation } from 'react-router-dom';
++import { LogOut, LayoutDashboard, Users, CreditCard } from 'lucide-react';
++import useAuthStore from '../store/authStore';
++
++export default function SuperadminLayout() {
++  const { user, logout } = useAuthStore();
++  const location = useLocation();
++
++  const navItems = [
++    { path: '/', label: 'Dashboard', icon: LayoutDashboard },
++    { path: '/tenants', label: 'Inquilinos', icon: Users },
++    { path: '/licenses', label: 'Licencias', icon: CreditCard },
++  ];
++
++  return (
++    <div className="min-h-screen bg-slate-950 text-white flex">
++      {/* Sidebar */}
++      <aside className="w-64 border-r border-slate-800 bg-slate-900/50 p-6 flex flex-col h-screen sticky top-0">
++        <div className="mb-10">
++          <h1 className="text-xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
++            Superadmin
++          </h1>
++          <p className="text-xs text-slate-500 mt-1 uppercase tracking-wider font-semibold">Salesflow Platform</p>
++        </div>
++
++        <nav className="flex-1 space-y-2">
++          {navItems.map((item) => {
++            const Icon = item.icon;
++            const isActive = location.pathname === item.path || (item.path !== '/' && location.pathname.startsWith(item.path));
++            return (
++              <Link
++                key={item.path}
++                to={item.path}
++                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors ${
++                  isActive
++                    ? 'bg-blue-500/10 text-blue-400 font-medium'
++                    : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
++                }`}
++              >
++                <Icon size={18} />
++                {item.label}
++              </Link>
++            );
++          })}
++        </nav>
++
++        <div className="mt-auto pt-6 border-t border-slate-800">
++          <div className="flex items-center justify-between">
++            <div className="overflow-hidden">
++              <p className="text-sm font-medium truncate">{user?.name || 'Admin'}</p>
++              <p className="text-xs text-slate-500 truncate">{user?.email}</p>
++            </div>
++            <button
++              onClick={logout}
++              className="p-2 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
++              title="Cerrar sesión"
++            >
++              <LogOut size={18} />
++            </button>
++          </div>
++        </div>
++      </aside>
++
++      {/* Main Content Area */}
++      <main className="flex-1 p-8 lg:p-12 overflow-y-auto h-screen">
++        <Outlet />
++      </main>
++    </div>
++  );
++}
+diff --git a/superadmin-frontend/src/index.css b/superadmin-frontend/src/index.css
+new file mode 100644
+index 0000000..75395c3
+--- /dev/null
++++ b/superadmin-frontend/src/index.css
+@@ -0,0 +1,12 @@
++@import "tailwindcss";
++
++:root {
++  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
++  line-height: 1.5;
++  font-weight: 400;
++}
++
++body {
++  margin: 0;
++  min-height: 100vh;
++}
+diff --git a/superadmin-frontend/src/main.jsx b/superadmin-frontend/src/main.jsx
+new file mode 100644
+index 0000000..b9a1a6d
+--- /dev/null
++++ b/superadmin-frontend/src/main.jsx
+@@ -0,0 +1,10 @@
++import { StrictMode } from 'react'
++import { createRoot } from 'react-dom/client'
++import './index.css'
++import App from './App.jsx'
++
++createRoot(document.getElementById('root')).render(
++  <StrictMode>
++    <App />
++  </StrictMode>,
++)
+diff --git a/superadmin-frontend/src/pages/Dashboard.jsx b/superadmin-frontend/src/pages/Dashboard.jsx
+new file mode 100644
+index 0000000..5d641a5
+--- /dev/null
++++ b/superadmin-frontend/src/pages/Dashboard.jsx
+@@ -0,0 +1,30 @@
++export default function Dashboard() {
++  return (
++    <div className="w-full">
++      <header className="mb-10">
++        <h2 className="text-3xl font-semibold tracking-tight">Bienvenido de nuevo</h2>
++        <p className="text-slate-400 mt-1">Aquí puedes monitorear y administrar toda la plataforma SaaS.</p>
++      </header>
++
++      {/* Empty State Grid */}
++      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
++        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-sm">
++          <h3 className="text-slate-400 text-sm font-medium mb-2">Total Tenants</h3>
++          <p className="text-3xl font-bold">--</p>
++        </div>
++        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-sm">
++          <h3 className="text-slate-400 text-sm font-medium mb-2">Tokens IA (Mensual)</h3>
++          <p className="text-3xl font-bold">--</p>
++        </div>
++        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-sm">
++          <h3 className="text-slate-400 text-sm font-medium mb-2">Usuarios Activos</h3>
++          <p className="text-3xl font-bold">--</p>
++        </div>
++      </div>
++      
++      <div className="mt-8 border-2 border-dashed border-slate-800 rounded-2xl h-64 flex items-center justify-center text-slate-500">
++        El resto del dashboard se implementará en historias futuras.
++      </div>
++    </div>
++  );
++}
+diff --git a/superadmin-frontend/src/pages/Login.jsx b/superadmin-frontend/src/pages/Login.jsx
+new file mode 100644
+index 0000000..132becc
+--- /dev/null
++++ b/superadmin-frontend/src/pages/Login.jsx
+@@ -0,0 +1,121 @@
++import { useState } from 'react';
++import { useNavigate } from 'react-router-dom';
++import { Shield, KeyRound, ArrowRight, Loader2 } from 'lucide-react';
++import { api } from '../services/api';
++import useAuthStore from '../store/authStore';
++
++export default function Login() {
++  const [email, setEmail] = useState('');
++  const [password, setPassword] = useState('');
++  const [error, setError] = useState('');
++  const [loading, setLoading] = useState(false);
++  const navigate = useNavigate();
++  const setAuth = useAuthStore((state) => state.setAuth);
++
++  const handleSubmit = async (e) => {
++    e.preventDefault();
++    setError('');
++    setLoading(true);
++
++    try {
++      const response = await api.post('/api/superadmin/auth/login', { email: email.trim(), password });
++      
++      if (response && response.success && response.data) {
++        setAuth(response.data.token, response.data.admin);
++        navigate('/');
++      } else {
++        throw new Error('Formato de respuesta inválido');
++      }
++    } catch (err) {
++      if (err.status === 429) {
++        setError('Demasiados intentos. Por favor, espere un minuto.');
++      } else if (err.status === 401 || err.status === 403) {
++        setError('Credenciales inválidas o acceso denegado.');
++      } else {
++        setError(err.message || 'Ocurrió un error al iniciar sesión.');
++      }
++    } finally {
++      setLoading(false);
++    }
++  };
++
++  return (
++    <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4 relative overflow-hidden">
++      {/* Background decoration */}
++      <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] bg-blue-600/20 rounded-full blur-[120px] pointer-events-none"></div>
++      <div className="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] bg-purple-600/20 rounded-full blur-[120px] pointer-events-none"></div>
++
++      <div className="w-full max-w-md bg-slate-900/60 backdrop-blur-xl border border-slate-800 rounded-2xl shadow-2xl p-8 relative z-10">
++        <div className="text-center mb-10">
++          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-blue-500/10 text-blue-400 mb-6 border border-blue-500/20 shadow-[0_0_15px_rgba(59,130,246,0.15)]">
++            <Shield size={32} strokeWidth={1.5} />
++          </div>
++          <h1 className="text-3xl font-bold text-white tracking-tight">Superadmin Portal</h1>
++          <p className="text-slate-400 mt-2 text-sm">Identifícate para gestionar la plataforma</p>
++        </div>
++
++        {error && (
++          <div className="mb-6 p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm font-medium animate-in fade-in slide-in-from-top-2">
++            {error}
++          </div>
++        )}
++
++        <form onSubmit={handleSubmit} className="space-y-6">
++          <div className="space-y-2">
++            <label className="text-sm font-medium text-slate-300 ml-1">Correo Electrónico</label>
++            <div className="relative">
++              <input
++                type="email"
++                required
++                disabled={loading}
++                value={email}
++                onChange={(e) => setEmail(e.target.value)}
++                className="w-full bg-slate-950/50 border border-slate-700 text-white rounded-xl px-4 py-3.5 outline-none transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
++                placeholder="admin@salesflow.app"
++              />
++            </div>
++          </div>
++
++          <div className="space-y-2">
++            <label className="text-sm font-medium text-slate-300 ml-1">Contraseña</label>
++            <div className="relative">
++              <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none text-slate-500">
++                <KeyRound size={18} />
++              </div>
++              <input
++                type="password"
++                required
++                disabled={loading}
++                value={password}
++                onChange={(e) => setPassword(e.target.value)}
++                className="w-full bg-slate-950/50 border border-slate-700 text-white rounded-xl pl-11 pr-4 py-3.5 outline-none transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
++                placeholder="••••••••••••"
++              />
++            </div>
++          </div>
++
++          <button
++            type="submit"
++            disabled={loading}
++            className="w-full relative group bg-blue-600 hover:bg-blue-500 text-white font-medium rounded-xl px-4 py-3.5 transition-all overflow-hidden disabled:opacity-70 disabled:cursor-not-allowed mt-2"
++          >
++            <div className="absolute inset-0 bg-white/20 group-hover:translate-x-full transition-transform duration-500 -translate-x-full" />
++            <span className="relative flex items-center justify-center gap-2">
++              {loading ? (
++                <>
++                  <Loader2 size={18} className="animate-spin" />
++                  Verificando...
++                </>
++              ) : (
++                <>
++                  Iniciar Sesión
++                  <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
++                </>
++              )}
++            </span>
++          </button>
++        </form>
++      </div>
++    </div>
++  );
++}
+diff --git a/superadmin-frontend/src/pages/Tenants.jsx b/superadmin-frontend/src/pages/Tenants.jsx
+new file mode 100644
+index 0000000..813ef24
+--- /dev/null
++++ b/superadmin-frontend/src/pages/Tenants.jsx
+@@ -0,0 +1,189 @@
++import { useState, useEffect, useRef, useCallback } from 'react';
++import { Users, Server, Clock, Activity, Search, AlertCircle, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
++import api from '../services/api';
++import CreateTenantModal from '../components/CreateTenantModal';
++export default function Tenants() {
++  const [tenants, setTenants] = useState([]);
++  const [loading, setLoading] = useState(true);
++  const [error, setError] = useState(null);
++  const [page, setPage] = useState(1);
++  const [meta, setMeta] = useState({ total: 0, page: 1, limit: 10 });
++  const [isModalOpen, setIsModalOpen] = useState(false);
++  const newTenantBtnRef = useRef(null);
++
++  const abortControllerRef = useRef(null);
++
++  const fetchTenants = useCallback(async () => {
++    if (abortControllerRef.current) {
++      abortControllerRef.current.abort();
++    }
++    abortControllerRef.current = new AbortController();
++
++    try {
++      setLoading(true);
++      setError(null);
++      // api.get uses standard fetch wrapper
++      const response = await api.get(`/api/superadmin/tenants?page=${page}&limit=10&sortBy=createdAt&sortOrder=desc`, {
++        signal: abortControllerRef.current.signal
++      });
++      if (!response) return;
++      setTenants(response.data);
++      setMeta(response.meta);
++    } catch (err) {
++      if (err.name === 'AbortError') return;
++      setError(err.message || 'Error al cargar los inquilinos');
++    } finally {
++      setLoading(false);
++    }
++  }, [page]);
++
++  useEffect(() => {
++    fetchTenants();
++  }, [fetchTenants]);
++
++  const handlePrevPage = () => {
++    if (page > 1) setPage(page - 1);
++  };
++
++  const handleNextPage = () => {
++    if (page < Math.ceil(meta.total / meta.limit)) setPage(page + 1);
++  };
++
++  return (
++    <div className="w-full">
++      <header className="mb-10 flex items-end justify-between">
++        <div>
++          <h2 className="text-3xl font-semibold tracking-tight">Inquilinos</h2>
++          <p className="text-slate-400 mt-1">Administración global de todos los tenants registrados.</p>
++        </div>
++        <button
++          ref={newTenantBtnRef}
++          onClick={() => setIsModalOpen(true)}
++          className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors shadow-sm"
++        >
++          <Plus size={18} />
++          Nuevo Inquilino
++        </button>
++      </header>
++
++      <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-sm overflow-hidden flex flex-col">
++        {/* Toolbar */}
++        <div className="p-4 border-b border-slate-800 flex items-center gap-4">
++          <div className="relative max-w-sm w-full">
++            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
++            <input 
++              type="text" 
++              placeholder="Buscar por nombre o dominio..." 
++              className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2 pl-10 pr-4 text-sm focus:outline-none focus:border-blue-500 transition-colors placeholder:text-slate-600"
++              disabled // Future implementation
++            />
++          </div>
++        </div>
++
++        {/* Table */}
++        <div className="overflow-x-auto">
++          <table className="w-full text-left text-sm text-slate-300">
++            <thead className="bg-slate-950/50 text-slate-400 border-b border-slate-800">
++              <tr>
++                <th className="py-4 px-6 font-medium">
++                  <div className="flex items-center gap-2"><Users size={16} /> Nombre</div>
++                </th>
++                <th className="py-4 px-6 font-medium">
++                  <div className="flex items-center gap-2"><Server size={16} /> Dominio</div>
++                </th>
++                <th className="py-4 px-6 font-medium">
++                  <div className="flex items-center gap-2"><Clock size={16} /> Creación</div>
++                </th>
++                <th className="py-4 px-6 font-medium">
++                  <div className="flex items-center gap-2"><Activity size={16} /> Estado</div>
++                </th>
++              </tr>
++            </thead>
++            <tbody className="divide-y divide-slate-800/50">
++              {loading ? (
++                // Skeletons
++                Array.from({ length: 5 }).map((_, idx) => (
++                  <tr key={idx}>
++                    <td className="py-4 px-6"><div className="h-5 bg-slate-800 rounded animate-pulse w-3/4"></div></td>
++                    <td className="py-4 px-6"><div className="h-5 bg-slate-800 rounded animate-pulse w-2/3"></div></td>
++                    <td className="py-4 px-6"><div className="h-5 bg-slate-800 rounded animate-pulse w-1/2"></div></td>
++                    <td className="py-4 px-6"><div className="h-6 bg-slate-800 rounded-full animate-pulse w-20"></div></td>
++                  </tr>
++                ))
++              ) : error ? (
++                <tr>
++                  <td colSpan="4" className="py-12 px-6 text-center text-red-400">
++                    <div className="flex flex-col items-center gap-2">
++                      <AlertCircle size={24} />
++                      <p>{error}</p>
++                    </div>
++                  </td>
++                </tr>
++              ) : tenants.length === 0 ? (
++                <tr>
++                  <td colSpan="4" className="py-12 px-6 text-center text-slate-500">
++                    No se encontraron inquilinos.
++                  </td>
++                </tr>
++              ) : (
++                tenants.map(tenant => (
++                  <tr key={tenant.id} className="hover:bg-slate-800/20 transition-colors">
++                    <td className="py-4 px-6 font-medium text-slate-200">{tenant.name}</td>
++                    <td className="py-4 px-6 text-slate-400">{tenant.domain}</td>
++                    <td className="py-4 px-6 text-slate-400">
++                      {new Date(tenant.createdAt).toLocaleDateString()}
++                    </td>
++                    <td className="py-4 px-6">
++                      <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${
++                        tenant.status?.toLowerCase() === 'active' 
++                          ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' 
++                          : 'bg-slate-500/10 text-slate-400 border-slate-500/20'
++                      }`}>
++                        {tenant.status?.toLowerCase() === 'active' ? 'Activo' : tenant.status}
++                      </span>
++                    </td>
++                  </tr>
++                ))
++              )}
++            </tbody>
++          </table>
++        </div>
++
++        {/* Pagination */}
++        <div className="p-4 border-t border-slate-800 flex items-center justify-between text-sm text-slate-400">
++          <div>
++            Mostrando {tenants.length} de {meta.total} resultados
++          </div>
++          <div className="flex items-center gap-2">
++            <button 
++              onClick={handlePrevPage}
++              disabled={page === 1 || loading}
++              className="p-1 rounded-md hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
++            >
++              <ChevronLeft size={20} />
++            </button>
++            <span className="px-2">Página {page} de {Math.max(1, Math.ceil(meta.total / meta.limit))}</span>
++            <button 
++              onClick={handleNextPage}
++              disabled={page >= Math.ceil(meta.total / meta.limit) || loading}
++              className="p-1 rounded-md hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
++            >
++              <ChevronRight size={20} />
++            </button>
++          </div>
++        </div>
++        </div>
++      </div>
++
++      <CreateTenantModal 
++        isOpen={isModalOpen}
++        onClose={() => setIsModalOpen(false)}
++        onSuccess={() => {
++          if (page === 1) fetchTenants();
++          else setPage(1); // Will trigger effect to fetch
++        }}
++        triggerRef={newTenantBtnRef}
++      />
++    </div>
++  );
++}
+diff --git a/superadmin-frontend/src/services/api.js b/superadmin-frontend/src/services/api.js
+new file mode 100644
+index 0000000..6349f29
+--- /dev/null
++++ b/superadmin-frontend/src/services/api.js
+@@ -0,0 +1,95 @@
++import useAuthStore from '../store/authStore';
++
++const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4005';
++
++export const api = {
++  async fetch(endpoint, options = {}) {
++    const token = useAuthStore.getState().token;
++    
++    const headers = {
++      'Content-Type': 'application/json',
++      ...options.headers,
++    };
++
++    if (token) {
++      headers['Authorization'] = `Bearer ${token}`;
++    }
++
++    const controller = new AbortController();
++    const timeoutId = setTimeout(() => controller.abort(), 15000);
++    const signal = options.signal ? AbortSignal.any([options.signal, controller.signal]) : controller.signal;
++
++    let response;
++    try {
++      response = await fetch(`${API_URL.replace(/\/$/, '')}${endpoint}`, {
++        ...options,
++        headers,
++        signal,
++      });
++    } catch (err) {
++      if (err.name === 'AbortError') {
++        throw new Error('La petición ha tardado demasiado (timeout).');
++      }
++      throw new Error('No se pudo conectar con el servidor.');
++    } finally {
++      clearTimeout(timeoutId);
++    }
++
++    if (!response.ok) {
++      if ((response.status === 401 || response.status === 403) && window.location.pathname !== '/login') {
++        useAuthStore.getState().logout();
++        window.location.href = '/login';
++        return null;
++      }
++
++      // Intentar extraer el mensaje de error del backend, si existe.
++      let errorMessage = 'Network response was not ok';
++      try {
++        const errorData = await response.json();
++        errorMessage = errorData.message || errorMessage;
++      } catch (e) {
++        // Ignorar si no es JSON
++      }
++
++      const error = new Error(errorMessage);
++      error.status = response.status;
++      throw error;
++    }
++
++    // Para respuestas 204 No Content
++    if (response.status === 204) {
++      return null;
++    }
++
++    try {
++      const text = await response.text();
++      return text ? JSON.parse(text) : null;
++    } catch (e) {
++      return null;
++    }
++  },
++
++  get(endpoint, options) {
++    return this.fetch(endpoint, { ...options, method: 'GET' });
++  },
++
++  post(endpoint, body, options) {
++    return this.fetch(endpoint, {
++      ...options,
++      method: 'POST',
++      body: JSON.stringify(body),
++    });
++  },
++
++  put(endpoint, body, options) {
++    return this.fetch(endpoint, {
++      ...options,
++      method: 'PUT',
++      body: JSON.stringify(body),
++    });
++  },
++
++  delete(endpoint, options) {
++    return this.fetch(endpoint, { ...options, method: 'DELETE' });
++  },
++};
+diff --git a/superadmin-frontend/src/store/authStore.js b/superadmin-frontend/src/store/authStore.js
+new file mode 100644
+index 0000000..f55849e
+--- /dev/null
++++ b/superadmin-frontend/src/store/authStore.js
+@@ -0,0 +1,48 @@
++import { create } from 'zustand';
++import { persist, createJSONStorage } from 'zustand/middleware';
++import CryptoJS from 'crypto-js';
++
++const SECRET = 'superadmin-local-encryption-key';
++
++const secureStorage = {
++  getItem: (name) => {
++    const str = localStorage.getItem(name);
++    if (!str) return null;
++    try {
++      const bytes = CryptoJS.AES.decrypt(str, SECRET);
++      const decrypted = bytes.toString(CryptoJS.enc.Utf8);
++      return decrypted || null;
++    } catch (e) {
++      return null;
++    }
++  },
++  setItem: (name, value) => {
++    try {
++      const parsed = JSON.parse(value);
++      if (!parsed?.state?.token) {
++        localStorage.removeItem(name);
++        return;
++      }
++    } catch(e) {}
++    const encrypted = CryptoJS.AES.encrypt(value, SECRET).toString();
++    localStorage.setItem(name, encrypted);
++  },
++  removeItem: (name) => localStorage.removeItem(name),
++};
++
++const useAuthStore = create(
++  persist(
++    (set) => ({
++      token: null,
++      user: null,
++      setAuth: (token, user) => set({ token, user }),
++      logout: () => set({ token: null, user: null }),
++    }),
++    {
++      name: 'superadmin-auth-storage',
++      storage: createJSONStorage(() => secureStorage),
++    }
++  )
++);
++
++export default useAuthStore;
+diff --git a/superadmin-frontend/vite.config.js b/superadmin-frontend/vite.config.js
+new file mode 100644
+index 0000000..3ac0b37
+--- /dev/null
++++ b/superadmin-frontend/vite.config.js
+@@ -0,0 +1,12 @@
++import { defineConfig } from 'vite';
++import react from '@vitejs/plugin-react';
++import tailwindcss from '@tailwindcss/vite';
++
++// https://vite.dev/config/
++export default defineConfig({
++  plugins: [react(), tailwindcss()],
++  server: {
++    port: 5174,
++    host: true,
++  },
++});

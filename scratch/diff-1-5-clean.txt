@@ -1,0 +1,3332 @@
+diff --git a/backend/prisma/schema.prisma b/backend/prisma/schema.prisma
+index 374ac30..74cef4d 100644
+--- a/backend/prisma/schema.prisma
++++ b/backend/prisma/schema.prisma
+@@ -386,3 +386,14 @@ model AiRule {
+   @@unique([tenantId, term])
+   @@map("ai_rules")
+ }
++
++model Superadmin {
++  id           String   @id @default(cuid())
++  email        String   @unique
++  passwordHash String   @map("password_hash")
++  name         String
++  createdAt    DateTime @default(now()) @map("created_at")
++  updatedAt    DateTime @updatedAt @map("updated_at")
++
++  @@map("superadmins")
++}
+diff --git a/backend/prisma/seed.js b/backend/prisma/seed.js
+index 12fe626..37aaec2 100644
+--- a/backend/prisma/seed.js
++++ b/backend/prisma/seed.js
+@@ -69,7 +69,17 @@ async function main() {
+     create: { groupId: group.id, userId: vendor.id },
+   });
+ 
+-  console.log('Seed completed:', { tenant: tenant.id, admin: admin.id, coord: coord.id, vendor: vendor.id });
++  const superadmin = await prisma.superadmin.upsert({
++    where: { email: 'admin@salesflow.app' },
++    update: {},
++    create: {
++      name: 'Super Admin',
++      email: 'admin@salesflow.app',
++      passwordHash: await bcrypt.hash('superpassword', 10),
++    },
++  });
++
++  console.log('Seed completed:', { tenant: tenant.id, admin: admin.id, coord: coord.id, vendor: vendor.id, superadmin: superadmin.id });
+ }
+ 
+ main()
+diff --git a/backend/src/app.js b/backend/src/app.js
+index 2465f32..0b78dd0 100644
+--- a/backend/src/app.js
++++ b/backend/src/app.js
+@@ -8,6 +8,8 @@ const errorHandler = require('./middleware/errorHandler');
+ const healthRoutes = require('./routes/health.routes');
+ const swaggerRoutes = require('./routes/swagger.routes');
+ const authRoutes = require('./routes/auth.routes');
++const superadminAuthRoutes = require('./routes/superadmin.auth.routes');
++const superadminTenantRoutes = require('./routes/superadmin.tenant.routes');
+ const usersRoutes = require('./routes/users.routes');
+ const groupsRoutes = require('./routes/groups.routes');
+ const tenantRoutes = require('./routes/tenant.routes');
+@@ -30,7 +32,24 @@ app.use(helmet({
+     },
+   },
+ }));
+-app.use(cors());
++const allowedOrigins = [
++  'http://localhost:3000',
++  'http://localhost:5173',
++  'http://localhost:5174',
++  'https://salesflow.algor.mx',
++  'https://admin.salesflow.app',
++  process.env.FRONTEND_URL?.replace(/\/$/, '')
++].filter(Boolean);
++
++app.use(cors({
++  origin: function (origin, callback) {
++    if (!origin || allowedOrigins.includes(origin)) {
++      callback(null, true);
++    } else {
++      callback(new Error('Not allowed by CORS'));
++    }
++  }
++}));
+ app.use(morgan('[:date[iso]] :remote-addr - :method :url :status :res[content-length] - :response-time ms'));
+ app.use(express.json({ limit: '10mb' }));
+ app.use(express.urlencoded({ extended: true }));
+@@ -45,6 +64,8 @@ app.use('/uploads', authenticate, (req, res, next) => {
+ }, express.static(path.join(__dirname, '../uploads')));
+ 
+ app.use('/api/auth', authRoutes);
++app.use('/api/superadmin/auth', superadminAuthRoutes);
++app.use('/api/superadmin/tenants', superadminTenantRoutes);
+ app.use('/api/health', healthRoutes);
+ app.use('/api/users', usersRoutes);
+ app.use('/api/groups', groupsRoutes);
+diff --git a/backend/src/config/env.js b/backend/src/config/env.js
+index ad79d5e..42706ad 100644
+--- a/backend/src/config/env.js
++++ b/backend/src/config/env.js
+@@ -4,6 +4,8 @@ const env = {
+   databaseUrl: process.env.DATABASE_URL,
+   jwtSecret: process.env.JWT_SECRET,
+   jwtRefreshSecret: process.env.JWT_REFRESH_SECRET,
++  superadminJwtSecret: process.env.SUPERADMIN_JWT_SECRET || (process.env.NODE_ENV === 'test' ? 'test-secret' : (() => { throw new Error('SUPERADMIN_JWT_SECRET must be defined in environment'); })()),
++  superadminJwtExpiresIn: process.env.SUPERADMIN_JWT_EXPIRES_IN || '1h',
+   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '1h',
+   jwtRefreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d',
+   aiProvider: process.env.AI_PROVIDER || 'gemini',
+diff --git a/backend/src/controllers/superadmin.auth.controller.js b/backend/src/controllers/superadmin.auth.controller.js
+new file mode 100644
+index 0000000..4fff4f4
+--- /dev/null
++++ b/backend/src/controllers/superadmin.auth.controller.js
+@@ -0,0 +1,82 @@
++const superadminAuthService = require('../services/superadmin.auth.service');
++const ApiError = require('../utils/ApiError');
++const { success } = require('../utils/response');
++
++const loginAttempts = new Map();
++const WINDOW_MS = 60 * 1000;
++const MAX_ATTEMPTS = 10;
++const MAX_MAP_SIZE = 10000;
++
++// Cleanup memory leak
++setInterval(() => {
++  const now = Date.now();
++  for (const [ip, timestamps] of loginAttempts.entries()) {
++    const active = timestamps.filter((t) => now - t < WINDOW_MS);
++    if (active.length === 0) {
++      loginAttempts.delete(ip);
++    } else {
++      loginAttempts.set(ip, active);
++    }
++  }
++}, WINDOW_MS * 2).unref();
++
++function rateLimitLogin(req, res, next) {
++  const ip = req.ip || (req.connection && req.connection.remoteAddress) || (req.socket && req.socket.remoteAddress) || 'unknown';
++  
++  if (ip === 'unknown') {
++    return next(); // Bypass rate limiting for unresolvable IPs to prevent collateral blocking
++  }
++
++  const now = Date.now();
++
++  if (!loginAttempts.has(ip)) {
++    // Prevent unbounded memory growth DoS
++    if (loginAttempts.size >= MAX_MAP_SIZE) {
++      loginAttempts.delete(loginAttempts.keys().next().value);
++    }
++    loginAttempts.set(ip, []);
++  }
++
++  const timestamps = loginAttempts.get(ip).filter((t) => now - t < WINDOW_MS);
++  
++  if (timestamps.length >= MAX_ATTEMPTS) {
++    return next(ApiError.rateLimited('Demasiados intentos. Intente más tarde.'));
++  }
++  
++  timestamps.push(now);
++  loginAttempts.set(ip, timestamps);
++
++  next();
++}
++
++async function login(req, res, next) {
++  try {
++    const { email, password } = req.body || {};
++    
++    // Validate types to prevent 500s or NoSQL injections
++    if (!email || !password || typeof email !== 'string' || typeof password !== 'string') {
++      throw ApiError.badRequest('Email y contraseña son requeridos y deben ser texto');
++    }
++    
++    // Enforce max password length for bcrypt safety
++    if (password.length > 72) {
++      throw ApiError.badRequest('Contraseña excede el límite permitido');
++    }
++    
++    // Basic email validation
++    if (!/^\S+@\S+\.\S+$/.test(email)) {
++      throw ApiError.badRequest('Formato de email inválido');
++    }
++
++    const normalizedEmail = email.toLowerCase();
++    const result = await superadminAuthService.login(normalizedEmail, password);
++    success(res, result);
++  } catch (err) {
++    next(err);
++  }
++}
++
++module.exports = {
++  rateLimitLogin,
++  login,
++};
+diff --git a/backend/src/controllers/superadmin.tenant.controller.js b/backend/src/controllers/superadmin.tenant.controller.js
+new file mode 100644
+index 0000000..f554c5e
+--- /dev/null
++++ b/backend/src/controllers/superadmin.tenant.controller.js
+@@ -0,0 +1,126 @@
++const superadminTenantService = require('../services/superadmin.tenant.service');
++const { success } = require('../utils/response');
++const { z } = require('zod');
++
++const RESERVED_SLUGS = ['api', 'admin', 'system', 'www', 'app', 'root', 'static'];
++
++const createTenantSchema = z.object({
++  name: z.string().trim().min(2).max(100),
++  slug: z.string().trim().toLowerCase()
++    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'Invalid slug format')
++    .max(63)
++    .refine(val => !RESERVED_SLUGS.includes(val), { message: 'Reserved keyword cannot be used as slug' }),
++  firstName: z.string().trim().min(2).max(100),
++  lastName: z.string().trim().min(2).max(100),
++  email: z.string().trim().email().max(255),
++  password: z.string().min(8).max(50).regex(/[A-Z]/, 'Must contain at least one uppercase letter').regex(/[0-9]/, 'Must contain at least one number').regex(/[^A-Za-z0-9]/, 'Must contain at least one special character'),
++});
++
++const updateTenantStatusSchema = z.object({
++  status: z.enum(['active', 'suspended']),
++});
++
++async function getTenants(req, res, next) {
++  try {
++    const { page, limit, sortBy, sortOrder } = req.query;
++    
++    const result = await superadminTenantService.getTenants({
++      page,
++      limit,
++      sortBy,
++      sortOrder,
++    });
++    
++    success(res, result);
++  } catch (err) {
++    next(err);
++  }
++}
++
++async function createTenant(req, res, next) {
++  try {
++    const validatedData = createTenantSchema.parse(req.body);
++
++    const result = await superadminTenantService.createTenantWithAdmin({
++      name: validatedData.name,
++      domain: validatedData.slug,
++      adminName: `${validatedData.firstName} ${validatedData.lastName}`,
++      adminEmail: validatedData.email,
++      password: validatedData.password,
++    });
++
++    // Strip passwordHash from user object
++    const userWithoutPassword = { ...result.user };
++    delete userWithoutPassword.passwordHash;
++
++    const safeResult = {
++      tenant: result.tenant,
++      user: userWithoutPassword,
++    };
++
++    success(res, safeResult, 201);
++  } catch (err) {
++    if (err.code === 'P2002' && err.meta?.target) {
++      let field = 'unknown';
++      if (Array.isArray(err.meta.target)) field = err.meta.target[0];
++      else if (typeof err.meta.target === 'string') field = err.meta.target;
++      return res.status(409).json({
++        success: false,
++        message: `Conflict: ${field} already exists`,
++        field,
++      });
++    }
++    if (err instanceof z.ZodError) {
++      return res.status(400).json({
++        success: false,
++        message: 'Validation failed',
++        errors: err.errors,
++      });
++    }
++    const logger = require('../utils/logger');
++    logger.error('Error creating tenant:', err);
++    const status = err.statusCode || err.status || 500;
++    return res.status(status).json({
++      success: false,
++      message: err.message || 'Internal server error while creating tenant',
++    });
++  }
++}
++
++async function updateTenantStatus(req, res, next) {
++  try {
++    const { id } = req.params;
++    const validatedData = updateTenantStatusSchema.parse(req.body);
++
++    const result = await superadminTenantService.updateTenantStatus(id, validatedData.status);
++    
++    success(res, result);
++  } catch (err) {
++    if (err.statusCode === 403) {
++      return res.status(403).json({ success: false, message: err.message });
++    }
++    if (err.statusCode === 404) {
++      return res.status(404).json({ success: false, message: 'Tenant not found' });
++    }
++    if (err instanceof z.ZodError) {
++      return res.status(400).json({
++        success: false,
++        message: 'Validation failed',
++        errors: err.errors,
++      });
++    }
++    const logger = require('../utils/logger');
++    logger.error(`Error updating tenant status for ${req.params.id}:`, err);
++    const status = err.statusCode || err.status || 500;
++    return res.status(status).json({
++      success: false,
++      message: err.message || 'Internal server error while updating tenant status',
++    });
++  }
++}
++
++module.exports = {
++  getTenants,
++  createTenant,
++  updateTenantStatus,
++};
+diff --git a/backend/src/middleware/auth.js b/backend/src/middleware/auth.js
+index 5f126d3..ae7d942 100644
+--- a/backend/src/middleware/auth.js
++++ b/backend/src/middleware/auth.js
+@@ -1,8 +1,9 @@
+ const jwt = require('jsonwebtoken');
+ const ApiError = require('../utils/ApiError');
+ const env = require('../config/env');
++const { getTenantStatusAsync } = require('../utils/tenant-cache.util');
+ 
+-function authenticate(req, _res, next) {
++async function authenticate(req, _res, next) {
+   const header = req.headers.authorization;
+   if (!header || !header.startsWith('Bearer ')) {
+     return next(ApiError.unauthorized('No token provided'));
+@@ -12,11 +13,30 @@ function authenticate(req, _res, next) {
+   try {
+     const decoded = jwt.verify(token, env.jwtSecret);
+     req.user = decoded;
++
++    if (decoded.role !== 'SUPERADMIN') {
++      if (!decoded.tenantId) {
++        return next(new ApiError(403, 'Tenant is suspended or invalid', 'TENANT_SUSPENDED'));
++      }
++      try {
++        const status = await getTenantStatusAsync(decoded.tenantId);
++        if (!status || status === 'suspended') {
++          return next(new ApiError(403, 'Tenant is suspended or not found', 'TENANT_SUSPENDED'));
++        }
++      } catch (err) {
++        // Log DB error but don't fail authentication with an invalid token error, pass a 500 or 403
++        return next(new ApiError(500, 'Internal Server Error verifying tenant', 'INTERNAL_ERROR'));
++      }
++    }
++
+     next();
+   } catch (err) {
+     if (err.name === 'TokenExpiredError') {
+       return next(ApiError.unauthorized('Token expired'));
+     }
++    if (err instanceof ApiError || err.statusCode || err.status) {
++      return next(err);
++    }
+     return next(ApiError.unauthorized('Invalid token'));
+   }
+ }
+diff --git a/backend/src/middleware/superadmin.auth.middleware.js b/backend/src/middleware/superadmin.auth.middleware.js
+new file mode 100644
+index 0000000..1879cb8
+--- /dev/null
++++ b/backend/src/middleware/superadmin.auth.middleware.js
+@@ -0,0 +1,30 @@
++const jwt = require('jsonwebtoken');
++const env = require('../config/env');
++const ApiError = require('../utils/ApiError');
++
++function isSuperadmin(req, res, next) {
++  const authHeader = req.headers.authorization;
++  if (!authHeader || !authHeader.startsWith('Bearer ')) {
++    return next(ApiError.unauthorized('Token no provisto'));
++  }
++
++  const token = authHeader.split(' ')[1];
++
++  try {
++    const decoded = jwt.verify(token, env.superadminJwtSecret);
++    
++    if (decoded.role !== 'SUPERADMIN') {
++      return next(ApiError.forbidden('Acceso denegado: Se requiere rol SUPERADMIN'));
++    }
++
++    req.superadmin = decoded;
++    next();
++  } catch (err) {
++    if (err.name === 'JsonWebTokenError' && err.message === 'invalid signature') {
++      return next(ApiError.forbidden('Firma de token inválida para esta ruta'));
++    }
++    return next(ApiError.unauthorized('Token inválido o expirado'));
++  }
++}
++
++module.exports = isSuperadmin;
+diff --git a/backend/src/routes/chat.routes.js b/backend/src/routes/chat.routes.js
+index a7d1314..b844fe4 100644
+--- a/backend/src/routes/chat.routes.js
++++ b/backend/src/routes/chat.routes.js
+@@ -109,9 +109,11 @@ router.post('/:conversationId/messages', authenticate, authorize('ADMIN', 'COORD
+     } else {
+       message = await whatsappService.sendMessage(conversationId, content, req.user.id, req.user.role);
+     }
+-    
+     res.status(201).json({ data: message });
+   } catch (error) {
++    if (error.code === 'TENANT_SUSPENDED') {
++      return res.status(403).json({ error: 'TENANT_SUSPENDED', message: error.message });
++    }
+     next(error);
+   }
+ });
+@@ -240,6 +242,9 @@ router.post('/:conversationId/media', authenticate, authorize('ADMIN', 'COORDINA
+         console.error('Error deleting orphaned file:', err.message);
+       }
+     }
++    if (error.code === 'TENANT_SUSPENDED') {
++      return res.status(403).json({ error: 'TENANT_SUSPENDED', message: error.message });
++    }
+     next(error);
+   }
+ });
+diff --git a/backend/src/routes/superadmin.auth.routes.js b/backend/src/routes/superadmin.auth.routes.js
+new file mode 100644
+index 0000000..c0638cd
+--- /dev/null
++++ b/backend/src/routes/superadmin.auth.routes.js
+@@ -0,0 +1,8 @@
++const { Router } = require('express');
++const superadminAuthController = require('../controllers/superadmin.auth.controller');
++
++const router = Router();
++
++router.post('/login', superadminAuthController.rateLimitLogin, superadminAuthController.login);
++
++module.exports = router;
+diff --git a/backend/src/routes/superadmin.tenant.routes.js b/backend/src/routes/superadmin.tenant.routes.js
+new file mode 100644
+index 0000000..3ed502d
+--- /dev/null
++++ b/backend/src/routes/superadmin.tenant.routes.js
+@@ -0,0 +1,13 @@
++const express = require('express');
++const superadminTenantController = require('../controllers/superadmin.tenant.controller');
++const superadminAuth = require('../middleware/superadmin.auth.middleware');
++
++const router = express.Router();
++
++router.use(superadminAuth);
++
++router.get('/', superadminTenantController.getTenants);
++router.post('/', superadminTenantController.createTenant);
++router.patch('/:id/status', superadminTenantController.updateTenantStatus);
++
++module.exports = router;
+diff --git a/backend/src/services/auth.service.js b/backend/src/services/auth.service.js
+index ccc57ea..58fd492 100644
+--- a/backend/src/services/auth.service.js
++++ b/backend/src/services/auth.service.js
+@@ -30,7 +30,7 @@ async function login(email, password) {
+       role: true,
+       tenantId: true,
+       isActive: true,
+-      tenant: { select: { name: true } },
++      tenant: { select: { name: true, status: true } },
+     },
+   });
+ 
+@@ -43,6 +43,10 @@ async function login(email, password) {
+     throw ApiError.unauthorized('Invalid email or password');
+   }
+ 
++  if (user.role !== 'SUPERADMIN' && (!user.tenant || user.tenant.status === 'suspended')) {
++    throw new ApiError(403, 'Tenant is suspended or invalid', 'TENANT_SUSPENDED');
++  }
++
+   await prisma.user.update({
+     where: { id: user.id },
+     data: { lastLoginAt: new Date() },
+@@ -59,7 +63,7 @@ async function login(email, password) {
+       phone: user.phone,
+       role: user.role,
+       tenantId: user.tenantId,
+-      tenantName: user.tenant.name,
++      tenantName: user.tenant?.name || null,
+     },
+     token,
+     refreshToken,
+@@ -74,11 +78,19 @@ async function refresh(token) {
+     throw ApiError.unauthorized('Invalid or expired refresh token');
+   }
+ 
+-  const user = await prisma.user.findUnique({ where: { id: decoded.id } });
++  const user = await prisma.user.findUnique({ 
++    where: { id: decoded.id },
++    select: { id: true, tenantId: true, role: true, isActive: true, tenant: { select: { status: true } } }
++  });
++  
+   if (!user || !user.isActive) {
+     throw ApiError.unauthorized('User not found or inactive');
+   }
+ 
++  if (user.role !== 'SUPERADMIN' && (!user.tenant || user.tenant.status === 'suspended')) {
++    throw new ApiError(403, 'Tenant is suspended or invalid', 'TENANT_SUSPENDED');
++  }
++
+   const payload = { id: user.id, tenantId: user.tenantId, role: user.role };
+   let expiresIn = env.jwtExpiresIn;
+   if (payload.role === 'VENDOR' || payload.role === 'COORDINATOR') {
+diff --git a/backend/src/services/superadmin.auth.service.js b/backend/src/services/superadmin.auth.service.js
+new file mode 100644
+index 0000000..0c39d29
+--- /dev/null
++++ b/backend/src/services/superadmin.auth.service.js
+@@ -0,0 +1,42 @@
++const bcrypt = require('bcryptjs');
++const jwt = require('jsonwebtoken');
++const prisma = require('../config/database');
++const env = require('../config/env');
++const ApiError = require('../utils/ApiError');
++
++// Dummy hash to prevent timing attacks (hash of 'dummy')
++const DUMMY_HASH = '$2a$10$C.Xv.hFqL1N.O3X.pX.0.e9Q.Q3.8.v.p.r.x.v.v.v.v.v.v.v';
++
++function generateTokens(payload) {
++  const expiresIn = env.superadminJwtExpiresIn;
++  const token = jwt.sign(payload, env.superadminJwtSecret, { expiresIn });
++  return { token };
++}
++
++async function login(email, password) {
++  const admin = await prisma.superadmin.findUnique({
++    where: { email },
++  });
++
++  const hashToCompare = admin ? admin.passwordHash : DUMMY_HASH;
++  const valid = await bcrypt.compare(password, hashToCompare);
++
++  if (!admin || !valid) {
++    throw ApiError.unauthorized('Credenciales inválidas');
++  }
++
++  const payload = { id: admin.id, role: 'SUPERADMIN' };
++  const { token } = generateTokens(payload);
++
++  return {
++    admin: {
++      id: admin.id,
++      name: admin.name,
++      email: admin.email,
++      role: 'SUPERADMIN',
++    },
++    token,
++  };
++}
++
++module.exports = { login };
+diff --git a/backend/src/services/superadmin.tenant.service.js b/backend/src/services/superadmin.tenant.service.js
+new file mode 100644
+index 0000000..5dfa38b
+--- /dev/null
++++ b/backend/src/services/superadmin.tenant.service.js
+@@ -0,0 +1,187 @@
++const prisma = require('../config/database');
++const bcrypt = require('bcryptjs');
++const { getIo } = require('../socket');
++const jwt = require('jsonwebtoken');
++const { setTenantStatus } = require('../utils/tenant-cache.util');
++const logger = require('../utils/logger');
++
++/**
++ * Retrieves a paginated list of tenants for the Superadmin dashboard.
++ *
++ * @param {Object} options Pagination and sorting options
++ * @param {number} [options.page=1] Page number
++ * @param {number} [options.limit=10] Items per page
++ * @param {string} [options.sortBy='createdAt'] Field to sort by
++ * @param {string} [options.sortOrder='desc'] Sort order ('asc' or 'desc')
++ * @returns {Promise<{ data: Array, meta: { total: number, page: number, limit: number } }>}
++ */
++async function getTenants({ page = 1, limit = 10, sortBy = 'createdAt', sortOrder = 'desc' }) {
++  const parsedPage = Math.max(1, parseInt(page, 10) || 1);
++  const parsedLimit = Math.min(100, Math.max(1, parseInt(limit, 10) || 10));
++  
++  const skip = (parsedPage - 1) * parsedLimit;
++  const take = parsedLimit;
++
++  // Validate sort field to prevent injection/errors
++  const validSortFields = ['createdAt', 'name', 'domain', 'status'];
++  const validSortField = validSortFields.includes(sortBy) ? sortBy : 'createdAt';
++  
++  const orderStr = typeof sortOrder === 'string' ? sortOrder.toLowerCase() : 'desc';
++  const validSortOrder = ['asc', 'desc'].includes(orderStr) ? orderStr : 'desc';
++
++  const [data, total] = await Promise.all([
++    prisma.tenant.findMany({
++      skip,
++      take,
++      orderBy: { [validSortField]: validSortOrder },
++      select: {
++        id: true,
++        name: true,
++        domain: true,
++        createdAt: true,
++        status: true,
++      },
++    }),
++    prisma.tenant.count(),
++  ]);
++
++  return {
++    data,
++    meta: {
++      total,
++      page: parsedPage,
++      limit: parsedLimit,
++    },
++  };
++}
++
++/**
++ * Creates a new tenant and its initial admin user within a single transaction.
++ *
++ * @param {Object} data Tenant and Admin data
++ * @param {string} data.name Tenant name
++ * @param {string} data.domain Tenant domain
++ * @param {string} data.adminName Admin name (first + last name)
++ * @param {string} data.adminEmail Admin email
++ * @param {string} data.password Admin password
++ * @returns {Promise<{ tenant: Object, user: Object }>}
++ */
++async function createTenantWithAdmin(data) {
++  const { name, domain, adminName, adminEmail, password } = data;
++
++  const salt = await bcrypt.genSalt(10);
++  const passwordHash = await bcrypt.hash(password, salt);
++
++  // The transaction MUST use a timeout to prevent hanging connections
++  return prisma.$transaction(async (tx) => {
++    const tenant = await tx.tenant.create({
++      data: {
++        name,
++        domain,
++        status: 'active', // 'active' status for Tenant (lowercase)
++      },
++    });
++
++    const user = await tx.user.create({
++      data: {
++        name: adminName,
++        email: adminEmail,
++        passwordHash,
++        role: 'ADMIN',
++        tenantId: tenant.id,
++        isActive: true,
++        emailVerified: new Date(),
++      },
++    });
++
++    return { tenant, user };
++  }, { timeout: 10000 });
++}
++
++/**
++ * Updates the status of a tenant.
++ *
++ * @param {string} id Tenant ID
++ * @param {string} status New status ('active' or 'suspended')
++ * @returns {Promise<Object>} Updated tenant
++ */
++async function updateTenantStatus(id, status) {
++  const masterTenantId = process.env.MASTER_TENANT_ID;
++  if (status === 'suspended') {
++    if (!masterTenantId) {
++      const error = new Error('Server configuration error: MASTER_TENANT_ID is not set');
++      error.statusCode = 500;
++      throw error;
++    }
++    if (id === masterTenantId) {
++      const error = new Error('Cannot suspend the master tenant');
++      error.statusCode = 403;
++      throw error;
++    }
++  }
++
++  // Check if tenant exists and get full payload
++  const tenant = await prisma.tenant.findUnique({
++    where: { id }
++  });
++
++  if (!tenant) {
++    const error = new Error('Tenant not found');
++    error.statusCode = 404;
++    throw error;
++  }
++
++  // Idempotency check: if status is the same, return early with full object
++  if (tenant.status === status) {
++    return tenant;
++  }
++
++  // Update status
++  const updatedTenant = await prisma.tenant.update({
++    where: { id },
++    data: { status }
++  });
++
++  // Update cache proactively
++  setTenantStatus(id, status);
++
++  if (status === 'suspended') {
++    try {
++      const io = getIo();
++      const namespaces = ['/chat', '/alerts', '/notifications'];
++      
++      for (const nsp of namespaces) {
++        const namespace = io.of(nsp);
++        const sockets = await namespace.fetchSockets();
++        
++        for (const socket of sockets) {
++          try {
++            const token = socket.handshake.auth?.token;
++            if (token) {
++              // Decode without signature verification to avoid O(N) blocking crypto
++              const decoded = jwt.decode(token);
++              if (decoded && decoded.tenantId === id) {
++                socket.emit('tenant_suspended', { message: 'Account suspended.' });
++                socket.disconnect(true);
++              }
++            }
++          } catch (e) {
++            // Ignore token parsing errors
++          }
++        }
++      }
++    } catch (err) {
++      logger.error(`Failed to disconnect sockets for tenant ${id}`, err);
++    }
++  }
++
++  logger.info(JSON.stringify({ event: 'TENANT_STATUS_CHANGED', tenantId: id, status }));
++
++  return updatedTenant;
++}
++
++module.exports = {
++  getTenants,
++  createTenantWithAdmin,
++  updateTenantStatus,
++};
+diff --git a/backend/src/services/whatsapp.service.js b/backend/src/services/whatsapp.service.js
+index a3a1522..9e16547 100644
+--- a/backend/src/services/whatsapp.service.js
++++ b/backend/src/services/whatsapp.service.js
+@@ -3,12 +3,26 @@ const env = require('../config/env');
+ const socket = require('../socket');
+ const { isOffHours } = require('../utils/date');
+ const crypto = require('crypto');
++const logger = require('../utils/logger');
+ const aiService = require('./ai.service');
+ const assignmentService = require('./assignment.service');
+ const prisma = new PrismaClient();
+ 
+ const incomingLocks = new Map();
+ const activeAiGenerations = new Set();
++const { getTenantStatusAsync } = require('../utils/tenant-cache.util');
++const ApiError = require('../utils/ApiError');
++
++async function isTenantSuspended(tenantId) {
++  try {
++    const status = await getTenantStatusAsync(tenantId);
++    return !status || status === 'suspended';
++  } catch (err) {
++    logger.error(`[WHATSAPP_SERVICE] Error checking tenant status for ${tenantId}:`, err);
++    // Fail safe to suspended if we can't query the database
++    return true;
++  }
++}
+ 
+ /**
+  * Servicio para integración con WhatsApp Business API.
+@@ -28,12 +42,12 @@ const whatsappService = {
+         try {
+           config.accessToken = decrypt(config.accessToken);
+         } catch (e) {
+-          console.error(`[WHATSAPP_SERVICE] Error decrypting token for tenant ${tenantId}`, e);
++          logger.error(`[WHATSAPP_SERVICE] Error decrypting token for tenant ${tenantId}`, e);
+         }
+       }
+       return config;
+     } catch (error) {
+-      console.error(`[WHATSAPP_SERVICE] Error fetching config for tenant ${tenantId}:`, error);
++      logger.error(`[WHATSAPP_SERVICE] Error fetching config for tenant ${tenantId}:`, error);
+       throw error;
+     }
+   },
+@@ -51,7 +65,7 @@ const whatsappService = {
+         create: { ...data, tenantId }
+       });
+     } catch (error) {
+-      console.error(`[WHATSAPP_SERVICE] Error updating config for tenant ${tenantId}:`, error);
++      logger.error(`[WHATSAPP_SERVICE] Error updating config for tenant ${tenantId}:`, error);
+       throw error;
+     }
+   },
+@@ -63,6 +77,11 @@ const whatsappService = {
+    * @returns {string} El challenge si es exitoso.
+    */
+   async verifyWebhook(query, tenantId) {
++    if (!tenantId) {
++      const error = new Error('tenantId is required');
++      error.status = 400;
++      throw error;
++    }
+     const { 'hub.mode': mode, 'hub.verify_token': token, 'hub.challenge': challenge } = query;
+ 
+     if (mode === 'subscribe' && token) {
+@@ -89,7 +108,16 @@ const whatsappService = {
+    */
+   async handleIncomingMessage(payload, tenantId) {
+     try {
+-      console.log(`[WHATSAPP_SERVICE] Webhook received for tenant: ${tenantId}`);
++      if (!tenantId) {
++        logger.error('[WHATSAPP_SERVICE] Incoming message payload missing tenantId.');
++        return false;
++      }
++      if (await isTenantSuspended(tenantId)) {
++        logger.info(`[WHATSAPP_SERVICE] Tenant ${tenantId} is suspended, discarding incoming webhook early.`);
++        return false;
++      }
++
++      logger.info(`[WHATSAPP_SERVICE] Webhook received for tenant: ${tenantId}`);
+       
+       if (payload.object !== 'whatsapp_business_account') return false;
+       
+@@ -103,7 +131,7 @@ const whatsappService = {
+           if (value && value.statuses && value.statuses.length > 0) {
+             for (const st of value.statuses) {
+               if (st.status === 'failed' && st.id) {
+-                console.error(`[WHATSAPP_SERVICE] Delivery failure status from Meta for waMessageId ${st.id}:`, JSON.stringify(st));
++                logger.error(`[WHATSAPP_SERVICE] Delivery failure status from Meta for waMessageId ${st.id}:`, JSON.stringify(st));
+                 try {
+                   const errObj = st.errors && st.errors[0];
+                   const errCode = errObj ? errObj.code : 'Desconocido';
+@@ -130,11 +158,11 @@ const whatsappService = {
+                       const socket = require('../socket');
+                       socket.getIo().of('/chat').to(`conversation:${msgRecord.conversationId}`).to(`tenant_${msgRecord.conversation.tenantId}_coordinators`).emit('message_updated', updatedMsg);
+                     } catch (socErr) {
+-                      console.error('[WHATSAPP_SERVICE] Error emitting message_updated socket:', socErr.message);
++                      logger.error('[WHATSAPP_SERVICE] Error emitting message_updated socket:', socErr.message);
+                     }
+                   }
+                 } catch (e) {
+-                  console.error('[WHATSAPP_SERVICE] Error processing status update:', e.message);
++                  logger.error('[WHATSAPP_SERVICE] Error processing status update:', e.message);
+                 }
+               }
+             }
+@@ -163,7 +191,7 @@ const whatsappService = {
+                   filename: mediaObj.filename
+                 };
+               } else {
+-                console.warn('[WHATSAPP_SERVICE] Webhook received media but no media ID found in payload:', JSON.stringify(message));
++                logger.warn('[WHATSAPP_SERVICE] Webhook received media but no media ID found in payload:', JSON.stringify(message));
+               }
+             }
+ 
+@@ -182,7 +210,7 @@ const whatsappService = {
+                 // Prepend quote to the incoming text
+                 text = `> [Respuesta a]: "${snippet}"\n\n${text}`;
+               } catch (ctxErr) {
+-                console.error('[WHATSAPP_SERVICE] Error fetching context message:', ctxErr.message);
++                logger.error('[WHATSAPP_SERVICE] Error fetching context message:', ctxErr.message);
+               }
+             }
+             
+@@ -202,7 +230,7 @@ const whatsappService = {
+               });
+               
+               if (client && client.isBlocked) {
+-                console.log(`[WHATSAPP_SERVICE] Client ${clientPhone} is blocked. Ignoring message.`);
++                logger.info(`[WHATSAPP_SERVICE] Client ${clientPhone} is blocked. Ignoring message.`);
+                 continue;
+               }
+               
+@@ -231,14 +259,14 @@ const whatsappService = {
+               try {
+                 await assignmentService.autoAssign(tenantId, conversation.id);
+               } catch (autoAssignErr) {
+-                console.error(`[WHATSAPP_SERVICE] Error auto-assigning chat for tenant ${tenantId}, conversation ${conversation.id}:`, autoAssignErr);
++                logger.error(`[WHATSAPP_SERVICE] Error auto-assigning chat for tenant ${tenantId}, conversation ${conversation.id}:`, autoAssignErr);
+               }
+             } else {
+               if (conversation.status === 'PENDING_ASSIGNMENT') {
+                 try {
+                   await assignmentService.autoAssign(tenantId, conversation.id);
+                 } catch (autoAssignErr) {
+-                  console.error(`[WHATSAPP_SERVICE] Error auto-assigning chat for tenant ${tenantId}, conversation ${conversation.id}:`, autoAssignErr);
++                  logger.error(`[WHATSAPP_SERVICE] Error auto-assigning chat for tenant ${tenantId}, conversation ${conversation.id}:`, autoAssignErr);
+                 }
+               }
+               // Actualizar fecha del último mensaje
+@@ -286,7 +314,7 @@ const whatsappService = {
+                           timeout: 60000
+                         });
+                       } catch (downloadErr) {
+-                         console.error('Failed to download from Meta API:', downloadErr.message);
++                         logger.error('Failed to download from Meta API:', downloadErr.message);
+                          throw new Error(`Meta API download failed: ${downloadErr.message}`);
+                       }
+                       
+@@ -339,20 +367,20 @@ const whatsappService = {
+                         });
+                         msgRecord.attachments = [attachment];
+                       } else {
+-                        console.error('Failed to download from Meta API:', fileRes ? fileRes.statusText : 'Unknown');
++                        logger.error('Failed to download from Meta API:', fileRes ? fileRes.statusText : 'Unknown');
+                         throw new Error(`Meta API download failed: ${fileRes ? fileRes.status : 'Unknown'}`);
+                       }
+                     } else {
+-                      console.error('Meta API returned JSON without url:', metaJson);
++                      logger.error('Meta API returned JSON without url:', metaJson);
+                       throw new Error('Meta API returned JSON without url');
+                     }
+                   } else {
+                     const errText = await metaRes.text();
+-                    console.error(`Meta API error getting media URL. Status: ${metaRes.status}, Body: ${errText}`);
++                    logger.error(`Meta API error getting media URL. Status: ${metaRes.status}, Body: ${errText}`);
+                     throw new Error(`Meta API error getting media URL: ${metaRes.status}. Body: ${errText}`);
+                   }
+                 } catch (mediaErr) {
+-                  console.error('[WHATSAPP_SERVICE] Error downloading media:', mediaErr);
++                  logger.error('[WHATSAPP_SERVICE] Error downloading media:', mediaErr);
+                   // Inject error into the message content so the user can see it in the UI
+                   const errorMsg = `\n[Error de descarga: ${mediaErr.message}]`;
+                   msgRecord = await prisma.message.update({
+@@ -362,7 +390,7 @@ const whatsappService = {
+                   });
+                 }
+               } else {
+-                console.error('[WHATSAPP_SERVICE] No config or accessToken found for tenant:', tenantId);
++                logger.error('[WHATSAPP_SERVICE] No config or accessToken found for tenant:', tenantId);
+                 const errorMsg = `\n[Error de descarga: Configuración o token faltante]`;
+                 msgRecord = await prisma.message.update({
+                   where: { id: msgRecord.id },
+@@ -375,7 +403,7 @@ const whatsappService = {
+             try {
+               socket.getIo().of('/chat').to(`conversation:${conversation.id}`).to(`tenant_${tenantId}_coordinators`).emit('new_message', msgRecord);
+             } catch (err) {
+-              console.error('[WHATSAPP_SERVICE] No se pudo emitir por socket:', err.message);
++              logger.error('[WHATSAPP_SERVICE] No se pudo emitir por socket:', err.message);
+             }
+ 
+             // --- PUSH NOTIFICATION INTEGRATION ---
+@@ -400,11 +428,11 @@ const whatsappService = {
+                   data: { chatId: conversation.id, type: 'new_message' }
+                 };
+                 pushService.sendPushToVendor(updatedConv.vendorId, pushPayload).catch(err => {
+-                  console.error('[PUSH_SERVICE] Error trigger:', err.message);
++                  logger.error('[PUSH_SERVICE] Error trigger:', err.message);
+                 });
+               }
+             } catch (err) {
+-              console.error('[PUSH_SERVICE] Failed to process push notification:', err.message);
++              logger.error('[PUSH_SERVICE] Failed to process push notification:', err.message);
+             }
+             // ------------------------------------
+ 
+@@ -455,7 +483,7 @@ const whatsappService = {
+                           .to(`tenant_${tenantId}_vendors`)
+                           .emit('conversation_escalated', updatedConv);
+                       } catch (e) {
+-                        console.error('Socket notification error on silent escalation:', e);
++                        logger.error('Socket notification error on silent escalation:', e);
+                       }
+                       return;
+                     }
+@@ -508,13 +536,13 @@ const whatsappService = {
+                             .to(`conversation:${conversation.id}`)
+                             .emit('conversation_escalated', updatedConv);
+                         } catch (err) {
+-                          console.error('[WHATSAPP_SERVICE] Error emitting escalation event:', err.message);
++                          logger.error('[WHATSAPP_SERVICE] Error emitting escalation event:', err.message);
+                         }
+                       }
+                     }
+                   }
+                 } catch (aiErr) {
+-                  console.error('[WHATSAPP_SERVICE] AI auto-response failed:', aiErr.message);
++                  logger.error('[WHATSAPP_SERVICE] AI auto-response failed:', aiErr.message);
+                 } finally {
+                   activeAiGenerations.delete(conversation.id);
+                 }
+@@ -522,19 +550,19 @@ const whatsappService = {
+             }
+ 
+             } catch (innerErr) {
+-              console.error('[WHATSAPP_SERVICE] Error processing specific message:', innerErr);
++              logger.error('[WHATSAPP_SERVICE] Error processing specific message:', innerErr);
+             } finally {
+               incomingLocks.delete(lockKey);
+               if (releaseLock) releaseLock();
+             }
+             
+-            console.log(`[WHATSAPP_SERVICE] Mensaje guardado correctamente de ${clientPhone}`);
++            logger.info(`[WHATSAPP_SERVICE] Mensaje guardado correctamente de ${clientPhone}`);
+           }
+         }
+       }
+       return true;
+     } catch (error) {
+-      console.error(`[WHATSAPP_SERVICE] Error processing incoming message:`, error);
++      logger.error(`[WHATSAPP_SERVICE] Error processing incoming message:`, error);
+       throw error;
+     }
+   },
+@@ -554,6 +582,10 @@ const whatsappService = {
+       if (!conversation) throw new Error('Conversación no encontrada');
+       if (conversation.client.isBlocked) throw new Error('Client is blocked');
+       
++      if (await isTenantSuspended(conversation.tenantId)) {
++        throw new ApiError(403, 'Tenant is currently suspended.', 'TENANT_SUSPENDED');
++      }
++      
+       const config = await this.getConfig(conversation.tenantId);
+       if (!config || !config.accessToken || !config.phoneNumberId) {
+         throw new Error('Configuración de WhatsApp incompleta');
+@@ -573,7 +605,7 @@ const whatsappService = {
+         text: { preview_url: false, body: content }
+       };
+ 
+-      console.log('[WHATSAPP_SERVICE] Payload to Meta API (sendMessage):', JSON.stringify(payload, null, 2));
++      logger.info('[WHATSAPP_SERVICE] Payload to Meta API (sendMessage):', JSON.stringify(payload, null, 2));
+ 
+       const response = await fetch(url, {
+         method: 'POST',
+@@ -608,12 +640,12 @@ const whatsappService = {
+       try {
+         socket.getIo().of('/chat').to(`conversation:${conversationId}`).to(`tenant_${conversation.tenantId}_coordinators`).emit('new_message', message);
+       } catch (err) {
+-        console.error('[WHATSAPP_SERVICE] No se pudo emitir por socket:', err.message);
++        logger.error('[WHATSAPP_SERVICE] No se pudo emitir por socket:', err.message);
+       }
+ 
+       return message;
+     } catch (error) {
+-      console.error(`[WHATSAPP_SERVICE] Error enviando mensaje a Meta:`, error);
++      logger.error(`[WHATSAPP_SERVICE] Error enviando mensaje a Meta:`, error);
+       throw error;
+     }
+   },
+@@ -636,6 +668,10 @@ const whatsappService = {
+       if (!conversation) throw new Error('Conversación no encontrada');
+       if (conversation.client.isBlocked) throw new Error('Client is blocked');
+       
++      if (await isTenantSuspended(conversation.tenantId)) {
++        throw new ApiError(403, 'Tenant is currently suspended.', 'TENANT_SUSPENDED');
++      }
++      
+       const config = await this.getConfig(conversation.tenantId);
+       if (!config || !config.accessToken || !config.phoneNumberId) {
+         throw new Error('Configuración de WhatsApp incompleta');
+@@ -659,7 +695,7 @@ const whatsappService = {
+       
+       const uploadData = await uploadRes.json();
+       if (!uploadRes.ok) {
+-        console.error('[WHATSAPP_SERVICE] Meta API Upload Error Data:', JSON.stringify(uploadData, null, 2));
++        logger.error('[WHATSAPP_SERVICE] Meta API Upload Error Data:', JSON.stringify(uploadData, null, 2));
+         throw new Error(`Meta API Upload Error: ${uploadData.error?.message || 'Unknown error'}`);
+       }
+       
+@@ -694,7 +730,7 @@ const whatsappService = {
+         payload[mediaType].caption = trimmed.length > 1024 ? trimmed.substring(0, 1021) + '...' : trimmed;
+       }
+ 
+-      console.log('[WHATSAPP_SERVICE] Payload to Meta API (sendMedia):', JSON.stringify(payload, null, 2));
++      logger.info('[WHATSAPP_SERVICE] Payload to Meta API (sendMedia):', JSON.stringify(payload, null, 2));
+ 
+       const response = await fetch(msgUrl, {
+         method: 'POST',
+@@ -746,17 +782,17 @@ const whatsappService = {
+       await prisma.conversation.update({
+         where: { id: conversationId },
+         data: { lastMessageAt: new Date() }
+-      }).catch(err => console.error('Error updating conversation lastMessageAt:', err.message));
++      }).catch(err => logger.error('Error updating conversation lastMessageAt:', err.message));
+ 
+       try {
+         socket.getIo().of('/chat').to(`conversation:${conversationId}`).to(`tenant_${conversation.tenantId}_coordinators`).emit('new_message', msgRecord);
+       } catch (err) {
+-        console.error('[WHATSAPP_SERVICE] No se pudo emitir por socket:', err.message);
++        logger.error('[WHATSAPP_SERVICE] No se pudo emitir por socket:', err.message);
+       }
+ 
+       return msgRecord;
+     } catch (error) {
+-      console.error(`[WHATSAPP_SERVICE] Error enviando media a Meta:`, error.response?.data || error.message);
++      logger.error(`[WHATSAPP_SERVICE] Error enviando media a Meta:`, error.response?.data || error.message);
+       throw error;
+     } finally {
+       if (fileStream) fileStream.destroy();
+@@ -767,7 +803,7 @@ const whatsappService = {
+             await fsp.unlink(file.path);
+           }
+         } catch (err) {
+-          console.error('Error unlinking temp file:', err.message);
++          logger.error('Error unlinking temp file:', err.message);
+         }
+       }
+     }
+diff --git a/backend/src/socket.js b/backend/src/socket.js
+index 42339e3..d88464e 100644
+--- a/backend/src/socket.js
++++ b/backend/src/socket.js
+@@ -35,7 +35,7 @@ function setupSocket(server) {
+       try {
+         const token = socket.handshake.auth?.token;
+         if (!token) return;
+-        const decoded = require('jsonwebtoken').verify(token, process.env.JWT_SECRET || 'fallback_secret');
++        const decoded = require('jsonwebtoken').verify(token, process.env.JWT_SECRET);
+         if (decoded.id !== vendorId && decoded.role !== 'ADMIN') return;
+       } catch (e) {
+         return;
+diff --git a/backend/src/socket/alerts.handler.js b/backend/src/socket/alerts.handler.js
+index dc12438..af9380e 100644
+--- a/backend/src/socket/alerts.handler.js
++++ b/backend/src/socket/alerts.handler.js
+@@ -19,7 +19,7 @@ function setupAlerts(alertsNamespace) {
+           socket.disconnect(true);
+           return;
+         }
+-        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback_secret');
++        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+         if (decoded.tenantId !== tenantId && decoded.role !== 'ADMIN') {
+           socket.emit('alerts:error', { message: 'Unauthorized access to tenant' });
+           socket.disconnect(true);
+diff --git a/backend/src/utils/tenant-cache.util.js b/backend/src/utils/tenant-cache.util.js
+new file mode 100644
+index 0000000..77ba1b2
+--- /dev/null
++++ b/backend/src/utils/tenant-cache.util.js
+@@ -0,0 +1,73 @@
++const prisma = require('../config/database');
++
++const tenantStatusCache = new Map();
++const TTL_MS = 60 * 1000; // 60 seconds
++
++// Promise deduplication map to prevent thundering herd
++const pendingFetches = new Map();
++
++function getTenantStatus(tenantId) {
++  const cached = tenantStatusCache.get(tenantId);
++  if (!cached) return undefined;
++  
++  if (Date.now() > cached.expiresAt) {
++    tenantStatusCache.delete(tenantId);
++    return undefined;
++  }
++  
++  return cached.status;
++}
++
++function setTenantStatus(tenantId, status) {
++  tenantStatusCache.set(tenantId, {
++    status,
++    expiresAt: Date.now() + TTL_MS
++  });
++}
++
++function invalidateTenantCache(tenantId) {
++  tenantStatusCache.delete(tenantId);
++}
++
++/**
++ * Gets tenant status from cache, or safely fetches it from the DB using promise deduplication
++ */
++async function getTenantStatusAsync(tenantId) {
++  let status = getTenantStatus(tenantId);
++  if (status) return status;
++
++  if (!pendingFetches.has(tenantId)) {
++    const dbPromise = prisma.tenant.findUnique({
++      where: { id: tenantId },
++      select: { status: true }
++    });
++
++    const timeoutPromise = new Promise((_, reject) => {
++      setTimeout(() => reject(new Error('Tenant status fetch timeout')), 5000);
++    });
++
++    const fetchPromise = Promise.race([dbPromise, timeoutPromise])
++      .then(tenant => {
++        const fetchedStatus = tenant ? tenant.status : null;
++        if (fetchedStatus) {
++          setTenantStatus(tenantId, fetchedStatus);
++        }
++        pendingFetches.delete(tenantId);
++        return fetchedStatus;
++      })
++      .catch(err => {
++        pendingFetches.delete(tenantId);
++        throw err;
++      });
++    
++    pendingFetches.set(tenantId, fetchPromise);
++  }
++  return pendingFetches.get(tenantId);
++}
++
++module.exports = {
++  getTenantStatus,
++  setTenantStatus,
++  invalidateTenantCache,
++  getTenantStatusAsync
++};
+diff --git a/backend/test-superadmin-auth.js b/backend/test-superadmin-auth.js
+new file mode 100644
+index 0000000..915d40f
+--- /dev/null
++++ b/backend/test-superadmin-auth.js
+@@ -0,0 +1,39 @@
++require('dotenv').config({ path: '.env' });
++const jwt = require('jsonwebtoken');
++const isSuperadmin = require('./src/middleware/superadmin.auth.middleware');
++const env = require('./src/config/env');
++
++const mockRes = {
++  status: (code) => {
++    return {
++      json: (data) => console.log('Response JSON:', data)
++    }
++  }
++};
++
++const mockNext = (err) => {
++  if (err) {
++    console.error('Middleware Error:', err.message);
++  } else {
++    console.log('Middleware Passed: User is authorized');
++  }
++};
++
++const normalSecret = env.jwtSecret || 'normal';
++const superSecret = env.superadminJwtSecret;
++
++console.log('--- TEST 1: No Token ---');
++isSuperadmin({ headers: {} }, mockRes, mockNext);
++
++console.log('\n--- TEST 2: Normal JWT (Tenant Admin) ---');
++const normalToken = jwt.sign({ id: 'user1', role: 'ADMIN' }, normalSecret);
++isSuperadmin({ headers: { authorization: `Bearer ${normalToken}` } }, mockRes, mockNext);
++
++console.log('\n--- TEST 3: Valid Superadmin JWT ---');
++const superadminToken = jwt.sign({ id: 'super1', role: 'SUPERADMIN' }, superSecret);
++const validReq = { headers: { authorization: `Bearer ${superadminToken}` } };
++isSuperadmin(validReq, mockRes, mockNext);
++
++console.log('\n--- TEST 4: Superadmin secret but WRONG ROLE ---');
++const wrongRoleToken = jwt.sign({ id: 'super2', role: 'ADMIN' }, superSecret);
++isSuperadmin({ headers: { authorization: `Bearer ${wrongRoleToken}` } }, mockRes, mockNext);
+diff --git a/backend/tests/unit/auth.middleware.test.js b/backend/tests/unit/auth.middleware.test.js
+new file mode 100644
+index 0000000..085b201
+--- /dev/null
++++ b/backend/tests/unit/auth.middleware.test.js
+@@ -0,0 +1,77 @@
++const authenticate = require('../../src/middleware/auth');
++const { getTenantStatusAsync } = require('../../src/utils/tenant-cache.util');
++const jwt = require('jsonwebtoken');
++
++jest.mock('../../src/utils/tenant-cache.util', () => ({
++  getTenantStatusAsync: jest.fn(),
++}));
++
++jest.mock('jsonwebtoken', () => ({
++  verify: jest.fn(),
++}));
++
++describe('Auth Middleware', () => {
++  let req, res, next;
++
++  beforeEach(() => {
++    req = { headers: {} };
++    res = {};
++    next = jest.fn();
++    jest.clearAllMocks();
++  });
++
++  it('should return 401 if no token provided', async () => {
++    await authenticate(req, res, next);
++    expect(next).toHaveBeenCalledWith(expect.objectContaining({ status: 401 }));
++  });
++
++  it('should bypass tenant check for superadmins', async () => {
++    req.headers.authorization = 'Bearer test-token';
++    jwt.verify.mockReturnValue({ id: '1', role: 'SUPERADMIN' });
++
++    await authenticate(req, res, next);
++
++    expect(getTenantStatusAsync).not.toHaveBeenCalled();
++    expect(next).toHaveBeenCalledWith(); // success
++  });
++
++  it('should return 403 if non-superadmin token is missing tenantId', async () => {
++    req.headers.authorization = 'Bearer test-token';
++    // User is missing tenantId
++    jwt.verify.mockReturnValue({ id: '2', role: 'ADMIN' });
++
++    await authenticate(req, res, next);
++
++    expect(next).toHaveBeenCalledWith(expect.objectContaining({ 
++      status: 403, 
++      message: 'Tenant is suspended or invalid' 
++    }));
++  });
++
++  it('should return 403 if tenant is suspended', async () => {
++    req.headers.authorization = 'Bearer test-token';
++    jwt.verify.mockReturnValue({ id: '3', role: 'VENDOR', tenantId: 'tenant-1' });
++    
++    getTenantStatusAsync.mockResolvedValue('suspended');
++
++    await authenticate(req, res, next);
++
++    expect(getTenantStatusAsync).toHaveBeenCalledWith('tenant-1');
++    expect(next).toHaveBeenCalledWith(expect.objectContaining({ 
++      status: 403,
++      message: 'Tenant is suspended or not found'
++    }));
++  });
++
++  it('should proceed if tenant is active', async () => {
++    req.headers.authorization = 'Bearer test-token';
++    jwt.verify.mockReturnValue({ id: '3', role: 'VENDOR', tenantId: 'tenant-1' });
++    
++    getTenantStatusAsync.mockResolvedValue('active');
++
++    await authenticate(req, res, next);
++
++    expect(getTenantStatusAsync).toHaveBeenCalledWith('tenant-1');
++    expect(next).toHaveBeenCalledWith(); // success
++  });
++});
+diff --git a/backend/tests/unit/superadmin.tenant.controller.test.js b/backend/tests/unit/superadmin.tenant.controller.test.js
+new file mode 100644
+index 0000000..be961c9
+--- /dev/null
++++ b/backend/tests/unit/superadmin.tenant.controller.test.js
+@@ -0,0 +1,207 @@
++const superadminTenantController = require('../../src/controllers/superadmin.tenant.controller');
++const superadminTenantService = require('../../src/services/superadmin.tenant.service');
++const { success } = require('../../src/utils/response');
++
++jest.mock('../../src/services/superadmin.tenant.service');
++jest.mock('../../src/utils/response');
++
++describe('Superadmin Tenant Controller', () => {
++  beforeEach(() => {
++    jest.clearAllMocks();
++  });
++
++  describe('getTenants', () => {
++    it('should retrieve tenants and return success response', async () => {
++      const mockResult = {
++        data: [{ id: '1', name: 'Tenant 1' }],
++        meta: { total: 1, page: 1, limit: 10 },
++      };
++      superadminTenantService.getTenants.mockResolvedValue(mockResult);
++
++      const req = {
++        query: { page: '1', limit: '10', sortBy: 'name', sortOrder: 'asc' },
++      };
++      const res = {};
++      const next = jest.fn();
++
++      await superadminTenantController.getTenants(req, res, next);
++
++      expect(superadminTenantService.getTenants).toHaveBeenCalledWith({
++        page: '1',
++        limit: '10',
++        sortBy: 'name',
++        sortOrder: 'asc',
++      });
++      expect(success).toHaveBeenCalledWith(res, mockResult);
++      expect(next).not.toHaveBeenCalled();
++    });
++
++    it('should handle missing query parameters gracefully', async () => {
++      const mockResult = {
++        data: [],
++        meta: { total: 0, page: 1, limit: 10 },
++      };
++      superadminTenantService.getTenants.mockResolvedValue(mockResult);
++
++      const req = { query: {} };
++      const res = {};
++      const next = jest.fn();
++
++      await superadminTenantController.getTenants(req, res, next);
++
++      expect(superadminTenantService.getTenants).toHaveBeenCalledWith({
++        page: undefined,
++        limit: undefined,
++        sortBy: undefined,
++        sortOrder: undefined,
++      });
++      expect(success).toHaveBeenCalledWith(res, mockResult);
++      expect(next).not.toHaveBeenCalled();
++    });
++
++    it('should call next with error if service throws', async () => {
++      const error = new Error('Database failure');
++      superadminTenantService.getTenants.mockRejectedValue(error);
++
++      const req = { query: {} };
++      const res = {};
++      const next = jest.fn();
++
++      await superadminTenantController.getTenants(req, res, next);
++
++      expect(next).toHaveBeenCalledWith(error);
++      expect(success).not.toHaveBeenCalled();
++    });
++  });
++
++  describe('createTenant', () => {
++    const validPayload = {
++      name: 'Acme Corp',
++      slug: 'acmecorp',
++      firstName: 'John',
++      lastName: 'Doe',
++      email: 'john@acme.com',
++      password: 'Password123!',
++    };
++
++    it('should validate payload, hash password, create tenant, and return 201 stripped of passwordHash', async () => {
++      const mockResult = {
++        tenant: { id: 't1', name: 'Acme Corp', domain: 'acmecorp', status: 'ACTIVE' },
++        user: { id: 'u1', name: 'John Doe', email: 'john@acme.com', passwordHash: 'hashed', role: 'ADMIN' },
++      };
++      superadminTenantService.createTenantWithAdmin.mockResolvedValue(mockResult);
++
++      const req = { body: validPayload };
++      const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
++      const next = jest.fn();
++
++      await superadminTenantController.createTenant(req, res, next);
++
++      expect(superadminTenantService.createTenantWithAdmin).toHaveBeenCalled();
++      
++      const successArg = success.mock.calls[0][1];
++      expect(successArg.tenant).toBeDefined();
++      expect(successArg.user.passwordHash).toBeUndefined();
++      expect(successArg.user.name).toBe('John Doe');
++    });
++
++    it('should return 400 for Zod validation errors', async () => {
++      const req = { body: { name: 'A' } }; // invalid name
++      const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
++      const next = jest.fn();
++
++      await superadminTenantController.createTenant(req, res, next);
++
++      expect(res.status).toHaveBeenCalledWith(400);
++      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
++        success: false,
++        message: 'Validation failed',
++      }));
++    });
++
++    it('should return 409 for unique constraint violations (P2002)', async () => {
++      const dbError = new Error('Unique constraint failed on the fields: (`domain`)');
++      dbError.code = 'P2002';
++      dbError.meta = { target: ['domain'] };
++      superadminTenantService.createTenantWithAdmin.mockRejectedValue(dbError);
++
++      const req = { body: validPayload };
++      const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
++      const next = jest.fn();
++
++      await superadminTenantController.createTenant(req, res, next);
++
++      expect(res.status).toHaveBeenCalledWith(409);
++      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
++        success: false,
++        message: 'Conflict: domain already exists',
++      }));
++    });
++    
++    it('should return 500 for other errors', async () => {
++      const dbError = new Error('Database Error');
++      superadminTenantService.createTenantWithAdmin.mockRejectedValue(dbError);
++
++      const req = { body: validPayload };
++      const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
++      const next = jest.fn();
++
++      await superadminTenantController.createTenant(req, res, next);
++
++      expect(res.status).toHaveBeenCalledWith(500);
++      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
++        success: false,
++        message: 'Database Error',
++      }));
++    });
++  });
++
++  describe('updateTenantStatus', () => {
++    it('should validate status and update tenant', async () => {
++      const mockResult = { id: 't1', status: 'suspended' };
++      superadminTenantService.updateTenantStatus.mockResolvedValue(mockResult);
++
++      const req = { params: { id: 't1' }, body: { status: 'suspended' } };
++      const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
++      const next = jest.fn();
++
++      await superadminTenantController.updateTenantStatus(req, res, next);
++
++      expect(superadminTenantService.updateTenantStatus).toHaveBeenCalledWith('t1', 'suspended');
++      expect(success).toHaveBeenCalledWith(res, mockResult);
++      expect(next).not.toHaveBeenCalled();
++    });
++
++    it('should return 400 for Zod validation error if status is invalid', async () => {
++      const req = { params: { id: 't1' }, body: { status: 'invalid_status' } };
++      const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
++      const next = jest.fn();
++
++      await superadminTenantController.updateTenantStatus(req, res, next);
++
++      expect(res.status).toHaveBeenCalledWith(400);
++      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
++        success: false,
++        message: 'Validation failed',
++      }));
++    });
++
++    it('should return 404 if service throws 404', async () => {
++      const error = new Error('Tenant not found');
++      error.statusCode = 404;
++      superadminTenantService.updateTenantStatus.mockRejectedValue(error);
++
++      const req = { params: { id: 't99' }, body: { status: 'suspended' } };
++      const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
++      const next = jest.fn();
++
++      await superadminTenantController.updateTenantStatus(req, res, next);
++
++      expect(res.status).toHaveBeenCalledWith(404);
++      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
++        success: false,
++        message: 'Tenant not found',
++      }));
++    });
++  });
++});
+diff --git a/backend/tests/unit/superadmin.tenant.service.test.js b/backend/tests/unit/superadmin.tenant.service.test.js
+new file mode 100644
+index 0000000..026e472
+--- /dev/null
++++ b/backend/tests/unit/superadmin.tenant.service.test.js
+@@ -0,0 +1,154 @@
++const superadminTenantService = require('../../src/services/superadmin.tenant.service');
++const prisma = require('../../src/config/database');
++
++jest.mock('bcryptjs', () => ({
++  genSalt: jest.fn().mockResolvedValue('mock_salt'),
++  hash: jest.fn().mockResolvedValue('mock_hashed_password'),
++}));
++
++jest.mock('../../src/config/database', () => ({
++  $transaction: jest.fn(),
++  tenant: {
++    findMany: jest.fn(),
++    count: jest.fn(),
++    create: jest.fn(),
++  },
++  user: {
++    create: jest.fn(),
++  }
++}));
++
++describe('Superadmin Tenant Service', () => {
++  beforeEach(() => {
++    jest.clearAllMocks();
++  });
++
++  describe('getTenants', () => {
++    it('should return paginated tenants with default options', async () => {
++      const mockTenants = [{ id: '1', name: 'Tenant 1' }];
++      prisma.tenant.findMany.mockResolvedValue(mockTenants);
++      prisma.tenant.count.mockResolvedValue(1);
++
++      const result = await superadminTenantService.getTenants({});
++
++      expect(prisma.tenant.findMany).toHaveBeenCalledWith({
++        skip: 0,
++        take: 10,
++        orderBy: { createdAt: 'desc' },
++        select: {
++          id: true,
++          name: true,
++          domain: true,
++          createdAt: true,
++          status: true,
++        },
++      });
++      expect(prisma.tenant.count).toHaveBeenCalledWith();
++      expect(result).toEqual({
++        data: mockTenants,
++        meta: {
++          total: 1,
++          page: 1,
++          limit: 10,
++        },
++      });
++    });
++
++    it('should apply custom pagination and sorting', async () => {
++      const mockTenants = [{ id: '2', name: 'Tenant 2' }];
++      prisma.tenant.findMany.mockResolvedValue(mockTenants);
++      prisma.tenant.count.mockResolvedValue(5);
++
++      const result = await superadminTenantService.getTenants({
++        page: 2,
++        limit: 5,
++        sortBy: 'name',
++        sortOrder: 'asc',
++      });
++
++      expect(prisma.tenant.findMany).toHaveBeenCalledWith({
++        skip: 5,
++        take: 5,
++        orderBy: { name: 'asc' },
++        select: {
++          id: true,
++          name: true,
++          domain: true,
++          createdAt: true,
++          status: true,
++        },
++      });
++      expect(result.meta).toEqual({
++        total: 5,
++        page: 2,
++        limit: 5,
++      });
++    });
++  });
++
++  describe('createTenantWithAdmin', () => {
++    it('should create a tenant and an admin user within a transaction', async () => {
++      const mockTenant = { id: 't1', name: 'Acme', domain: 'acme', status: 'ACTIVE' };
++      const mockUser = {
++        id: 'u1',
++        name: 'John Doe',
++        email: 'john@acme.com',
++        role: 'ADMIN',
++        tenantId: 't1',
++        isActive: true,
++      };
++
++      prisma.$transaction = jest.fn().mockImplementation(async (callback) => {
++        return callback(prisma);
++      });
++      prisma.tenant.create = jest.fn().mockResolvedValue(mockTenant);
++      prisma.user.create = jest.fn().mockResolvedValue(mockUser);
++
++      const tenantData = {
++        name: 'Acme',
++        domain: 'acme',
++        adminName: 'John Doe',
++        adminEmail: 'john@acme.com',
++        password: 'plain_password',
++      };
++
++      const result = await superadminTenantService.createTenantWithAdmin(tenantData);
++
++      expect(prisma.$transaction).toHaveBeenCalled();
++      expect(prisma.tenant.create).toHaveBeenCalledWith({
++        data: {
++          name: 'Acme',
++          domain: 'acme',
++          status: 'active',
++        },
++      });
++      expect(prisma.user.create).toHaveBeenCalledWith({
++        data: {
++          name: 'John Doe',
++          email: 'john@acme.com',
++          passwordHash: 'mock_hashed_password',
++          role: 'ADMIN',
++          tenantId: 't1',
++          isActive: true,
++          emailVerified: expect.any(Date),
++        },
++      });
++      expect(result).toEqual({ tenant: mockTenant, user: mockUser });
++    });
++
++    it('should propagate errors from the transaction', async () => {
++      const dbError = new Error('Database Error');
++      prisma.$transaction = jest.fn().mockRejectedValue(dbError);
++
++      const tenantData = {
++        name: 'Acme',
++        domain: 'acme',
++        adminName: 'John Doe',
++        adminEmail: 'john@acme.com',
++        password: 'plain_password',
++      };
++
++      await expect(superadminTenantService.createTenantWithAdmin(tenantData)).rejects.toThrow('Database Error');
++    });
++  });
++});
+diff --git a/backend/tests/unit/tenant-cache.util.test.js b/backend/tests/unit/tenant-cache.util.test.js
+new file mode 100644
+index 0000000..32cb164
+--- /dev/null
++++ b/backend/tests/unit/tenant-cache.util.test.js
+@@ -0,0 +1,68 @@
++const { getTenantStatus, setTenantStatus, invalidateTenantCache, getTenantStatusAsync } = require('../../src/utils/tenant-cache.util');
++const prisma = require('../../src/config/database');
++
++jest.mock('../../src/config/database', () => ({
++  tenant: {
++    findUnique: jest.fn(),
++  },
++}));
++
++describe('Tenant Cache Utility', () => {
++  afterEach(() => {
++    jest.clearAllMocks();
++    // Invalidate everything used in tests
++    invalidateTenantCache('tenant-1');
++    invalidateTenantCache('tenant-2');
++  });
++
++  describe('getTenantStatusAsync (Thundering Herd Mitigation)', () => {
++    it('should return cached status if available without hitting db', async () => {
++      setTenantStatus('tenant-1', 'suspended');
++      const status = await getTenantStatusAsync('tenant-1');
++      expect(status).toBe('suspended');
++      expect(prisma.tenant.findUnique).not.toHaveBeenCalled();
++    });
++
++    it('should deduplicate multiple concurrent fetch requests for the same tenant', async () => {
++      prisma.tenant.findUnique.mockImplementation(async () => {
++        // delay to simulate slow db
++        await new Promise((r) => setTimeout(r, 50));
++        return { status: 'active' };
++      });
++
++      // Fire 5 concurrent requests
++      const promises = [
++        getTenantStatusAsync('tenant-2'),
++        getTenantStatusAsync('tenant-2'),
++        getTenantStatusAsync('tenant-2'),
++        getTenantStatusAsync('tenant-2'),
++        getTenantStatusAsync('tenant-2'),
++      ];
++
++      const results = await Promise.all(promises);
++
++      // All should return 'active'
++      expect(results).toEqual(['active', 'active', 'active', 'active', 'active']);
++      // But DB should only be queried exactly once
++      expect(prisma.tenant.findUnique).toHaveBeenCalledTimes(1);
++    });
++
++    it('should safely return null if tenant does not exist to fail closed', async () => {
++      prisma.tenant.findUnique.mockResolvedValue(null);
++      const status = await getTenantStatusAsync('non-existent');
++      expect(status).toBeNull();
++    });
++
++    it('should throw and clean up pending fetch map if DB throws', async () => {
++      prisma.tenant.findUnique.mockRejectedValue(new Error('DB connection failed'));
++      
++      await expect(getTenantStatusAsync('tenant-error')).rejects.toThrow('DB connection failed');
++      
++      // Secondary request should attempt again since map is cleared on error
++      prisma.tenant.findUnique.mockResolvedValue({ status: 'active' });
++      const status = await getTenantStatusAsync('tenant-error');
++      expect(status).toBe('active');
++      expect(prisma.tenant.findUnique).toHaveBeenCalledTimes(2);
++    });
++  });
++});
+diff --git a/backend/tests/whatsapp.service.test.js b/backend/tests/whatsapp.service.test.js
+index 8405ace..a118580 100644
+--- a/backend/tests/whatsapp.service.test.js
++++ b/backend/tests/whatsapp.service.test.js
+@@ -8,6 +8,9 @@ jest.mock('@prisma/client', () => {
+       findUnique: jest.fn(),
+       upsert: jest.fn(),
+     },
++    tenant: {
++      findUnique: jest.fn(),
++    },
+   };
+   return { PrismaClient: jest.fn(() => mPrismaClient) };
+ });
+@@ -73,4 +76,23 @@ describe('WhatsApp Service', () => {
+       await expect(whatsappService.verifyWebhook(query, 'tenant-123')).rejects.toThrow('Verification failed');
+     });
+   });
++
++  describe('handleIncomingMessage', () => {
++    it('should return false early if tenant is suspended', async () => {
++      // Mock tenant to be suspended
++      prisma.tenant.findUnique.mockResolvedValue({ status: 'suspended' });
++      
++      const payload = {
++        object: 'whatsapp_business_account',
++        entry: [{ changes: [{ value: { messages: [{ text: { body: 'hello' } }] } }] }]
++      };
++
++      const result = await whatsappService.handleIncomingMessage(payload, 'tenant-123');
++      expect(result).toBe(false);
++      expect(prisma.tenant.findUnique).toHaveBeenCalledWith({
++        where: { id: 'tenant-123' },
++        select: { status: true }
++      });
++    });
++  });
+ });
+diff --git a/superadmin-frontend/.dockerignore b/superadmin-frontend/.dockerignore
+new file mode 100644
+index 0000000..10ef731
+--- /dev/null
++++ b/superadmin-frontend/.dockerignore
+@@ -0,0 +1,5 @@
++node_modules
++dist
++.env
++.git
++.DS_Store
+diff --git a/superadmin-frontend/.gitignore b/superadmin-frontend/.gitignore
+new file mode 100644
+index 0000000..a547bf3
+--- /dev/null
++++ b/superadmin-frontend/.gitignore
+@@ -0,0 +1,24 @@
++# Logs
++logs
++*.log
++npm-debug.log*
++yarn-debug.log*
++yarn-error.log*
++pnpm-debug.log*
++lerna-debug.log*
++
++node_modules
++dist
++dist-ssr
++*.local
++
++# Editor directories and files
++.vscode/*
++!.vscode/extensions.json
++.idea
++.DS_Store
++*.suo
++*.ntvs*
++*.njsproj
++*.sln
++*.sw?
+diff --git a/superadmin-frontend/.oxlintrc.json b/superadmin-frontend/.oxlintrc.json
+new file mode 100644
+index 0000000..1255078
+--- /dev/null
++++ b/superadmin-frontend/.oxlintrc.json
+@@ -0,0 +1,8 @@
++{
++  "$schema": "./node_modules/oxlint/configuration_schema.json",
++  "plugins": ["react", "oxc"],
++  "rules": {
++    "react/rules-of-hooks": "error",
++    "react/only-export-components": ["warn", { "allowConstantExport": true }]
++  }
++}
+diff --git a/superadmin-frontend/Dockerfile b/superadmin-frontend/Dockerfile
+new file mode 100644
+index 0000000..2ec29ca
+--- /dev/null
++++ b/superadmin-frontend/Dockerfile
+@@ -0,0 +1,27 @@
++# Build stage
++FROM node:22-alpine AS build
++
++WORKDIR /app
++
++# Install dependencies
++COPY package*.json ./
++RUN npm ci
++
++# Copy source and build
++COPY . .
++ARG VITE_API_URL
++ENV VITE_API_URL=$VITE_API_URL
++RUN npm run build
++
++# Serve stage
++FROM nginx:alpine
++
++# Copy custom nginx config
++COPY nginx.conf /etc/nginx/conf.d/default.conf
++
++# Copy built assets from build stage
++COPY --from=build /app/dist /usr/share/nginx/html
++
++EXPOSE 80
++
++CMD ["nginx", "-g", "daemon off;"]
+diff --git a/superadmin-frontend/README.md b/superadmin-frontend/README.md
+new file mode 100644
+index 0000000..d937833
+--- /dev/null
++++ b/superadmin-frontend/README.md
+@@ -0,0 +1,16 @@
++# React + Vite
++
++This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
++
++Currently, two official plugins are available:
++
++- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
++- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
++
++## React Compiler
++
++The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
++
++## Expanding the Oxlint configuration
++
++If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+diff --git a/superadmin-frontend/index.html b/superadmin-frontend/index.html
+new file mode 100644
+index 0000000..8bbaf97
+--- /dev/null
++++ b/superadmin-frontend/index.html
+@@ -0,0 +1,13 @@
++<!doctype html>
++<html lang="en">
++  <head>
++    <meta charset="UTF-8" />
++    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
++    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
++    <title>superadmin-frontend</title>
++  </head>
++  <body>
++    <div id="root"></div>
++    <script type="module" src="/src/main.jsx"></script>
++  </body>
++</html>
+diff --git a/superadmin-frontend/nginx.conf b/superadmin-frontend/nginx.conf
+new file mode 100644
+index 0000000..b8b8199
+--- /dev/null
++++ b/superadmin-frontend/nginx.conf
+@@ -0,0 +1,31 @@
++server {
++    listen 80;
++    server_name localhost;
++
++    # Security Headers
++    add_header X-Content-Type-Options "nosniff" always;
++    add_header X-Frame-Options "SAMEORIGIN" always;
++    add_header X-XSS-Protection "1; mode=block" always;
++    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
++    add_header Content-Security-Policy "default-src 'self'; connect-src *; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;" always;
++
++    root /usr/share/nginx/html;
++    index index.html;
++
++    # Fallback to index.html for React Router
++    location / {
++        try_files $uri $uri/ /index.html?$args;
++    }
++
++    # Static assets caching
++    location /assets/ {
++        expires 1y;
++        add_header Cache-Control "public, max-age=31536000, immutable";
++    }
++
++    # Don't cache index.html
++    location = /index.html {
++        expires -1;
++        add_header Cache-Control "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0";
++    }
++}
+diff --git a/superadmin-frontend/package.json b/superadmin-frontend/package.json
+new file mode 100644
+index 0000000..8d9564a
+--- /dev/null
++++ b/superadmin-frontend/package.json
+@@ -0,0 +1,33 @@
++{
++  "name": "superadmin-frontend",
++  "private": true,
++  "version": "0.0.0",
++  "type": "module",
++  "scripts": {
++    "dev": "vite",
++    "build": "vite build",
++    "lint": "oxlint",
++    "preview": "vite preview"
++  },
++  "dependencies": {
++    "@hookform/resolvers": "^5.5.7",
++    "crypto-js": "^4.2.0",
++    "lucide-react": "^0.577.0",
++    "react": "^19.2.7",
++    "react-dom": "^19.2.7",
++    "react-hook-form": "^7.83.0",
++    "react-router-dom": "^7.15.0",
++    "sonner": "^2.0.7",
++    "zod": "^3.25.76",
++    "zustand": "^5.0.14"
++  },
++  "devDependencies": {
++    "@tailwindcss/vite": "^4.2.4",
++    "@types/react": "^19.2.17",
++    "@types/react-dom": "^19.2.3",
++    "@vitejs/plugin-react": "^6.0.3",
++    "oxlint": "^1.71.0",
++    "tailwindcss": "^4.2.4",
++    "vite": "^8.1.1"
++  }
++}
+diff --git a/superadmin-frontend/src/App.jsx b/superadmin-frontend/src/App.jsx
+new file mode 100644
+index 0000000..bd7c303
+--- /dev/null
++++ b/superadmin-frontend/src/App.jsx
+@@ -0,0 +1,36 @@
++import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
++import ProtectedRoute from './components/ProtectedRoute';
++import Login from './pages/Login';
++import Dashboard from './pages/Dashboard';
++import Tenants from './pages/Tenants';
++import SuperadminLayout from './components/SuperadminLayout';
++import useAuthStore from './store/authStore';
++
++import { Toaster } from 'sonner';
++
++function App() {
++  const token = useAuthStore((state) => state.token);
++
++  return (
++    <BrowserRouter>
++      <Toaster position="top-right" richColors />
++      <Routes>
++        <Route 
++          path="/login" 
++          element={token ? <Navigate to="/" replace /> : <Login />} 
++        />
++        
++        <Route element={<ProtectedRoute />}>
++          <Route element={<SuperadminLayout />}>
++            <Route path="/" element={<Dashboard />} />
++            <Route path="/tenants" element={<Tenants />} />
++          </Route>
++        </Route>
++        
++        <Route path="*" element={<Navigate to="/" replace />} />
++      </Routes>
++    </BrowserRouter>
++  );
++}
++
++export default App;
+diff --git a/superadmin-frontend/src/components/CreateTenantModal.jsx b/superadmin-frontend/src/components/CreateTenantModal.jsx
+new file mode 100644
+index 0000000..6f3a507
+--- /dev/null
++++ b/superadmin-frontend/src/components/CreateTenantModal.jsx
+@@ -0,0 +1,373 @@
++import React, { useEffect, useState, useRef, useCallback } from 'react';
++import { useForm } from 'react-hook-form';
++import { zodResolver } from '@hookform/resolvers/zod';
++import { z } from 'zod';
++import { X, Eye, EyeOff, KeyRound, Loader2 } from 'lucide-react';
++import { toast } from 'sonner';
++import { api } from '../services/api';
++
++const schema = z.object({
++  name: z.string().trim().min(2, 'Name must be at least 2 characters').max(100, 'Name must be less than 100 characters'),
++  slug: z.string().trim().toLowerCase().regex(/^[a-z0-9-]+$/, 'Slug must be alphanumeric or hyphens without spaces or special characters').max(63, 'Slug must be max 63 characters'),
++  firstName: z.string().trim().min(2, 'First name must be at least 2 characters').max(100, 'First name must be less than 100 characters'),
++  lastName: z.string().trim().min(2, 'Last name must be at least 2 characters').max(100, 'Last name must be less than 100 characters'),
++  email: z.string().trim().email('Invalid email address').max(255),
++  password: z.string()
++    .min(8, 'Password must be at least 8 characters')
++    .max(72, 'Password must be max 72 characters')
++    .regex(/[A-Z]/, 'Must contain at least one uppercase letter')
++    .regex(/[0-9]/, 'Must contain at least one number')
++    .regex(/[^A-Za-z0-9]/, 'Must contain at least one special character'),
++});
++
++export default function CreateTenantModal({ isOpen, onClose, onSuccess, triggerRef }) {
++  const [showPassword, setShowPassword] = useState(false);
++  const [isSubmitting, setIsSubmitting] = useState(false);
++  const modalRef = useRef(null);
++  const abortControllerRef = useRef(null);
++  
++  useEffect(() => {
++    return () => {
++      if (abortControllerRef.current) {
++        abortControllerRef.current.abort();
++      }
++    };
++  }, []);
++  
++  const {
++    register,
++    handleSubmit,
++    reset,
++    watch,
++    setValue,
++    setError,
++    formState: { errors },
++  } = useForm({
++    resolver: zodResolver(schema),
++    defaultValues: {
++      name: '',
++      slug: '',
++      firstName: '',
++      lastName: '',
++      email: '',
++      password: '',
++    }
++  });
++
++  const slugValue = watch('slug');
++
++  const handleDismiss = useCallback(() => {
++    if (isSubmitting) return;
++    reset();
++    setShowPassword(false);
++    onClose();
++    if (triggerRef && triggerRef.current) {
++      triggerRef.current.focus();
++    }
++  }, [isSubmitting, reset, onClose, triggerRef]);
++
++  // Click outside and ESC handling
++  useEffect(() => {
++    if (!isOpen) return;
++
++    const handleKeyDown = (e) => {
++      if (e.key === 'Escape') {
++        handleDismiss();
++      }
++    };
++
++    const handleClickOutside = (e) => {
++      if (modalRef.current && !modalRef.current.contains(e.target)) {
++        handleDismiss();
++      }
++    };
++
++    document.addEventListener('keydown', handleKeyDown);
++    // Use mousedown instead of click to prevent issues with text selection ending outside
++    document.addEventListener('mousedown', handleClickOutside);
++
++    return () => {
++      document.removeEventListener('keydown', handleKeyDown);
++      document.removeEventListener('mousedown', handleClickOutside);
++    };
++  }, [isOpen, handleDismiss]);
++
++  // Auto focus on open
++  useEffect(() => {
++    if (isOpen) {
++      const firstInput = document.getElementById('tenant-name');
++      if (firstInput) {
++        firstInput.focus();
++      }
++    }
++  }, [isOpen]);
++
++  const generatePassword = () => {
++    const chars = "abcdefghijklmnopqrstuvwxyz";
++    const uppercase = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
++    const numbers = "0123456789";
++    const specials = "!@#$%^&*()_+~`|}{[]:;?><,./-=";
++    
++    const getRandomChar = (str) => {
++      const array = new Uint8Array(1);
++      let rand;
++      do {
++        window.crypto.getRandomValues(array);
++        rand = array[0];
++      } while (rand >= 256 - (256 % str.length));
++      return str[rand % str.length];
++    };
++
++    let passArr = [
++      getRandomChar(uppercase),
++      getRandomChar(numbers),
++      getRandomChar(specials)
++    ];
++    
++    const all = chars + uppercase + numbers + specials;
++    for (let i = 0; i < 9; i++) {
++      passArr.push(getRandomChar(all));
++    }
++    
++    // Fisher-Yates shuffle
++    for (let i = passArr.length - 1; i > 0; i--) {
++      const array = new Uint32Array(1);
++      window.crypto.getRandomValues(array);
++      const j = array[0] % (i + 1);
++      [passArr[i], passArr[j]] = [passArr[j], passArr[i]];
++    }
++    
++    setValue('password', passArr.join(''), { shouldValidate: true });
++    setShowPassword(true);
++  };
++
++  const onSubmit = async (data) => {
++    setIsSubmitting(true);
++    abortControllerRef.current = new AbortController();
++
++    try {
++      await api.post('/api/superadmin/tenants', data, {
++        signal: abortControllerRef.current.signal
++      });
++
++      // 1. Close Modal explicitly
++      reset();
++      setShowPassword(false);
++      onClose();
++      if (triggerRef && triggerRef.current) {
++        triggerRef.current.focus();
++      }
++      // 2. Show success toast
++      toast.success('Inquilino creado exitosamente');
++      // 4. Trigger refresh
++      if (onSuccess) onSuccess();
++
++    } catch (error) {
++      if (error.name === 'AbortError') return;
++
++      if (error.status === 409) {
++        const errField = error.data?.field || '';
++        const errMsgStr = error.data?.message || '';
++        
++        let field = 'slug';
++        let msg = 'El dominio ya existe';
++
++        if (errField === 'email' || errMsgStr.includes('email')) {
++          field = 'email';
++          msg = 'El email ya está en uso';
++        } else if (errField === 'name' || errMsgStr.includes('name')) {
++          field = 'name';
++          msg = 'El nombre de empresa ya está en uso';
++        }
++        
++        toast.error(msg);
++        setError(field, { type: 'manual', message: msg });
++      } else if (error.status === 400 && Array.isArray(error.data?.errors)) {
++        // map field errors
++        error.data.errors.forEach(err => {
++          if (err.path && err.path[0]) {
++            setError(err.path[0], { type: 'manual', message: err.message });
++          }
++        });
++        toast.error('Por favor revisa los errores en el formulario');
++      } else {
++        toast.error(error.data?.message || 'Error al crear el inquilino');
++      }
++    } finally {
++      setIsSubmitting(false);
++    }
++
++  };
++
++  if (!isOpen) return null;
++
++  return (
++    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
++      <div 
++        ref={modalRef}
++        className="bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]"
++        role="dialog"
++        aria-modal="true"
++        aria-labelledby="modal-title"
++      >
++        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between sticky top-0 bg-white z-10">
++          <h2 id="modal-title" className="text-xl font-semibold text-gray-800">Nuevo Inquilino</h2>
++          <button 
++            onClick={handleDismiss}
++            disabled={isSubmitting}
++            className="text-gray-400 hover:text-gray-600 transition-colors p-1 disabled:opacity-50"
++            aria-label="Cerrar modal"
++          >
++            <X size={20} />
++          </button>
++        </div>
++
++        <div className="p-6 overflow-y-auto">
++          <form id="create-tenant-form" onSubmit={handleSubmit(onSubmit)} className="space-y-6">
++            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
++              
++              {/* Empresa */}
++              <div className="space-y-2">
++                <label htmlFor="tenant-name" className="block text-sm font-medium text-gray-700">Empresa *</label>
++                <input
++                  id="tenant-name"
++                  type="text"
++                  disabled={isSubmitting}
++                  className={`w-full px-3 py-2 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 ${errors.name ? 'border-red-500' : 'border-gray-300'}`}
++                  placeholder="Ej. Acme Corp"
++                  {...register('name')}
++                />
++                {errors.name && <p className="text-red-500 text-xs mt-1">{errors.name.message}</p>}
++              </div>
++
++              {/* Dominio */}
++              <div className="space-y-2">
++                <label htmlFor="tenant-slug" className="block text-sm font-medium text-gray-700">Dominio *</label>
++                <div className="relative">
++                  <input
++                    id="tenant-slug"
++                    type="text"
++                    disabled={isSubmitting}
++                    className={`w-full px-3 py-2 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 ${errors.slug ? 'border-red-500' : 'border-gray-300'}`}
++                    placeholder="acmecorp"
++                    {...register('slug')}
++                  />
++                  {slugValue && !errors.slug && (
++                    <p className="absolute -bottom-6 left-0 text-xs text-gray-500">
++                      {slugValue}.yourdomain.com
++                    </p>
++                  )}
++                </div>
++                {errors.slug && <p className="text-red-500 text-xs mt-1">{errors.slug.message}</p>}
++              </div>
++
++              {/* Nombre Admin */}
++              <div className="space-y-2 mt-4 md:mt-0">
++                <label htmlFor="admin-firstName" className="block text-sm font-medium text-gray-700">Nombre del Admin *</label>
++                <input
++                  id="admin-firstName"
++                  type="text"
++                  disabled={isSubmitting}
++                  className={`w-full px-3 py-2 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 ${errors.firstName ? 'border-red-500' : 'border-gray-300'}`}
++                  placeholder="John"
++                  {...register('firstName')}
++                />
++                {errors.firstName && <p className="text-red-500 text-xs mt-1">{errors.firstName.message}</p>}
++              </div>
++
++              {/* Apellido Admin */}
++              <div className="space-y-2 mt-4 md:mt-0">
++                <label htmlFor="admin-lastName" className="block text-sm font-medium text-gray-700">Apellido del Admin *</label>
++                <input
++                  id="admin-lastName"
++                  type="text"
++                  disabled={isSubmitting}
++                  className={`w-full px-3 py-2 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 ${errors.lastName ? 'border-red-500' : 'border-gray-300'}`}
++                  placeholder="Doe"
++                  {...register('lastName')}
++                />
++                {errors.lastName && <p className="text-red-500 text-xs mt-1">{errors.lastName.message}</p>}
++              </div>
++
++              {/* Email Admin */}
++              <div className="space-y-2 md:col-span-2 mt-4 md:mt-0">
++                <label htmlFor="admin-email" className="block text-sm font-medium text-gray-700">Email Admin *</label>
++                <input
++                  id="admin-email"
++                  type="email"
++                  disabled={isSubmitting}
++                  className={`w-full px-3 py-2 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 ${errors.email ? 'border-red-500' : 'border-gray-300'}`}
++                  placeholder="john@acmecorp.com"
++                  {...register('email')}
++                />
++                {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email.message}</p>}
++              </div>
++
++              {/* Contraseña */}
++              <div className="space-y-2 md:col-span-2">
++                <div className="flex justify-between items-center">
++                  <label htmlFor="admin-password" className="block text-sm font-medium text-gray-700">Contraseña *</label>
++                  <button 
++                    type="button" 
++                    onClick={generatePassword}
++                    disabled={isSubmitting}
++                    className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1 disabled:opacity-50"
++                  >
++                    <KeyRound size={12} />
++                    Generar segura
++                  </button>
++                </div>
++                <div className="relative">
++                  <input
++                    id="admin-password"
++                    type={showPassword ? 'text' : 'password'}
++                    disabled={isSubmitting}
++                    className={`w-full px-3 py-2 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 pr-10 ${errors.password ? 'border-red-500' : 'border-gray-300'}`}
++                    placeholder="••••••••"
++                    {...register('password')}
++                  />
++                  <button
++                    type="button"
++                    onClick={() => setShowPassword(!showPassword)}
++                    disabled={isSubmitting}
++                    className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600 disabled:opacity-50"
++                  >
++                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
++                  </button>
++                </div>
++                {errors.password && <p className="text-red-500 text-xs mt-1">{errors.password.message}</p>}
++              </div>
++
++            </div>
++          </form>
++        </div>
++
++        <div className="px-6 py-4 border-t border-gray-100 bg-gray-50 flex justify-end gap-3 sticky bottom-0 z-10">
++          <button
++            type="button"
++            onClick={handleDismiss}
++            disabled={isSubmitting}
++            className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium transition-colors disabled:opacity-50"
++          >
++            Cancel
++          </button>
++          <button
++            type="submit"
++            form="create-tenant-form"
++            disabled={isSubmitting}
++            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition-colors flex items-center disabled:opacity-70 disabled:cursor-not-allowed"
++          >
++            {isSubmitting ? (
++              <>
++                <Loader2 size={18} className="animate-spin mr-2" />
++                Creando...
++              </>
++            ) : (
++              'Crear Inquilino'
++            )}
++          </button>
++        </div>
++      </div>
++    </div>
++  );
++}
+diff --git a/superadmin-frontend/src/components/ProtectedRoute.jsx b/superadmin-frontend/src/components/ProtectedRoute.jsx
+new file mode 100644
+index 0000000..c5b3649
+--- /dev/null
++++ b/superadmin-frontend/src/components/ProtectedRoute.jsx
+@@ -0,0 +1,12 @@
++import { Navigate, Outlet } from 'react-router-dom';
++import useAuthStore from '../store/authStore';
++
++export default function ProtectedRoute() {
++  const token = useAuthStore((state) => state.token);
++
++  if (!token) {
++    return <Navigate to="/login" replace />;
++  }
++
++  return <Outlet />;
++}
+diff --git a/superadmin-frontend/src/components/SuperadminLayout.jsx b/superadmin-frontend/src/components/SuperadminLayout.jsx
+new file mode 100644
+index 0000000..1a523f0
+--- /dev/null
++++ b/superadmin-frontend/src/components/SuperadminLayout.jsx
+@@ -0,0 +1,70 @@
++import { Outlet, Link, useLocation } from 'react-router-dom';
++import { LogOut, LayoutDashboard, Users, CreditCard } from 'lucide-react';
++import useAuthStore from '../store/authStore';
++
++export default function SuperadminLayout() {
++  const { user, logout } = useAuthStore();
++  const location = useLocation();
++
++  const navItems = [
++    { path: '/', label: 'Dashboard', icon: LayoutDashboard },
++    { path: '/tenants', label: 'Inquilinos', icon: Users },
++    { path: '/licenses', label: 'Licencias', icon: CreditCard },
++  ];
++
++  return (
++    <div className="min-h-screen bg-slate-950 text-white flex">
++      {/* Sidebar */}
++      <aside className="w-64 border-r border-slate-800 bg-slate-900/50 p-6 flex flex-col h-screen sticky top-0">
++        <div className="mb-10">
++          <h1 className="text-xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
++            Superadmin
++          </h1>
++          <p className="text-xs text-slate-500 mt-1 uppercase tracking-wider font-semibold">Salesflow Platform</p>
++        </div>
++
++        <nav className="flex-1 space-y-2">
++          {navItems.map((item) => {
++            const Icon = item.icon;
++            const isActive = location.pathname === item.path || (item.path !== '/' && location.pathname.startsWith(item.path));
++            return (
++              <Link
++                key={item.path}
++                to={item.path}
++                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors ${
++                  isActive
++                    ? 'bg-blue-500/10 text-blue-400 font-medium'
++                    : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
++                }`}
++              >
++                <Icon size={18} />
++                {item.label}
++              </Link>
++            );
++          })}
++        </nav>
++
++        <div className="mt-auto pt-6 border-t border-slate-800">
++          <div className="flex items-center justify-between">
++            <div className="overflow-hidden">
++              <p className="text-sm font-medium truncate">{user?.name || 'Admin'}</p>
++              <p className="text-xs text-slate-500 truncate">{user?.email}</p>
++            </div>
++            <button
++              onClick={logout}
++              className="p-2 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
++              title="Cerrar sesión"
++            >
++              <LogOut size={18} />
++            </button>
++          </div>
++        </div>
++      </aside>
++
++      {/* Main Content Area */}
++      <main className="flex-1 p-8 lg:p-12 overflow-y-auto h-screen">
++        <Outlet />
++      </main>
++    </div>
++  );
++}
+diff --git a/superadmin-frontend/src/index.css b/superadmin-frontend/src/index.css
+new file mode 100644
+index 0000000..75395c3
+--- /dev/null
++++ b/superadmin-frontend/src/index.css
+@@ -0,0 +1,12 @@
++@import "tailwindcss";
++
++:root {
++  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
++  line-height: 1.5;
++  font-weight: 400;
++}
++
++body {
++  margin: 0;
++  min-height: 100vh;
++}
+diff --git a/superadmin-frontend/src/main.jsx b/superadmin-frontend/src/main.jsx
+new file mode 100644
+index 0000000..b9a1a6d
+--- /dev/null
++++ b/superadmin-frontend/src/main.jsx
+@@ -0,0 +1,10 @@
++import { StrictMode } from 'react'
++import { createRoot } from 'react-dom/client'
++import './index.css'
++import App from './App.jsx'
++
++createRoot(document.getElementById('root')).render(
++  <StrictMode>
++    <App />
++  </StrictMode>,
++)
+diff --git a/superadmin-frontend/src/pages/Dashboard.jsx b/superadmin-frontend/src/pages/Dashboard.jsx
+new file mode 100644
+index 0000000..5d641a5
+--- /dev/null
++++ b/superadmin-frontend/src/pages/Dashboard.jsx
+@@ -0,0 +1,30 @@
++export default function Dashboard() {
++  return (
++    <div className="w-full">
++      <header className="mb-10">
++        <h2 className="text-3xl font-semibold tracking-tight">Bienvenido de nuevo</h2>
++        <p className="text-slate-400 mt-1">Aquí puedes monitorear y administrar toda la plataforma SaaS.</p>
++      </header>
++
++      {/* Empty State Grid */}
++      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
++        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-sm">
++          <h3 className="text-slate-400 text-sm font-medium mb-2">Total Tenants</h3>
++          <p className="text-3xl font-bold">--</p>
++        </div>
++        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-sm">
++          <h3 className="text-slate-400 text-sm font-medium mb-2">Tokens IA (Mensual)</h3>
++          <p className="text-3xl font-bold">--</p>
++        </div>
++        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-sm">
++          <h3 className="text-slate-400 text-sm font-medium mb-2">Usuarios Activos</h3>
++          <p className="text-3xl font-bold">--</p>
++        </div>
++      </div>
++      
++      <div className="mt-8 border-2 border-dashed border-slate-800 rounded-2xl h-64 flex items-center justify-center text-slate-500">
++        El resto del dashboard se implementará en historias futuras.
++      </div>
++    </div>
++  );
++}
+diff --git a/superadmin-frontend/src/pages/Login.jsx b/superadmin-frontend/src/pages/Login.jsx
+new file mode 100644
+index 0000000..132becc
+--- /dev/null
++++ b/superadmin-frontend/src/pages/Login.jsx
+@@ -0,0 +1,121 @@
++import { useState } from 'react';
++import { useNavigate } from 'react-router-dom';
++import { Shield, KeyRound, ArrowRight, Loader2 } from 'lucide-react';
++import { api } from '../services/api';
++import useAuthStore from '../store/authStore';
++
++export default function Login() {
++  const [email, setEmail] = useState('');
++  const [password, setPassword] = useState('');
++  const [error, setError] = useState('');
++  const [loading, setLoading] = useState(false);
++  const navigate = useNavigate();
++  const setAuth = useAuthStore((state) => state.setAuth);
++
++  const handleSubmit = async (e) => {
++    e.preventDefault();
++    setError('');
++    setLoading(true);
++
++    try {
++      const response = await api.post('/api/superadmin/auth/login', { email: email.trim(), password });
++      
++      if (response && response.success && response.data) {
++        setAuth(response.data.token, response.data.admin);
++        navigate('/');
++      } else {
++        throw new Error('Formato de respuesta inválido');
++      }
++    } catch (err) {
++      if (err.status === 429) {
++        setError('Demasiados intentos. Por favor, espere un minuto.');
++      } else if (err.status === 401 || err.status === 403) {
++        setError('Credenciales inválidas o acceso denegado.');
++      } else {
++        setError(err.message || 'Ocurrió un error al iniciar sesión.');
++      }
++    } finally {
++      setLoading(false);
++    }
++  };
++
++  return (
++    <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4 relative overflow-hidden">
++      {/* Background decoration */}
++      <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] bg-blue-600/20 rounded-full blur-[120px] pointer-events-none"></div>
++      <div className="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] bg-purple-600/20 rounded-full blur-[120px] pointer-events-none"></div>
++
++      <div className="w-full max-w-md bg-slate-900/60 backdrop-blur-xl border border-slate-800 rounded-2xl shadow-2xl p-8 relative z-10">
++        <div className="text-center mb-10">
++          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-blue-500/10 text-blue-400 mb-6 border border-blue-500/20 shadow-[0_0_15px_rgba(59,130,246,0.15)]">
++            <Shield size={32} strokeWidth={1.5} />
++          </div>
++          <h1 className="text-3xl font-bold text-white tracking-tight">Superadmin Portal</h1>
++          <p className="text-slate-400 mt-2 text-sm">Identifícate para gestionar la plataforma</p>
++        </div>
++
++        {error && (
++          <div className="mb-6 p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm font-medium animate-in fade-in slide-in-from-top-2">
++            {error}
++          </div>
++        )}
++
++        <form onSubmit={handleSubmit} className="space-y-6">
++          <div className="space-y-2">
++            <label className="text-sm font-medium text-slate-300 ml-1">Correo Electrónico</label>
++            <div className="relative">
++              <input
++                type="email"
++                required
++                disabled={loading}
++                value={email}
++                onChange={(e) => setEmail(e.target.value)}
++                className="w-full bg-slate-950/50 border border-slate-700 text-white rounded-xl px-4 py-3.5 outline-none transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
++                placeholder="admin@salesflow.app"
++              />
++            </div>
++          </div>
++
++          <div className="space-y-2">
++            <label className="text-sm font-medium text-slate-300 ml-1">Contraseña</label>
++            <div className="relative">
++              <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none text-slate-500">
++                <KeyRound size={18} />
++              </div>
++              <input
++                type="password"
++                required
++                disabled={loading}
++                value={password}
++                onChange={(e) => setPassword(e.target.value)}
++                className="w-full bg-slate-950/50 border border-slate-700 text-white rounded-xl pl-11 pr-4 py-3.5 outline-none transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
++                placeholder="••••••••••••"
++              />
++            </div>
++          </div>
++
++          <button
++            type="submit"
++            disabled={loading}
++            className="w-full relative group bg-blue-600 hover:bg-blue-500 text-white font-medium rounded-xl px-4 py-3.5 transition-all overflow-hidden disabled:opacity-70 disabled:cursor-not-allowed mt-2"
++          >
++            <div className="absolute inset-0 bg-white/20 group-hover:translate-x-full transition-transform duration-500 -translate-x-full" />
++            <span className="relative flex items-center justify-center gap-2">
++              {loading ? (
++                <>
++                  <Loader2 size={18} className="animate-spin" />
++                  Verificando...
++                </>
++              ) : (
++                <>
++                  Iniciar Sesión
++                  <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
++                </>
++              )}
++            </span>
++          </button>
++        </form>
++      </div>
++    </div>
++  );
++}
+diff --git a/superadmin-frontend/src/pages/Tenants.jsx b/superadmin-frontend/src/pages/Tenants.jsx
+new file mode 100644
+index 0000000..c41aa8e
+--- /dev/null
++++ b/superadmin-frontend/src/pages/Tenants.jsx
+@@ -0,0 +1,249 @@
++import { useState, useEffect, useRef, useCallback } from 'react';
++import { Users, Server, Clock, Activity, Search, AlertCircle, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
++import { api } from '../services/api';
++import CreateTenantModal from '../components/CreateTenantModal';
++import { toast } from 'sonner';
++export default function Tenants() {
++  const [tenants, setTenants] = useState([]);
++  const [loading, setLoading] = useState(true);
++  const [error, setError] = useState(null);
++  const [page, setPage] = useState(1);
++  const [meta, setMeta] = useState({ total: 0, page: 1, limit: 10 });
++  const [isModalOpen, setIsModalOpen] = useState(false);
++  const [togglingTenantIds, setTogglingTenantIds] = useState(new Set());
++  const newTenantBtnRef = useRef(null);
++
++  const abortControllerRef = useRef(null);
++
++  const fetchTenants = useCallback(async () => {
++    if (abortControllerRef.current) {
++      abortControllerRef.current.abort();
++    }
++    const controller = new AbortController();
++    abortControllerRef.current = controller;
++
++    try {
++      setLoading(true);
++      setError(null);
++      // api.get uses standard fetch wrapper
++      const response = await api.get(`/api/superadmin/tenants?page=${page}&limit=10&sortBy=createdAt&sortOrder=desc`, {
++        signal: controller.signal
++      });
++      if (!response) return;
++      setTenants(response.data);
++      setMeta(response.meta);
++    } catch (err) {
++      if (err.name === 'AbortError') return;
++      setError(err.message || 'Error al cargar los inquilinos');
++    } finally {
++      if (!controller.signal.aborted) {
++        setLoading(false);
++      }
++    }
++  }, [page]);
++
++  useEffect(() => {
++    fetchTenants();
++    return () => {
++      if (abortControllerRef.current) {
++        abortControllerRef.current.abort();
++      }
++    };
++  }, [fetchTenants]);
++
++  const handlePrevPage = () => {
++    if (page > 1) setPage(page - 1);
++  };
++
++  const handleNextPage = () => {
++    if (page < Math.ceil(meta.total / meta.limit)) setPage(page + 1);
++  };
++
++  const handleToggleStatus = async (tenant) => {
++    const isCurrentlyActive = tenant.status?.toLowerCase() === 'active';
++    const newStatus = isCurrentlyActive ? 'suspended' : 'active';
++    const actionText = isCurrentlyActive ? 'suspender' : 'reactivar';
++    
++    if (!window.confirm(`¿Estás seguro de que deseas ${actionText} el inquilino "${tenant.name}"?`)) {
++      return;
++    }
++
++    try {
++      setTogglingTenantIds(prev => new Set(prev).add(tenant.id));
++      
++      // Optimistic Update
++      setTenants(prev => prev.map(t => 
++        t.id === tenant.id ? { ...t, status: newStatus } : t
++      ));
++
++      await api.patch(`/api/superadmin/tenants/${tenant.id}/status`, { status: newStatus });
++      toast.success(`Inquilino ${newStatus === 'active' ? 'reactivado' : 'suspendido'} exitosamente`);
++    } catch (err) {
++      // Revert Optimistic Update
++      setTenants(prev => prev.map(t => 
++        t.id === tenant.id ? { ...t, status: tenant.status } : t
++      ));
++      toast.error('Error al actualizar el estado del inquilino');
++    } finally {
++      setTogglingTenantIds(prev => {
++        const next = new Set(prev);
++        next.delete(tenant.id);
++        return next;
++      });
++    }
++  };
++
++  return (
++    <div className="w-full">
++      <header className="mb-10 flex items-end justify-between">
++        <div>
++          <h2 className="text-3xl font-semibold tracking-tight">Inquilinos</h2>
++          <p className="text-slate-400 mt-1">Administración global de todos los tenants registrados.</p>
++        </div>
++        <button
++          ref={newTenantBtnRef}
++          onClick={() => setIsModalOpen(true)}
++          className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors shadow-sm"
++        >
++          <Plus size={18} />
++          Nuevo Inquilino
++        </button>
++      </header>
++
++      <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-sm overflow-hidden flex flex-col">
++        {/* Toolbar */}
++        <div className="p-4 border-b border-slate-800 flex items-center gap-4">
++          <div className="relative max-w-sm w-full">
++            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
++            <input 
++              type="text" 
++              placeholder="Buscar por nombre o dominio..." 
++              className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2 pl-10 pr-4 text-sm focus:outline-none focus:border-blue-500 transition-colors placeholder:text-slate-600"
++              disabled // Future implementation
++            />
++          </div>
++        </div>
++
++        {/* Table */}
++        <div className="overflow-x-auto">
++          <table className="w-full text-left text-sm text-slate-300">
++            <thead className="bg-slate-950/50 text-slate-400 border-b border-slate-800">
++              <tr>
++                <th className="py-4 px-6 font-medium">
++                  <div className="flex items-center gap-2"><Users size={16} /> Nombre</div>
++                </th>
++                <th className="py-4 px-6 font-medium">
++                  <div className="flex items-center gap-2"><Server size={16} /> Dominio</div>
++                </th>
++                <th className="py-4 px-6 font-medium">
++                  <div className="flex items-center gap-2"><Clock size={16} /> Creación</div>
++                </th>
++                <th className="py-4 px-6 font-medium">
++                  <div className="flex items-center gap-2"><Activity size={16} /> Estado</div>
++                </th>
++                <th className="py-4 px-6 font-medium text-right">Acciones</th>
++              </tr>
++            </thead>
++            <tbody className="divide-y divide-slate-800/50">
++              {loading ? (
++                // Skeletons
++                Array.from({ length: 5 }).map((_, idx) => (
++                  <tr key={idx}>
++                    <td className="py-4 px-6"><div className="h-5 bg-slate-800 rounded animate-pulse w-3/4"></div></td>
++                    <td className="py-4 px-6"><div className="h-5 bg-slate-800 rounded animate-pulse w-2/3"></div></td>
++                    <td className="py-4 px-6"><div className="h-5 bg-slate-800 rounded animate-pulse w-1/2"></div></td>
++                    <td className="py-4 px-6"><div className="h-6 bg-slate-800 rounded-full animate-pulse w-20"></div></td>
++                    <td className="py-4 px-6"><div className="h-6 bg-slate-800 rounded animate-pulse w-16 float-right"></div></td>
++                  </tr>
++                ))
++              ) : error ? (
++                <tr>
++                  <td colSpan="5" className="py-12 px-6 text-center text-red-400">
++                    <div className="flex flex-col items-center gap-2">
++                      <AlertCircle size={24} />
++                      <p>{error}</p>
++                    </div>
++                  </td>
++                </tr>
++              ) : tenants.length === 0 ? (
++                <tr>
++                  <td colSpan="5" className="py-12 px-6 text-center text-slate-500">
++                    No se encontraron inquilinos.
++                  </td>
++                </tr>
++              ) : (
++                tenants.map(tenant => (
++                  <tr key={tenant.id} className="hover:bg-slate-800/20 transition-colors">
++                    <td className="py-4 px-6 font-medium text-slate-200">{tenant.name}</td>
++                    <td className="py-4 px-6 text-slate-400">{tenant.domain}</td>
++                    <td className="py-4 px-6 text-slate-400">
++                      {new Date(tenant.createdAt).toLocaleDateString()}
++                    </td>
++                    <td className="py-4 px-6">
++                      <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${
++                        tenant.status?.toLowerCase() === 'active' 
++                          ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' 
++                          : 'bg-red-500/10 text-red-400 border-red-500/20'
++                      }`}>
++                        {tenant.status?.toLowerCase() === 'active' ? 'Activo' : 'Suspendido'}
++                      </span>
++                    </td>
++                    <td className="py-4 px-6 text-right">
++                      <button
++                        onClick={() => handleToggleStatus(tenant)}
++                        disabled={togglingTenantIds.has(tenant.id)}
++                        aria-pressed={tenant.status?.toLowerCase() !== 'active'}
++                        aria-label={`${tenant.status?.toLowerCase() === 'active' ? 'Suspender' : 'Reactivar'} inquilino ${tenant.name}`}
++                        className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${
++                          tenant.status?.toLowerCase() === 'active'
++                            ? 'border-red-500/30 text-red-400 hover:bg-red-500/10'
++                            : 'border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10'
++                        } disabled:opacity-50 disabled:cursor-not-allowed`}
++                      >
++                        {togglingTenantIds.has(tenant.id) ? 'Procesando...' : (tenant.status?.toLowerCase() === 'active' ? 'Suspender' : 'Reactivar')}
++                      </button>
++                    </td>
++                  </tr>
++                ))
++              )}
++            </tbody>
++          </table>
++        </div>
++
++        {/* Pagination */}
++        <div className="p-4 border-t border-slate-800 flex items-center justify-between text-sm text-slate-400">
++          <div>
++            Mostrando {tenants.length} de {meta.total} resultados
++          </div>
++          <div className="flex items-center gap-2">
++            <button 
++              onClick={handlePrevPage}
++              disabled={page === 1 || loading}
++              className="p-1 rounded-md hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
++            >
++              <ChevronLeft size={20} />
++            </button>
++            <span className="px-2">Página {page} de {Math.max(1, Math.ceil(meta.total / meta.limit))}</span>
++            <button 
++              onClick={handleNextPage}
++              disabled={page >= Math.ceil(meta.total / meta.limit) || loading}
++              className="p-1 rounded-md hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
++            >
++              <ChevronRight size={20} />
++            </button>
++          </div>
++        </div>
++      </div>
++
++      <CreateTenantModal 
++        isOpen={isModalOpen}
++        onClose={() => setIsModalOpen(false)}
++        onSuccess={() => {
++          if (page === 1) fetchTenants();
++          else setPage(1); // Will trigger effect to fetch
++        }}
++        triggerRef={newTenantBtnRef}
++      />
++    </div>
++  );
++}
+diff --git a/superadmin-frontend/src/pages/__tests__/Tenants.test.jsx b/superadmin-frontend/src/pages/__tests__/Tenants.test.jsx
+new file mode 100644
+index 0000000..598fd01
+--- /dev/null
++++ b/superadmin-frontend/src/pages/__tests__/Tenants.test.jsx
+@@ -0,0 +1,114 @@
++import { render, screen, fireEvent, waitFor } from '@testing-library/react';
++import { describe, it, expect, vi, beforeEach } from 'vitest';
++import Tenants from '../Tenants';
++import { api } from '../../services/api';
++
++// Mock the API and toast
++vi.mock('../../services/api', () => ({
++  api: {
++    get: vi.fn(),
++    patch: vi.fn(),
++  }
++}));
++
++vi.mock('sonner', () => ({
++  toast: {
++    success: vi.fn(),
++    error: vi.fn(),
++  }
++}));
++
++// Mock the CreateTenantModal since we only want to test the main page
++vi.mock('../../components/CreateTenantModal', () => ({
++  default: () => <div data-testid="create-tenant-modal-mock"></div>
++}));
++
++describe('Tenants Page', () => {
++  beforeEach(() => {
++    vi.clearAllMocks();
++    // Stub window.confirm to always return true for toggle test
++    vi.spyOn(window, 'confirm').mockImplementation(() => true);
++  });
++
++  it('renders correctly and fetches tenants', async () => {
++    api.get.mockResolvedValueOnce({
++      data: [
++        { id: '1', name: 'Acme Corp', domain: 'acme', status: 'active', createdAt: new Date().toISOString() }
++      ],
++      meta: { total: 1, page: 1, limit: 10 }
++    });
++
++    render(<Tenants />);
++
++    // Shows loading state initially
++    expect(document.querySelector('.animate-pulse')).toBeInTheDocument();
++
++    // Wait for fetch
++    await waitFor(() => {
++      expect(screen.getByText('Acme Corp')).toBeInTheDocument();
++    });
++
++    expect(screen.getByText('acme')).toBeInTheDocument();
++  });
++
++  it('toggles tenant status correctly and updates aria-pressed', async () => {
++    api.get.mockResolvedValueOnce({
++      data: [
++        { id: '1', name: 'Acme Corp', domain: 'acme', status: 'active', createdAt: new Date().toISOString() }
++      ],
++      meta: { total: 1, page: 1, limit: 10 }
++    });
++    
++    api.patch.mockResolvedValueOnce({ success: true });
++
++    render(<Tenants />);
++
++    await waitFor(() => {
++      expect(screen.getByText('Acme Corp')).toBeInTheDocument();
++    });
++
++    const toggleBtn = screen.getByRole('button', { name: /Suspender inquilino Acme Corp/i });
++    expect(toggleBtn).toBeInTheDocument();
++    
++    // For active tenant, aria-pressed should be false
++    expect(toggleBtn).toHaveAttribute('aria-pressed', 'false');
++
++    // Click to suspend
++    fireEvent.click(toggleBtn);
++
++    // Should call API
++    expect(api.patch).toHaveBeenCalledWith('/api/superadmin/tenants/1/status', { status: 'suspended' });
++
++    // Wait for optimistic update or re-render
++    await waitFor(() => {
++      expect(screen.getByRole('button', { name: /Reactivar inquilino Acme Corp/i })).toHaveAttribute('aria-pressed', 'true');
++    });
++  });
++
++  it('reverts optimistic update on failure', async () => {
++    api.get.mockResolvedValueOnce({
++      data: [
++        { id: '1', name: 'Acme Corp', domain: 'acme', status: 'active', createdAt: new Date().toISOString() }
++      ],
++      meta: { total: 1, page: 1, limit: 10 }
++    });
++    
++    api.patch.mockRejectedValueOnce(new Error('Network error'));
++
++    render(<Tenants />);
++
++    await waitFor(() => {
++      expect(screen.getByText('Acme Corp')).toBeInTheDocument();
++    });
++
++    const toggleBtn = screen.getByRole('button', { name: /Suspender inquilino Acme Corp/i });
++
++    // Click to suspend
++    fireEvent.click(toggleBtn);
++
++    // Expect error toast and reverted state
++    await waitFor(() => {
++      expect(screen.getByRole('button', { name: /Suspender inquilino Acme Corp/i })).toBeInTheDocument();
++    });
++  });
++});
+diff --git a/superadmin-frontend/src/services/api.js b/superadmin-frontend/src/services/api.js
+new file mode 100644
+index 0000000..901b215
+--- /dev/null
++++ b/superadmin-frontend/src/services/api.js
+@@ -0,0 +1,124 @@
++import useAuthStore from '../store/authStore';
++
++const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4005';
++
++export const api = {
++  async fetch(endpoint, options = {}) {
++    const token = useAuthStore.getState().token;
++    
++    const headers = {
++      'Content-Type': 'application/json',
++      ...options.headers,
++    };
++
++    if (token) {
++      headers['Authorization'] = `Bearer ${token}`;
++    }
++
++    const controller = new AbortController();
++    const timeoutId = setTimeout(() => controller.abort(), 15000);
++    
++    // Manually link user signal to our timeout controller for older browser support
++    if (options.signal) {
++      if (options.signal.aborted) {
++        controller.abort();
++      } else {
++        options.signal.addEventListener('abort', () => controller.abort(), { once: true });
++      }
++    }
++    const signal = controller.signal;
++
++    let response;
++    try {
++      response = await fetch(`${API_URL.replace(/\/$/, '')}${endpoint}`, {
++        ...options,
++        headers,
++        signal,
++      });
++    } catch (err) {
++      if (err.name === 'AbortError') {
++        throw new Error('La petición ha tardado demasiado (timeout).');
++      }
++      throw new Error('No se pudo conectar con el servidor.');
++    } finally {
++      clearTimeout(timeoutId);
++    }
++
++    if (!response.ok) {
++      if (response.status === 401 && window.location.pathname !== '/login') {
++        useAuthStore.getState().logout();
++        window.location.href = '/login';
++        return null;
++      }
++
++      // Intentar extraer el mensaje de error del backend, si existe.
++      let errorMessage = 'Network response was not ok';
++      let errorDataObj = null;
++      try {
++        const errorData = await response.json();
++        errorMessage = errorData.message || errorMessage;
++        errorDataObj = errorData;
++      } catch (e) {
++        // Ignorar si no es JSON
++      }
++
++      // Log out if the user's tenant was suspended
++      if (response.status === 403 && window.location.pathname !== '/login') {
++        if (errorDataObj?.error === 'TENANT_SUSPENDED' || errorDataObj?.code === 'TENANT_SUSPENDED') {
++          useAuthStore.getState().logout();
++          window.location.href = '/login';
++          return null;
++        }
++      }
++
++      const error = new Error(errorMessage);
++      error.status = response.status;
++      error.data = errorDataObj;
++      throw error;
++    }
++
++    // Para respuestas 204 No Content
++    if (response.status === 204) {
++      return null;
++    }
++
++    try {
++      const text = await response.text();
++      return text ? JSON.parse(text) : null;
++    } catch (e) {
++      return null;
++    }
++  },
++
++  get(endpoint, options) {
++    return this.fetch(endpoint, { ...options, method: 'GET' });
++  },
++
++  post(endpoint, body, options) {
++    return this.fetch(endpoint, {
++      ...options,
++      method: 'POST',
++      body: JSON.stringify(body),
++    });
++  },
++
++  put(endpoint, body, options) {
++    return this.fetch(endpoint, {
++      ...options,
++      method: 'PUT',
++      body: JSON.stringify(body),
++    });
++  },
++
++  patch(endpoint, body, options) {
++    return this.fetch(endpoint, {
++      ...options,
++      method: 'PATCH',
++      body: JSON.stringify(body),
++    });
++  },
++
++  delete(endpoint, options) {
++    return this.fetch(endpoint, { ...options, method: 'DELETE' });
++  },
++};
+diff --git a/superadmin-frontend/src/store/authStore.js b/superadmin-frontend/src/store/authStore.js
+new file mode 100644
+index 0000000..f55849e
+--- /dev/null
++++ b/superadmin-frontend/src/store/authStore.js
+@@ -0,0 +1,48 @@
++import { create } from 'zustand';
++import { persist, createJSONStorage } from 'zustand/middleware';
++import CryptoJS from 'crypto-js';
++
++const SECRET = 'superadmin-local-encryption-key';
++
++const secureStorage = {
++  getItem: (name) => {
++    const str = localStorage.getItem(name);
++    if (!str) return null;
++    try {
++      const bytes = CryptoJS.AES.decrypt(str, SECRET);
++      const decrypted = bytes.toString(CryptoJS.enc.Utf8);
++      return decrypted || null;
++    } catch (e) {
++      return null;
++    }
++  },
++  setItem: (name, value) => {
++    try {
++      const parsed = JSON.parse(value);
++      if (!parsed?.state?.token) {
++        localStorage.removeItem(name);
++        return;
++      }
++    } catch(e) {}
++    const encrypted = CryptoJS.AES.encrypt(value, SECRET).toString();
++    localStorage.setItem(name, encrypted);
++  },
++  removeItem: (name) => localStorage.removeItem(name),
++};
++
++const useAuthStore = create(
++  persist(
++    (set) => ({
++      token: null,
++      user: null,
++      setAuth: (token, user) => set({ token, user }),
++      logout: () => set({ token: null, user: null }),
++    }),
++    {
++      name: 'superadmin-auth-storage',
++      storage: createJSONStorage(() => secureStorage),
++    }
++  )
++);
++
++export default useAuthStore;
+diff --git a/superadmin-frontend/vite.config.js b/superadmin-frontend/vite.config.js
+new file mode 100644
+index 0000000..3ac0b37
+--- /dev/null
++++ b/superadmin-frontend/vite.config.js
+@@ -0,0 +1,12 @@
++import { defineConfig } from 'vite';
++import react from '@vitejs/plugin-react';
++import tailwindcss from '@tailwindcss/vite';
++
++// https://vite.dev/config/
++export default defineConfig({
++  plugins: [react(), tailwindcss()],
++  server: {
++    port: 5174,
++    host: true,
++  },
++});

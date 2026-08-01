@@ -11,12 +11,17 @@ async function getProfile(tenantId) {
       phone: true, email: true, address: true,
       status: true, createdAt: true, updatedAt: true,
       rfc: true, bankDetails: true, businessHours: true,
+      maxUsers: true,
     },
   });
 
   if (!tenant) {
     throw ApiError.notFound('Tenant not found');
   }
+
+  tenant.currentUsersCount = await prisma.user.count({
+    where: { tenantId, isActive: true },
+  });
 
   return tenant;
 }

@@ -202,3 +202,43 @@
 
 ## Deferred from: code review of 1-2-infraestructura-del-dashboard-spa.md (2026-07-28)
 - Dashboard usa dummy data — deferred, placeholder explícito para historias futuras
+
+## Deferred from: code review of 1-4-alta-de-inquilinos.md (2026-07-29)
+- Brittle stripping of sensitive data from user object [backend/src/controllers/superadmin.tenant.controller.js:48] — deferred, pre-existing
+- Hardcoded magic string for tenant status [backend/src/services/superadmin.tenant.service.js:73] — deferred, pre-existing
+- Missing copy-to-clipboard for generated password [superadmin-frontend/src/components/CreateTenantModal.jsx] — deferred, pre-existing
+- Deviating from specified `TENANT_ADMIN` role assignment [backend/src/services/superadmin.tenant.service.js:82] — deferred, pre-existing
+- Password validation does not explicitly validate by bytes [backend/src/controllers/superadmin.tenant.controller.js:12] — deferred, pre-existing
+
+## Deferred from: code review of 1-5-suspension-de-inquilinos (2026-07-30)
+- tenantStatusCache lacks periodic memory eviction for unread keys
+- Pagination inputs lack strict Zod validation
+- Slug regex allows purely numeric values
+- userWithoutPassword uses blacklist pattern for sensitive fields
+- api.js timeout on non-idempotent operations can create ghost resources
+- Tenants.jsx shows jarring skeleton loader flicker on page transition
+- fetchSockets() could cause memory issues with massive connected clients
+- `updateTenantStatus` performs non-atomic TOCTOU read-then-update [backend/src/services/superadmin.tenant.service.js]
+- In-memory Rate Limiting and Blind Map Deletion on Max Size [backend/src/controllers/superadmin.auth.controller.js]
+- Blind Catch-All Error Logging [backend/src/controllers/superadmin.tenant.controller.js]
+- Fragile Tenant Status Check [backend/src/services/auth.service.js]
+
+## Deferred from: code review of 1-5-suspension-de-inquilinos.md (2026-07-31)
+- Password validation regex blindly accepts whitespace [backend/src/controllers/superadmin.tenant.controller.js:17]
+- Brittle error handling for Prisma unique constraint errors [backend/src/controllers/superadmin.tenant.controller.js:64-67]
+- Authorization middleware hardcodes suspension check to suspended [backend/src/middleware/auth.js]
+- Duplicated tenant suspension logic in auth.service.js [backend/src/services/auth.service.js]
+- Hardcoded low salt rounds for bcrypt [backend/src/services/superadmin.tenant.service.js]
+- verifyWebhook inconsistently throws raw Error [backend/src/services/whatsapp.service.js]
+- Cache TTL rigidly hardcoded [backend/src/utils/tenant-cache.util.js:4]
+- handleToggleStatus relies on window.confirm [superadmin-frontend/src/pages/Tenants.jsx]
+- Pagination text inaccurate [superadmin-frontend/src/pages/Tenants.jsx]
+- Search input disabled without ARIA or visual cues [superadmin-frontend/src/pages/Tenants.jsx]
+
+## Deferred from: code review of 1-5-suspension-de-inquilinos.md (Pass 9)
+- OOM Time Bomb (fetchSockets) [backend/src/services/superadmin.tenant.service.js]
+- Security Theater Password Validation (whitespace) [backend/src/controllers/superadmin.tenant.controller.js]
+
+## Deferred from: code review of saas-2-1-esquema-cuotas-licencias-bd (2026-07-31)
+- [ ] Inefficient Compound Index for low-cardinality enum (`license_type` index in migration) - deferred, pre-existing
+

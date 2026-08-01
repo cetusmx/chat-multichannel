@@ -1,0 +1,567 @@
+diff --git a/_bmad-output/implementation-artifacts/1-3-listado-global-de-inquilinos.md b/_bmad-output/implementation-artifacts/1-3-listado-global-de-inquilinos.md
+index 6b31dff..f0c73c1 100644
+--- a/_bmad-output/implementation-artifacts/1-3-listado-global-de-inquilinos.md
++++ b/_bmad-output/implementation-artifacts/1-3-listado-global-de-inquilinos.md
+@@ -4,7 +4,7 @@ baseline_commit: "4fadef758ed47194d6a4578c52478c1429563295"
+ 
+ # Story 1.3: Listado Global de Inquilinos
+ 
+-Status: review
++Status: done
+ 
+ ## Story
+ 
+diff --git a/_bmad-output/implementation-artifacts/deferred-work.md b/_bmad-output/implementation-artifacts/deferred-work.md
+index 935faf3..bc275f9 100644
+--- a/_bmad-output/implementation-artifacts/deferred-work.md
++++ b/_bmad-output/implementation-artifacts/deferred-work.md
+@@ -202,3 +202,35 @@
+ 
+ ## Deferred from: code review of 1-2-infraestructura-del-dashboard-spa.md (2026-07-28)
+ - Dashboard usa dummy data — deferred, placeholder explícito para historias futuras
++
++## Deferred from: code review of 1-4-alta-de-inquilinos.md (2026-07-29)
++- Brittle stripping of sensitive data from user object [backend/src/controllers/superadmin.tenant.controller.js:48] — deferred, pre-existing
++- Hardcoded magic string for tenant status [backend/src/services/superadmin.tenant.service.js:73] — deferred, pre-existing
++- Missing copy-to-clipboard for generated password [superadmin-frontend/src/components/CreateTenantModal.jsx] — deferred, pre-existing
++- Deviating from specified `TENANT_ADMIN` role assignment [backend/src/services/superadmin.tenant.service.js:82] — deferred, pre-existing
++- Password validation does not explicitly validate by bytes [backend/src/controllers/superadmin.tenant.controller.js:12] — deferred, pre-existing
++
++## Deferred from: code review of 1-5-suspension-de-inquilinos (2026-07-30)
++- tenantStatusCache lacks periodic memory eviction for unread keys
++- Pagination inputs lack strict Zod validation
++- Slug regex allows purely numeric values
++- userWithoutPassword uses blacklist pattern for sensitive fields
++- api.js timeout on non-idempotent operations can create ghost resources
++- Tenants.jsx shows jarring skeleton loader flicker on page transition
++- fetchSockets() could cause memory issues with massive connected clients
++- `updateTenantStatus` performs non-atomic TOCTOU read-then-update [backend/src/services/superadmin.tenant.service.js]
++- In-memory Rate Limiting and Blind Map Deletion on Max Size [backend/src/controllers/superadmin.auth.controller.js]
++- Blind Catch-All Error Logging [backend/src/controllers/superadmin.tenant.controller.js]
++- Fragile Tenant Status Check [backend/src/services/auth.service.js]
++
++## Deferred from: code review of 1-5-suspension-de-inquilinos.md (2026-07-31)
++- Password validation regex blindly accepts whitespace [backend/src/controllers/superadmin.tenant.controller.js:17]
++- Brittle error handling for Prisma unique constraint errors [backend/src/controllers/superadmin.tenant.controller.js:64-67]
++- Authorization middleware hardcodes suspension check to suspended [backend/src/middleware/auth.js]
++- Duplicated tenant suspension logic in auth.service.js [backend/src/services/auth.service.js]
++- Hardcoded low salt rounds for bcrypt [backend/src/services/superadmin.tenant.service.js]
++- verifyWebhook inconsistently throws raw Error [backend/src/services/whatsapp.service.js]
++- Cache TTL rigidly hardcoded [backend/src/utils/tenant-cache.util.js:4]
++- handleToggleStatus relies on window.confirm [superadmin-frontend/src/pages/Tenants.jsx]
++- Pagination text inaccurate [superadmin-frontend/src/pages/Tenants.jsx]
++- Search input disabled without ARIA or visual cues [superadmin-frontend/src/pages/Tenants.jsx]
+diff --git a/_bmad-output/implementation-artifacts/sprint-status.yaml b/_bmad-output/implementation-artifacts/sprint-status.yaml
+index 932bf45..6133a6a 100644
+--- a/_bmad-output/implementation-artifacts/sprint-status.yaml
++++ b/_bmad-output/implementation-artifacts/sprint-status.yaml
+@@ -41,7 +41,7 @@
+ # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
+ 
+ generated: 2026-07-04T19:33:21-06:00
+-last_updated: 2026-07-28T22:09:00-06:00
++last_updated: 2026-07-31T20:16:00-06:00
+ project: chat-multichannel-sales-ia
+ project_key: NOKEY
+ tracking_system: file-system
+@@ -100,6 +100,6 @@ development_status:
+   epic-saas-1: in-progress
+   1-1-autenticacion-base-superadmin: done
+   1-2-infraestructura-del-dashboard-spa: done
+-  1-3-listado-global-de-inquilinos: review
+-  1-4-alta-de-inquilinos: backlog
+-  1-5-suspension-de-inquilinos: backlog
++  1-3-listado-global-de-inquilinos: done
++  1-4-alta-de-inquilinos: done
++  1-5-suspension-de-inquilinos: in-progress
+diff --git a/backend/src/config/env.js b/backend/src/config/env.js
+index 42706ad..c9070af 100644
+--- a/backend/src/config/env.js
++++ b/backend/src/config/env.js
+@@ -12,6 +12,7 @@ const env = {
+   geminiApiKey: process.env.GEMINI_API_KEY || '',
+   corsOrigin: process.env.CORS_ORIGIN || '*',
+   metaApiVersion: process.env.META_API_VERSION || 'v19.0',
++  masterTenantId: process.env.MASTER_TENANT_ID,
+ };
+ 
+ module.exports = env;
+diff --git a/backend/src/controllers/superadmin.auth.controller.js b/backend/src/controllers/superadmin.auth.controller.js
+index 4fff4f4..59ec912 100644
+--- a/backend/src/controllers/superadmin.auth.controller.js
++++ b/backend/src/controllers/superadmin.auth.controller.js
+@@ -1,6 +1,12 @@
+ const superadminAuthService = require('../services/superadmin.auth.service');
+ const ApiError = require('../utils/ApiError');
+ const { success } = require('../utils/response');
++const { z } = require('zod');
++
++const loginSchema = z.object({
++  email: z.string().email('Formato de email inválido'),
++  password: z.string().min(1, 'Contraseña es requerida').max(72, 'Contraseña excede el límite permitido')
++});
+ 
+ const loginAttempts = new Map();
+ const WINDOW_MS = 60 * 1000;
+@@ -21,10 +27,10 @@ setInterval(() => {
+ }, WINDOW_MS * 2).unref();
+ 
+ function rateLimitLogin(req, res, next) {
+-  const ip = req.ip || (req.connection && req.connection.remoteAddress) || (req.socket && req.socket.remoteAddress) || 'unknown';
++  let ip = req.ip || (req.connection && req.connection.remoteAddress) || (req.socket && req.socket.remoteAddress);
+   
+-  if (ip === 'unknown') {
+-    return next(); // Bypass rate limiting for unresolvable IPs to prevent collateral blocking
++  if (!ip) {
++    return next(ApiError.badRequest('Invalid request IP'));
+   }
+ 
+   const now = Date.now();
+@@ -51,22 +57,12 @@ function rateLimitLogin(req, res, next) {
+ 
+ async function login(req, res, next) {
+   try {
+-    const { email, password } = req.body || {};
+-    
+-    // Validate types to prevent 500s or NoSQL injections
+-    if (!email || !password || typeof email !== 'string' || typeof password !== 'string') {
+-      throw ApiError.badRequest('Email y contraseña son requeridos y deben ser texto');
+-    }
+-    
+-    // Enforce max password length for bcrypt safety
+-    if (password.length > 72) {
+-      throw ApiError.badRequest('Contraseña excede el límite permitido');
+-    }
+-    
+-    // Basic email validation
+-    if (!/^\S+@\S+\.\S+$/.test(email)) {
+-      throw ApiError.badRequest('Formato de email inválido');
++    const parsed = loginSchema.safeParse(req.body);
++    if (!parsed.success) {
++      const msg = parsed.error.errors.map(e => e.message).join(', ');
++      throw ApiError.badRequest(msg);
+     }
++    const { email, password } = parsed.data;
+ 
+     const normalizedEmail = email.toLowerCase();
+     const result = await superadminAuthService.login(normalizedEmail, password);
+diff --git a/backend/src/controllers/superadmin.tenant.controller.js b/backend/src/controllers/superadmin.tenant.controller.js
+index f554c5e..651ec89 100644
+--- a/backend/src/controllers/superadmin.tenant.controller.js
++++ b/backend/src/controllers/superadmin.tenant.controller.js
+@@ -12,14 +12,17 @@ const createTenantSchema = z.object({
+     .refine(val => !RESERVED_SLUGS.includes(val), { message: 'Reserved keyword cannot be used as slug' }),
+   firstName: z.string().trim().min(2).max(100),
+   lastName: z.string().trim().min(2).max(100),
+-  email: z.string().trim().email().max(255),
+-  password: z.string().min(8).max(50).regex(/[A-Z]/, 'Must contain at least one uppercase letter').regex(/[0-9]/, 'Must contain at least one number').regex(/[^A-Za-z0-9]/, 'Must contain at least one special character'),
++  email: z.string().trim().email('Invalid email address').max(255),
++  password: z.string().min(8, 'Password must be at least 8 characters').max(72, 'Password must be less than 72 characters')
++    .regex(/[A-Z]/, 'Must contain at least one uppercase letter').regex(/[0-9]/, 'Must contain at least one number').regex(/[^A-Za-z0-9]/, 'Must contain at least one special character'),
+ });
+ 
+ const updateTenantStatusSchema = z.object({
+   status: z.enum(['active', 'suspended']),
+ });
+ 
++const tenantIdSchema = z.string().cuid('Invalid tenant ID format');
++
+ async function getTenants(req, res, next) {
+   try {
+     const { page, limit, sortBy, sortOrder } = req.query;
+@@ -89,7 +92,7 @@ async function createTenant(req, res, next) {
+ 
+ async function updateTenantStatus(req, res, next) {
+   try {
+-    const { id } = req.params;
++    const id = tenantIdSchema.parse(req.params.id);
+     const validatedData = updateTenantStatusSchema.parse(req.body);
+ 
+     const result = await superadminTenantService.updateTenantStatus(id, validatedData.status);
+diff --git a/backend/src/middleware/auth.js b/backend/src/middleware/auth.js
+index ae7d942..d836eb3 100644
+--- a/backend/src/middleware/auth.js
++++ b/backend/src/middleware/auth.js
+@@ -1,6 +1,7 @@
+ const jwt = require('jsonwebtoken');
+ const ApiError = require('../utils/ApiError');
+ const env = require('../config/env');
++const logger = require('../utils/logger');
+ const { getTenantStatusAsync } = require('../utils/tenant-cache.util');
+ 
+ async function authenticate(req, _res, next) {
+@@ -24,7 +25,7 @@ async function authenticate(req, _res, next) {
+           return next(new ApiError(403, 'Tenant is suspended or not found', 'TENANT_SUSPENDED'));
+         }
+       } catch (err) {
+-        // Log DB error but don't fail authentication with an invalid token error, pass a 500 or 403
++        logger.error(`[AUTH_MIDDLEWARE] DB error verifying tenant ${decoded.tenantId}:`, err);
+         return next(new ApiError(500, 'Internal Server Error verifying tenant', 'INTERNAL_ERROR'));
+       }
+     }
+diff --git a/backend/src/middleware/errorHandler.js b/backend/src/middleware/errorHandler.js
+index f0757f9..8b1bdef 100644
+--- a/backend/src/middleware/errorHandler.js
++++ b/backend/src/middleware/errorHandler.js
+@@ -9,6 +9,13 @@ function errorHandler(err, req, res, _next) {
+     stack: process.env.NODE_ENV === 'development' ? err.stack : undefined,
+   });
+ 
++  if (code === 'TENANT_SUSPENDED') {
++    return res.status(status).json({
++      error: code,
++      message: message,
++    });
++  }
++
+   if (process.env.NODE_ENV === 'development' && status === 500) {
+     return res.status(status).json({
+       error: { message, code, stack: err.stack },
+diff --git a/backend/src/routes/whatsapp.routes.js b/backend/src/routes/whatsapp.routes.js
+index fe3c2b8..24db2c6 100644
+--- a/backend/src/routes/whatsapp.routes.js
++++ b/backend/src/routes/whatsapp.routes.js
+@@ -67,12 +67,11 @@ router.get('/webhook/:tenantId', async (req, res, next) => {
+ router.post('/webhook/:tenantId', async (req, res, next) => {
+   try {
+     await whatsappService.handleIncomingMessage(req.body, req.params.tenantId);
+-    // Siempre debemos retornar 200 OK inmediatamente para que Meta no reintente
++    // Siempre debemos retornar 200 OK si es exitoso
+     res.status(200).send('EVENT_RECEIVED');
+   } catch (error) {
+-    // Aún si hay error interno, responder OK a Meta y loggear.
+     console.error('Webhook processing error:', error.message);
+-    res.status(200).send('EVENT_RECEIVED');
++    res.status(500).send('INTERNAL_SERVER_ERROR');
+   }
+ });
+ 
+diff --git a/backend/src/services/superadmin.tenant.service.js b/backend/src/services/superadmin.tenant.service.js
+index 5dfa38b..b5c16e4 100644
+--- a/backend/src/services/superadmin.tenant.service.js
++++ b/backend/src/services/superadmin.tenant.service.js
+@@ -4,6 +4,7 @@ const { getIo } = require('../socket');
+ const jwt = require('jsonwebtoken');
+ const { setTenantStatus } = require('../utils/tenant-cache.util');
+ const logger = require('../utils/logger');
++const env = require('../config/env');
+ 
+ /**
+  * Retrieves a paginated list of tenants for the Superadmin dashboard.
+@@ -106,7 +107,7 @@ async function createTenantWithAdmin(data) {
+  * @returns {Promise<Object>} Updated tenant
+  */
+ async function updateTenantStatus(id, status) {
+-  const masterTenantId = process.env.MASTER_TENANT_ID;
++  const masterTenantId = env.masterTenantId;
+   if (status === 'suspended') {
+     if (!masterTenantId) {
+       const error = new Error('Server configuration error: MASTER_TENANT_ID is not set');
+@@ -154,7 +155,9 @@ async function updateTenantStatus(id, status) {
+         const namespace = io.of(nsp);
+         const sockets = await namespace.fetchSockets();
+         
++        let count = 0;
+         for (const socket of sockets) {
++          if (++count % 100 === 0) await new Promise(resolve => setImmediate(resolve));
+           try {
+             const token = socket.handshake.auth?.token;
+             if (token) {
+diff --git a/backend/src/services/whatsapp.service.js b/backend/src/services/whatsapp.service.js
+index 9e16547..9dd2e2d 100644
+--- a/backend/src/services/whatsapp.service.js
++++ b/backend/src/services/whatsapp.service.js
+@@ -14,14 +14,8 @@ const { getTenantStatusAsync } = require('../utils/tenant-cache.util');
+ const ApiError = require('../utils/ApiError');
+ 
+ async function isTenantSuspended(tenantId) {
+-  try {
+-    const status = await getTenantStatusAsync(tenantId);
+-    return !status || status === 'suspended';
+-  } catch (err) {
+-    logger.error(`[WHATSAPP_SERVICE] Error checking tenant status for ${tenantId}:`, err);
+-    // Fail safe to suspended if we can't query the database
+-    return true;
+-  }
++  const status = await getTenantStatusAsync(tenantId);
++  return !status || status === 'suspended';
+ }
+ 
+ /**
+@@ -583,7 +577,7 @@ const whatsappService = {
+       if (conversation.client.isBlocked) throw new Error('Client is blocked');
+       
+       if (await isTenantSuspended(conversation.tenantId)) {
+-        throw new ApiError(403, 'Tenant is currently suspended.', 'TENANT_SUSPENDED');
++        throw new ApiError(403, 'Tenant is suspended. Cannot send messages.', 'TENANT_SUSPENDED');
+       }
+       
+       const config = await this.getConfig(conversation.tenantId);
+@@ -669,7 +663,7 @@ const whatsappService = {
+       if (conversation.client.isBlocked) throw new Error('Client is blocked');
+       
+       if (await isTenantSuspended(conversation.tenantId)) {
+-        throw new ApiError(403, 'Tenant is currently suspended.', 'TENANT_SUSPENDED');
++        throw new ApiError(403, 'Tenant is suspended. Cannot send messages.', 'TENANT_SUSPENDED');
+       }
+       
+       const config = await this.getConfig(conversation.tenantId);
+diff --git a/backend/src/utils/tenant-cache.util.js b/backend/src/utils/tenant-cache.util.js
+index 77ba1b2..256a82e 100644
+--- a/backend/src/utils/tenant-cache.util.js
++++ b/backend/src/utils/tenant-cache.util.js
+@@ -34,28 +34,32 @@ function invalidateTenantCache(tenantId) {
+  */
+ async function getTenantStatusAsync(tenantId) {
+   let status = getTenantStatus(tenantId);
+-  if (status) return status;
++  if (status !== undefined) return status;
+ 
+   if (!pendingFetches.has(tenantId)) {
+     const dbPromise = prisma.tenant.findUnique({
+       where: { id: tenantId },
+       select: { status: true }
+     });
++    
++    // Prevent unhandled promise rejection if dbPromise fails after race finishes
++    dbPromise.catch(() => {});
+ 
++    let timeoutId;
+     const timeoutPromise = new Promise((_, reject) => {
+-      setTimeout(() => reject(new Error('Tenant status fetch timeout')), 5000);
++      timeoutId = setTimeout(() => reject(new Error('Tenant status fetch timeout')), 5000);
+     });
+ 
+     const fetchPromise = Promise.race([dbPromise, timeoutPromise])
+       .then(tenant => {
++        clearTimeout(timeoutId);
+         const fetchedStatus = tenant ? tenant.status : null;
+-        if (fetchedStatus) {
+-          setTenantStatus(tenantId, fetchedStatus);
+-        }
++        setTenantStatus(tenantId, fetchedStatus);
+         pendingFetches.delete(tenantId);
+         return fetchedStatus;
+       })
+       .catch(err => {
++        clearTimeout(timeoutId);
+         pendingFetches.delete(tenantId);
+         throw err;
+       });
+diff --git a/backend/tests/unit/superadmin.tenant.controller.test.js b/backend/tests/unit/superadmin.tenant.controller.test.js
+index be961c9..49912e3 100644
+--- a/backend/tests/unit/superadmin.tenant.controller.test.js
++++ b/backend/tests/unit/superadmin.tenant.controller.test.js
+@@ -158,22 +158,24 @@ describe('Superadmin Tenant Controller', () => {
+ 
+   describe('updateTenantStatus', () => {
+     it('should validate status and update tenant', async () => {
+-      const mockResult = { id: 't1', status: 'suspended' };
++      const validCuid = 'c123456789012345678901234';
++      const mockResult = { id: validCuid, status: 'suspended' };
+       superadminTenantService.updateTenantStatus.mockResolvedValue(mockResult);
+ 
+-      const req = { params: { id: 't1' }, body: { status: 'suspended' } };
++      const req = { params: { id: validCuid }, body: { status: 'suspended' } };
+       const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+       const next = jest.fn();
+ 
+       await superadminTenantController.updateTenantStatus(req, res, next);
+ 
+-      expect(superadminTenantService.updateTenantStatus).toHaveBeenCalledWith('t1', 'suspended');
++      expect(superadminTenantService.updateTenantStatus).toHaveBeenCalledWith(validCuid, 'suspended');
+       expect(success).toHaveBeenCalledWith(res, mockResult);
+       expect(next).not.toHaveBeenCalled();
+     });
+ 
+     it('should return 400 for Zod validation error if status is invalid', async () => {
+-      const req = { params: { id: 't1' }, body: { status: 'invalid_status' } };
++      const validCuid = 'c123456789012345678901234';
++      const req = { params: { id: validCuid }, body: { status: 'invalid_status' } };
+       const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+       const next = jest.fn();
+ 
+@@ -191,7 +193,8 @@ describe('Superadmin Tenant Controller', () => {
+       error.statusCode = 404;
+       superadminTenantService.updateTenantStatus.mockRejectedValue(error);
+ 
+-      const req = { params: { id: 't99' }, body: { status: 'suspended' } };
++      const validCuid = 'c123456789012345678901234';
++      const req = { params: { id: validCuid }, body: { status: 'suspended' } };
+       const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+       const next = jest.fn();
+ 
+diff --git a/backend/tests/unit/superadmin.tenant.service.test.js b/backend/tests/unit/superadmin.tenant.service.test.js
+index 026e472..46c9053 100644
+--- a/backend/tests/unit/superadmin.tenant.service.test.js
++++ b/backend/tests/unit/superadmin.tenant.service.test.js
+@@ -18,6 +18,22 @@ jest.mock('../../src/config/database', () => ({
+   }
+ }));
+ 
++jest.mock('../../src/utils/tenant-cache.util', () => ({
++  setTenantStatus: jest.fn()
++}));
++
++jest.mock('../../src/config/env', () => ({
++  masterTenantId: 'master-123'
++}));
++
++jest.mock('../../src/socket', () => ({
++  getIo: jest.fn().mockReturnValue({
++    of: jest.fn().mockReturnValue({
++      sockets: new Map()
++    })
++  })
++}));
++
+ describe('Superadmin Tenant Service', () => {
+   beforeEach(() => {
+     jest.clearAllMocks();
+@@ -151,4 +167,31 @@ describe('Superadmin Tenant Service', () => {
+       await expect(superadminTenantService.createTenantWithAdmin(tenantData)).rejects.toThrow('Database Error');
+     });
+   });
++
++  describe('updateTenantStatus', () => {
++    it('should update tenant status and clear cache', async () => {
++      const mockTenant = { id: 't1', status: 'suspended' };
++      prisma.tenant.findUnique = jest.fn().mockResolvedValue({ id: 't1', status: 'active' });
++      prisma.tenant.update = jest.fn().mockResolvedValue(mockTenant);
++      
++      const { setTenantStatus } = require('../../src/utils/tenant-cache.util');
++      
++      const result = await superadminTenantService.updateTenantStatus('t1', 'suspended');
++      
++      expect(prisma.tenant.update).toHaveBeenCalledWith({
++        where: { id: 't1' },
++        data: { status: 'suspended' }
++      });
++      expect(setTenantStatus).toHaveBeenCalledWith('t1', 'suspended');
++      expect(result).toEqual(mockTenant);
++    });
++
++    it('should block suspending the master tenant', async () => {
++      const { masterTenantId } = require('../../src/config/env');
++      
++      await expect(superadminTenantService.updateTenantStatus(masterTenantId, 'suspended'))
++        .rejects
++        .toThrow('Cannot suspend the master tenant');
++    });
++  });
+ });
+diff --git a/backend/tests/whatsapp.service.test.js b/backend/tests/whatsapp.service.test.js
+index a118580..ba55467 100644
+--- a/backend/tests/whatsapp.service.test.js
++++ b/backend/tests/whatsapp.service.test.js
+@@ -11,6 +11,9 @@ jest.mock('@prisma/client', () => {
+     tenant: {
+       findUnique: jest.fn(),
+     },
++    conversation: {
++      findUnique: jest.fn(),
++    }
+   };
+   return { PrismaClient: jest.fn(() => mPrismaClient) };
+ });
+@@ -95,4 +98,27 @@ describe('WhatsApp Service', () => {
+       });
+     });
+   });
++
++  describe('sendMessage', () => {
++    it('should throw TENANT_SUSPENDED error if tenant is suspended', async () => {
++      prisma.conversation.findUnique.mockResolvedValue({ tenantId: 'tenant-123', client: { isBlocked: false } });
++      prisma.tenant.findUnique.mockResolvedValue({ status: 'suspended' });
++      await expect(whatsappService.sendMessage('tenant-123', 'client-123', 'hello'))
++        .rejects
++        .toMatchObject({ code: 'TENANT_SUSPENDED' });
++    });
++  });
++
++  describe('sendMedia', () => {
++    it('should throw TENANT_SUSPENDED error if tenant is suspended', async () => {
++      prisma.conversation.findUnique.mockResolvedValue({ tenantId: 'tenant-123', client: { isBlocked: false } });
++      prisma.tenant.findUnique.mockResolvedValue({ status: 'suspended' });
++      
++      const dummyFile = { path: '/tmp/test.jpg', mimetype: 'image/jpeg', originalname: 'test.jpg' };
++      
++      await expect(whatsappService.sendMedia('conv-123', dummyFile, 'caption', 'agent-1'))
++        .rejects
++        .toMatchObject({ code: 'TENANT_SUSPENDED' });
++    });
++  });
+ });
+diff --git a/superadmin-frontend/src/pages/Tenants.jsx b/superadmin-frontend/src/pages/Tenants.jsx
+index c41aa8e..d881c1b 100644
+--- a/superadmin-frontend/src/pages/Tenants.jsx
++++ b/superadmin-frontend/src/pages/Tenants.jsx
+@@ -81,7 +81,7 @@ export default function Tenants() {
+     } catch (err) {
+       // Revert Optimistic Update
+       setTenants(prev => prev.map(t => 
+-        t.id === tenant.id ? { ...t, status: tenant.status } : t
++        t.id === tenant.id ? { ...t, status: isCurrentlyActive ? 'active' : 'suspended' } : t
+       ));
+       toast.error('Error al actualizar el estado del inquilino');
+     } finally {
+diff --git a/superadmin-frontend/src/pages/__tests__/Tenants.test.jsx b/superadmin-frontend/src/pages/__tests__/Tenants.test.jsx
+index 598fd01..873ad37 100644
+--- a/superadmin-frontend/src/pages/__tests__/Tenants.test.jsx
++++ b/superadmin-frontend/src/pages/__tests__/Tenants.test.jsx
+@@ -75,6 +75,10 @@ describe('Tenants Page', () => {
+ 
+     // Click to suspend
+     fireEvent.click(toggleBtn);
++    
++    // Should immediately show loading state
++    expect(toggleBtn).toHaveTextContent('Procesando...');
++    expect(toggleBtn).toBeDisabled();
+ 
+     // Should call API
+     expect(api.patch).toHaveBeenCalledWith('/api/superadmin/tenants/1/status', { status: 'suspended' });
+diff --git a/superadmin-frontend/src/services/api.js b/superadmin-frontend/src/services/api.js
+index 901b215..564ccdb 100644
+--- a/superadmin-frontend/src/services/api.js
++++ b/superadmin-frontend/src/services/api.js
+@@ -18,12 +18,12 @@ export const api = {
+     const controller = new AbortController();
+     const timeoutId = setTimeout(() => controller.abort(), 15000);
+     
+-    // Manually link user signal to our timeout controller for older browser support
++    const abortHandler = () => controller.abort();
+     if (options.signal) {
+       if (options.signal.aborted) {
+         controller.abort();
+       } else {
+-        options.signal.addEventListener('abort', () => controller.abort(), { once: true });
++        options.signal.addEventListener('abort', abortHandler, { once: true });
+       }
+     }
+     const signal = controller.signal;
+@@ -42,6 +42,9 @@ export const api = {
+       throw new Error('No se pudo conectar con el servidor.');
+     } finally {
+       clearTimeout(timeoutId);
++      if (options.signal) {
++        options.signal.removeEventListener('abort', abortHandler);
++      }
+     }
+ 
+     if (!response.ok) {
+@@ -62,14 +65,7 @@ export const api = {
+         // Ignorar si no es JSON
+       }
+ 
+-      // Log out if the user's tenant was suspended
+-      if (response.status === 403 && window.location.pathname !== '/login') {
+-        if (errorDataObj?.error === 'TENANT_SUSPENDED' || errorDataObj?.code === 'TENANT_SUSPENDED') {
+-          useAuthStore.getState().logout();
+-          window.location.href = '/login';
+-          return null;
+-        }
+-      }
++
+ 
+       const error = new Error(errorMessage);
+       error.status = response.status;

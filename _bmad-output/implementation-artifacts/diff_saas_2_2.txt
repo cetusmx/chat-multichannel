@@ -1,0 +1,670 @@
+diff --git a/backend/src/controllers/superadmin.tenant.controller.js b/backend/src/controllers/superadmin.tenant.controller.js
+index f554c5e..a95c779 100644
+--- a/backend/src/controllers/superadmin.tenant.controller.js
++++ b/backend/src/controllers/superadmin.tenant.controller.js
+@@ -12,14 +12,31 @@ const createTenantSchema = z.object({
+     .refine(val => !RESERVED_SLUGS.includes(val), { message: 'Reserved keyword cannot be used as slug' }),
+   firstName: z.string().trim().min(2).max(100),
+   lastName: z.string().trim().min(2).max(100),
+-  email: z.string().trim().email().max(255),
+-  password: z.string().min(8).max(50).regex(/[A-Z]/, 'Must contain at least one uppercase letter').regex(/[0-9]/, 'Must contain at least one number').regex(/[^A-Za-z0-9]/, 'Must contain at least one special character'),
++  email: z.string().trim().email('Invalid email address').max(255),
++  password: z.string().min(8, 'Password must be at least 8 characters').max(72, 'Password must be less than 72 characters')
++    .regex(/[A-Z]/, 'Must contain at least one uppercase letter').regex(/[0-9]/, 'Must contain at least one number').regex(/[^A-Za-z0-9]/, 'Must contain at least one special character'),
+ });
+ 
+ const updateTenantStatusSchema = z.object({
+   status: z.enum(['active', 'suspended']),
+ });
+ 
++const tenantIdSchema = z.string().refine(val => /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(val) || /^c[^\s-]{7,}$/.test(val), { message: 'Invalid tenant ID format (must be UUID or CUID)' });
++
++const updateTenantLicensesSchema = z.object({
++  maxUsers: z.number().int().min(-1).max(2147483647),
++  maxAiTokens: z.number().int().min(-1).max(2147483647),
++  licenseType: z.enum(['SUBSCRIPTION', 'LIFETIME']),
++}).strict().refine(data => {
++  if (data.licenseType === 'LIFETIME' && data.maxAiTokens !== 0) {
++    return false;
++  }
++  return true;
++}, {
++  message: "LIFETIME licenses must have maxAiTokens strictly set to 0",
++  path: ["maxAiTokens"],
++});
++
+ async function getTenants(req, res, next) {
+   try {
+     const { page, limit, sortBy, sortOrder } = req.query;
+@@ -39,7 +56,15 @@ async function getTenants(req, res, next) {
+ 
+ async function createTenant(req, res, next) {
+   try {
+-    const validatedData = createTenantSchema.parse(req.body);
++    const parsed = createTenantSchema.safeParse(req.body);
++    if (!parsed.success) {
++      return res.status(400).json({
++        success: false,
++        message: 'Validation failed',
++        errors: parsed.error.errors,
++      });
++    }
++    const validatedData = parsed.data;
+ 
+     const result = await superadminTenantService.createTenantWithAdmin({
+       name: validatedData.name,
+@@ -89,8 +114,25 @@ async function createTenant(req, res, next) {
+ 
+ async function updateTenantStatus(req, res, next) {
+   try {
+-    const { id } = req.params;
+-    const validatedData = updateTenantStatusSchema.parse(req.body);
++    const parsedId = tenantIdSchema.safeParse(req.params.id);
++    if (!parsedId.success) {
++      return res.status(400).json({
++        success: false,
++        message: 'Invalid tenant ID format',
++        errors: parsedId.error.errors,
++      });
++    }
++    const id = parsedId.data;
++
++    const parsedData = updateTenantStatusSchema.safeParse(req.body);
++    if (!parsedData.success) {
++      return res.status(400).json({
++        success: false,
++        message: 'Validation failed',
++        errors: parsedData.error.errors,
++      });
++    }
++    const validatedData = parsedData.data;
+ 
+     const result = await superadminTenantService.updateTenantStatus(id, validatedData.status);
+     
+@@ -119,8 +161,78 @@ async function updateTenantStatus(req, res, next) {
+   }
+ }
+ 
++async function getTenantById(req, res, next) {
++  try {
++    const parsedId = tenantIdSchema.safeParse(req.params.id);
++    if (!parsedId.success) {
++      return res.status(400).json({
++        success: false,
++        message: 'Invalid tenant ID format',
++      });
++    }
++    const id = parsedId.data;
++
++    const result = await superadminTenantService.getTenantById(id);
++    success(res, result);
++  } catch (err) {
++    if (err.statusCode === 404) {
++      return res.status(404).json({ success: false, message: 'Tenant not found' });
++    }
++    const logger = require('../utils/logger');
++    logger.error(`Error getting tenant ${req.params.id}:`, err);
++    return res.status(500).json({ success: false, message: 'Internal server error' });
++  }
++}
++
++async function updateTenantLicenses(req, res, next) {
++  try {
++    const parsedId = tenantIdSchema.safeParse(req.params.id);
++    if (!parsedId.success) {
++      return res.status(400).json({
++        success: false,
++        message: 'Invalid tenant ID format',
++        errors: parsedId.error.errors,
++      });
++    }
++    const id = parsedId.data;
++
++    const parsedData = updateTenantLicensesSchema.safeParse(req.body);
++    if (!parsedData.success) {
++      return res.status(400).json({
++        success: false,
++        message: 'Validation failed',
++        errors: parsedData.error.errors,
++      });
++    }
++    const validatedData = parsedData.data;
++
++    const superadminId = req.user.id;
++
++    const result = await superadminTenantService.updateTenantLicenses(id, validatedData, superadminId);
++    
++    success(res, result);
++  } catch (err) {
++    const logger = require('../utils/logger');
++    
++    if (err.statusCode === 404) {
++      return res.status(404).json({ error: { message: 'Tenant not found' } });
++    }
++    if (err.statusCode === 400 || err.statusCode === 409) {
++      logger.warn(`Business validation failed for ${req.params.id}: ${err.message}`);
++      return res.status(err.statusCode).json({ error: { message: err.message, code: err.code || 'VALIDATION_ERROR' } });
++    }
++    
++    logger.error(`Error updating tenant licenses for ${req.params.id}:`, err);
++    return res.status(500).json({
++      error: { message: 'Internal server error while updating tenant licenses' }
++    });
++  }
++}
++
+ module.exports = {
+   getTenants,
+   createTenant,
+   updateTenantStatus,
++  getTenantById,
++  updateTenantLicenses,
+ };
+diff --git a/backend/src/routes/superadmin.tenant.routes.js b/backend/src/routes/superadmin.tenant.routes.js
+index 3ed502d..e8e3489 100644
+--- a/backend/src/routes/superadmin.tenant.routes.js
++++ b/backend/src/routes/superadmin.tenant.routes.js
+@@ -8,6 +8,8 @@ router.use(superadminAuth);
+ 
+ router.get('/', superadminTenantController.getTenants);
+ router.post('/', superadminTenantController.createTenant);
++router.get('/:id', superadminTenantController.getTenantById);
+ router.patch('/:id/status', superadminTenantController.updateTenantStatus);
++router.put('/:id/licenses', superadminTenantController.updateTenantLicenses);
+ 
+ module.exports = router;
+diff --git a/backend/src/services/superadmin.tenant.service.js b/backend/src/services/superadmin.tenant.service.js
+index 5dfa38b..832b9ac 100644
+--- a/backend/src/services/superadmin.tenant.service.js
++++ b/backend/src/services/superadmin.tenant.service.js
+@@ -4,6 +4,7 @@ const { getIo } = require('../socket');
+ const jwt = require('jsonwebtoken');
+ const { setTenantStatus } = require('../utils/tenant-cache.util');
+ const logger = require('../utils/logger');
++const env = require('../config/env');
+ 
+ /**
+  * Retrieves a paginated list of tenants for the Superadmin dashboard.
+@@ -106,14 +107,9 @@ async function createTenantWithAdmin(data) {
+  * @returns {Promise<Object>} Updated tenant
+  */
+ async function updateTenantStatus(id, status) {
+-  const masterTenantId = process.env.MASTER_TENANT_ID;
++  const masterTenantId = env.masterTenantId;
+   if (status === 'suspended') {
+-    if (!masterTenantId) {
+-      const error = new Error('Server configuration error: MASTER_TENANT_ID is not set');
+-      error.statusCode = 500;
+-      throw error;
+-    }
+-    if (id === masterTenantId) {
++    if (masterTenantId && id === masterTenantId) {
+       const error = new Error('Cannot suspend the master tenant');
+       error.statusCode = 403;
+       throw error;
+@@ -154,7 +150,9 @@ async function updateTenantStatus(id, status) {
+         const namespace = io.of(nsp);
+         const sockets = await namespace.fetchSockets();
+         
++        let count = 0;
+         for (const socket of sockets) {
++          if (++count % 100 === 0) await new Promise(resolve => setImmediate(resolve));
+           try {
+             const token = socket.handshake.auth?.token;
+             if (token) {
+@@ -180,8 +178,124 @@ async function updateTenantStatus(id, status) {
+   return updatedTenant;
+ }
+ 
++/**
++ * Retrieves a tenant by ID, including current active users count.
++ *
++ * @param {string} id Tenant ID
++ * @returns {Promise<Object>} Tenant object with currentActiveUsers
++ */
++async function getTenantById(id) {
++  const tenant = await prisma.tenant.findUnique({
++    where: { id },
++  });
++
++  if (!tenant) {
++    const error = new Error('Tenant not found');
++    error.statusCode = 404;
++    throw error;
++  }
++
++  const currentActiveUsers = await prisma.user.count({
++    where: {
++      tenantId: id,
++      isActive: true,
++    }
++  });
++
++  return { ...tenant, currentActiveUsers };
++}
++
++/**
++ * Updates the licenses of a tenant.
++ *
++ * @param {string} tenantId Tenant ID
++ * @param {Object} payload { maxUsers, maxAiTokens, licenseType }
++ * @param {string} superadminId The superadmin performing the action
++ * @returns {Promise<Object>} Updated tenant
++ */
++async function updateTenantLicenses(tenantId, payload, superadminId) {
++  let { maxUsers, maxAiTokens, licenseType } = payload;
++  
++  if (licenseType === 'LIFETIME') {
++    maxAiTokens = 0;
++  }
++
++  const maxRetries = 3;
++  let attempt = 0;
++  
++  while (attempt < maxRetries) {
++    try {
++      const { Prisma } = require('@prisma/client');
++      return await prisma.$transaction(async (tx) => {
++        // Check if tenant exists inside tx
++        const tenant = await tx.tenant.findUnique({
++          where: { id: tenantId }
++        });
++        if (!tenant) {
++          const error = new Error('Tenant not found');
++          error.statusCode = 404;
++          throw error;
++        }
++
++        // Query active users
++        const activeUsersCount = await tx.user.count({
++          where: {
++            tenantId,
++            isActive: true
++          }
++        });
++
++        if (maxUsers !== -1 && maxUsers < activeUsersCount) {
++          const error = new Error('Cannot set limit below current active users');
++          error.statusCode = 400;
++          error.code = 'BELOW_ACTIVE_USERS';
++          throw error;
++        }
++
++        const updatedTenant = await tx.tenant.update({
++          where: { id: tenantId },
++          data: { maxUsers, maxAiTokens, licenseType }
++        });
++
++        logger.info({
++          action: 'UPDATE_TENANT_LICENSES',
++          superadminId,
++          tenantId,
++          previousValues: {
++            maxUsers: tenant.maxUsers,
++            maxAiTokens: tenant.maxAiTokens,
++            licenseType: tenant.licenseType
++          },
++          newValues: { maxUsers, maxAiTokens, licenseType }
++        });
++
++        return updatedTenant;
++      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 10000 });
++    } catch (err) {
++      if (err.code === 'P2034' && attempt < maxRetries - 1) {
++        attempt++;
++        await new Promise(resolve => setTimeout(resolve, 50 * attempt));
++        continue;
++      }
++      if (err.code === 'P2034') {
++        const error = new Error('Concurrent modification conflict, please try again');
++        error.statusCode = 409;
++        throw error;
++      }
++      if (err.code === 'P2025') {
++        const error = new Error('Tenant not found');
++        error.statusCode = 404;
++        throw error;
++      }
++      throw err;
++    }
++  }
++}
++
+ module.exports = {
+   getTenants,
++  getTenantById,
+   createTenantWithAdmin,
+   updateTenantStatus,
++  updateTenantLicenses,
+ };
+diff --git a/superadmin-frontend/src/App.jsx b/superadmin-frontend/src/App.jsx
+index bd7c303..47199c4 100644
+--- a/superadmin-frontend/src/App.jsx
++++ b/superadmin-frontend/src/App.jsx
+@@ -3,6 +3,7 @@ import ProtectedRoute from './components/ProtectedRoute';
+ import Login from './pages/Login';
+ import Dashboard from './pages/Dashboard';
+ import Tenants from './pages/Tenants';
++import TenantDetails from './pages/TenantDetails';
+ import SuperadminLayout from './components/SuperadminLayout';
+ import useAuthStore from './store/authStore';
+ 
+@@ -24,6 +25,7 @@ function App() {
+           <Route element={<SuperadminLayout />}>
+             <Route path="/" element={<Dashboard />} />
+             <Route path="/tenants" element={<Tenants />} />
++            <Route path="/tenants/:id" element={<TenantDetails />} />
+           </Route>
+         </Route>
+         
+diff --git a/superadmin-frontend/src/pages/TenantDetails.jsx b/superadmin-frontend/src/pages/TenantDetails.jsx
+new file mode 100644
+index 0000000..e7379bf
+--- /dev/null
++++ b/superadmin-frontend/src/pages/TenantDetails.jsx
+@@ -0,0 +1,201 @@
++import { useState, useEffect, useCallback } from 'react';
++import { useParams, useNavigate } from 'react-router-dom';
++import { ChevronLeft, Save, AlertTriangle } from 'lucide-react';
++import { api } from '../services/api';
++import { toast } from 'sonner';
++
++export default function TenantDetails() {
++  const { id } = useParams();
++  const navigate = useNavigate();
++  
++  const [tenant, setTenant] = useState(null);
++  const [loading, setLoading] = useState(true);
++  const [error, setError] = useState(null);
++  const [saving, setSaving] = useState(false);
++
++  // Form state
++  const [maxUsers, setMaxUsers] = useState(0);
++  const [maxAiTokens, setMaxAiTokens] = useState(0);
++  const [licenseType, setLicenseType] = useState('SUBSCRIPTION');
++
++  const fetchTenantDetails = useCallback(async () => {
++    try {
++      setLoading(true);
++      setError(null);
++      const data = await api.get(`/api/superadmin/tenants/${id}`);
++      setTenant(data);
++      setMaxUsers(data.maxUsers);
++      setMaxAiTokens(data.maxAiTokens);
++      setLicenseType(data.licenseType || 'SUBSCRIPTION');
++    } catch (err) {
++      setError(err.message || 'Error al cargar el inquilino');
++      toast.error('Error al cargar datos del inquilino');
++    } finally {
++      setLoading(false);
++    }
++  }, [id]);
++
++  useEffect(() => {
++    fetchTenantDetails();
++  }, [fetchTenantDetails]);
++
++  const handleLicenseTypeChange = (e) => {
++    const newType = e.target.value;
++    setLicenseType(newType);
++    if (newType === 'LIFETIME') {
++      setMaxAiTokens(0);
++    }
++  };
++
++  const handleSave = async (e) => {
++    e.preventDefault();
++    
++    const numUsers = Number(maxUsers);
++    const payloadTokens = licenseType === 'LIFETIME' ? 0 : Number(maxAiTokens);
++
++    if (tenant) {
++      const isReducingUsers = numUsers !== -1 && numUsers < tenant.maxUsers;
++      const isReducingTokens = payloadTokens !== -1 && payloadTokens < tenant.maxAiTokens && licenseType !== 'LIFETIME';
++
++      if (isReducingUsers || isReducingTokens) {
++        if (!window.confirm("Estás reduciendo los límites de licencia actuales para este inquilino. ¿Proceder?")) {
++          return;
++        }
++      }
++    }
++
++    try {
++      setSaving(true);
++      const response = await api.put(`/api/superadmin/tenants/${id}/licenses`, {
++        maxUsers: numUsers,
++        maxAiTokens: payloadTokens,
++        licenseType
++      });
++      
++      // Pessimistic update: only update on success
++      setTenant(prev => ({
++        ...prev,
++        ...response,
++        currentActiveUsers: prev.currentActiveUsers // preserve unless backend returns it in PUT
++      }));
++      toast.success('Licencias actualizadas exitosamente');
++    } catch (err) {
++      toast.error(err.message || 'Error al actualizar licencias');
++      if (err.data?.error?.code === 'BELOW_ACTIVE_USERS') {
++        // Recover state by re-fetching
++        fetchTenantDetails();
++      }
++    } finally {
++      setSaving(false);
++    }
++  };
++
++  if (loading) {
++    return (
++      <div className="w-full animate-pulse">
++        <div className="h-8 bg-slate-800 rounded w-1/4 mb-10"></div>
++        <div className="h-64 bg-slate-900 border border-slate-800 rounded-2xl"></div>
++      </div>
++    );
++  }
++
++  if (error || !tenant) {
++    return (
++      <div className="w-full text-center py-12">
++        <p className="text-red-400 mb-4">{error || 'Inquilino no encontrado'}</p>
++        <button onClick={() => navigate('/tenants')} className="text-blue-500 hover:underline">
++          Volver a inquilinos
++        </button>
++      </div>
++    );
++  }
++
++  return (
++    <div className="w-full">
++      <header className="mb-10 flex items-center gap-4">
++        <button 
++          onClick={() => navigate('/tenants')}
++          className="p-2 hover:bg-slate-800 rounded-lg transition-colors text-slate-400 hover:text-slate-200"
++        >
++          <ChevronLeft size={24} />
++        </button>
++        <div>
++          <h2 className="text-3xl font-semibold tracking-tight">{tenant.name}</h2>
++          <p className="text-slate-400 mt-1">Configuración de Licencias y Detalles</p>
++        </div>
++      </header>
++
++      <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-sm overflow-hidden flex flex-col p-6">
++        <h3 className="text-xl font-medium mb-6 flex items-center gap-2">
++          <AlertTriangle className="text-yellow-500" size={20} />
++          Licenciamiento y Límites
++        </h3>
++        
++        <form onSubmit={handleSave} className="space-y-6 max-w-2xl">
++          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
++            <div className="space-y-2">
++              <label className="text-sm font-medium text-slate-300">Tipo de Licencia</label>
++              <select 
++                value={licenseType}
++                onChange={handleLicenseTypeChange}
++                disabled={saving}
++                className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-2 text-slate-200 focus:outline-none focus:border-blue-500 transition-colors"
++              >
++                <option value="SUBSCRIPTION">Suscripción (Mensual/Anual)</option>
++                <option value="LIFETIME">Lifetime (Vitalicia)</option>
++              </select>
++            </div>
++            
++            <div className="space-y-2">
++              <label className="text-sm font-medium text-slate-300">
++                Límite de Usuarios 
++                <span className="text-xs text-slate-500 ml-2">(Actuales: {tenant.currentActiveUsers ?? 0})</span>
++              </label>
++              <div className="flex gap-2 items-center">
++                <input 
++                  type="number"
++                  min="-1"
++                  value={maxUsers}
++                  onChange={(e) => setMaxUsers(e.target.value)}
++                  disabled={saving}
++                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-2 text-slate-200 focus:outline-none focus:border-blue-500 transition-colors disabled:opacity-50"
++                />
++                <span className="text-xs text-slate-500">-1 = Ilimitado</span>
++              </div>
++            </div>
++
++            <div className="space-y-2">
++              <label className="text-sm font-medium text-slate-300">
++                Límite Mensual Tokens IA
++              </label>
++              <div className="flex gap-2 items-center">
++                <input 
++                  type="number"
++                  min="-1"
++                  value={licenseType === 'LIFETIME' ? 0 : maxAiTokens}
++                  onChange={(e) => setMaxAiTokens(e.target.value)}
++                  disabled={saving || licenseType === 'LIFETIME'}
++                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-2 text-slate-200 focus:outline-none focus:border-blue-500 transition-colors disabled:opacity-50"
++                />
++                <span className="text-xs text-slate-500">
++                  {licenseType === 'LIFETIME' ? 'Deshabilitado (0)' : '-1 = Ilimitado'}
++                </span>
++              </div>
++            </div>
++          </div>
++
++          <div className="pt-4 flex justify-end">
++            <button
++              type="submit"
++              disabled={saving}
++              className="flex items-center gap-2 px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-medium transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
++            >
++              <Save size={18} />
++              {saving ? 'Guardando...' : 'Guardar Cambios'}
++            </button>
++          </div>
++        </form>
++      </div>
++    </div>
++  );
++}
+diff --git a/superadmin-frontend/src/pages/Tenants.jsx b/superadmin-frontend/src/pages/Tenants.jsx
+index c41aa8e..b4c1da6 100644
+--- a/superadmin-frontend/src/pages/Tenants.jsx
++++ b/superadmin-frontend/src/pages/Tenants.jsx
+@@ -1,4 +1,5 @@
+ import { useState, useEffect, useRef, useCallback } from 'react';
++import { Link } from 'react-router-dom';
+ import { Users, Server, Clock, Activity, Search, AlertCircle, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
+ import { api } from '../services/api';
+ import CreateTenantModal from '../components/CreateTenantModal';
+@@ -60,6 +61,8 @@ export default function Tenants() {
+   };
+ 
+   const handleToggleStatus = async (tenant) => {
++    if (togglingTenantIds.has(tenant.id)) return;
++    
+     const isCurrentlyActive = tenant.status?.toLowerCase() === 'active';
+     const newStatus = isCurrentlyActive ? 'suspended' : 'active';
+     const actionText = isCurrentlyActive ? 'suspender' : 'reactivar';
+@@ -68,6 +71,8 @@ export default function Tenants() {
+       return;
+     }
+ 
++    const previousStatus = tenant.status;
++
+     try {
+       setTogglingTenantIds(prev => new Set(prev).add(tenant.id));
+       
+@@ -81,7 +86,7 @@ export default function Tenants() {
+     } catch (err) {
+       // Revert Optimistic Update
+       setTenants(prev => prev.map(t => 
+-        t.id === tenant.id ? { ...t, status: tenant.status } : t
++        t.id === tenant.id ? { ...t, status: previousStatus } : t
+       ));
+       toast.error('Error al actualizar el estado del inquilino');
+     } finally {
+@@ -174,7 +179,11 @@ export default function Tenants() {
+               ) : (
+                 tenants.map(tenant => (
+                   <tr key={tenant.id} className="hover:bg-slate-800/20 transition-colors">
+-                    <td className="py-4 px-6 font-medium text-slate-200">{tenant.name}</td>
++                    <td className="py-4 px-6 font-medium text-slate-200">
++                      <Link to={`/tenants/${tenant.id}`} className="hover:text-blue-400 hover:underline transition-colors">
++                        {tenant.name}
++                      </Link>
++                    </td>
+                     <td className="py-4 px-6 text-slate-400">{tenant.domain}</td>
+                     <td className="py-4 px-6 text-slate-400">
+                       {new Date(tenant.createdAt).toLocaleDateString()}
+diff --git a/superadmin-frontend/src/services/api.js b/superadmin-frontend/src/services/api.js
+index 901b215..c9beed1 100644
+--- a/superadmin-frontend/src/services/api.js
++++ b/superadmin-frontend/src/services/api.js
+@@ -18,12 +18,12 @@ export const api = {
+     const controller = new AbortController();
+     const timeoutId = setTimeout(() => controller.abort(), 15000);
+     
+-    // Manually link user signal to our timeout controller for older browser support
++    const abortHandler = () => controller.abort();
+     if (options.signal) {
+       if (options.signal.aborted) {
+         controller.abort();
+       } else {
+-        options.signal.addEventListener('abort', () => controller.abort(), { once: true });
++        options.signal.addEventListener('abort', abortHandler, { once: true });
+       }
+     }
+     const signal = controller.signal;
+@@ -42,6 +42,9 @@ export const api = {
+       throw new Error('No se pudo conectar con el servidor.');
+     } finally {
+       clearTimeout(timeoutId);
++      if (options.signal && typeof options.signal.removeEventListener === 'function') {
++        options.signal.removeEventListener('abort', abortHandler);
++      }
+     }
+ 
+     if (!response.ok) {
+@@ -56,19 +59,16 @@ export const api = {
+       let errorDataObj = null;
+       try {
+         const errorData = await response.json();
+-        errorMessage = errorData.message || errorMessage;
++        errorMessage = errorData?.error?.message || errorData.message || errorMessage;
+         errorDataObj = errorData;
+       } catch (e) {
+         // Ignorar si no es JSON
+       }
+ 
+-      // Log out if the user's tenant was suspended
+-      if (response.status === 403 && window.location.pathname !== '/login') {
+-        if (errorDataObj?.error === 'TENANT_SUSPENDED' || errorDataObj?.code === 'TENANT_SUSPENDED') {
+-          useAuthStore.getState().logout();
+-          window.location.href = '/login';
+-          return null;
+-        }
++      if (response.status === 403 && errorDataObj?.error?.code === 'TENANT_SUSPENDED' && window.location.pathname !== '/login') {
++        useAuthStore.getState().logout();
++        window.location.href = '/login?suspended=true';
++        return null;
+       }
+ 
+       const error = new Error(errorMessage);

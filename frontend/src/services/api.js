@@ -53,7 +53,26 @@ async function request(endpoint, options = {}, isFormData = false) {
     const newToken = await refreshPromise;
     headers.Authorization = `Bearer ${newToken}`;
     const retryRes = await fetch(`${BASE_URL}${endpoint}`, { ...options, headers });
+    if (retryRes.status === 403) {
+      const cloned = retryRes.clone();
+      try {
+        const body = await cloned.json();
+        if (body.error?.code === 'QUOTA_EXCEEDED' && typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('QUOTA_EXCEEDED_MODAL'));
+        }
+      } catch (e) {}
+    }
     return retryRes;
+  }
+
+  if (res.status === 403) {
+    const cloned = res.clone();
+    try {
+      const body = await cloned.json();
+      if (body.error?.code === 'QUOTA_EXCEEDED' && typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('QUOTA_EXCEEDED_MODAL'));
+      }
+    } catch (e) {}
   }
 
   return res;

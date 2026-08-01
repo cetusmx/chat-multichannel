@@ -1,0 +1,256 @@
+diff --git a/backend/prisma/schema.prisma b/backend/prisma/schema.prisma
+index 374ac30..74cef4d 100644
+--- a/backend/prisma/schema.prisma
++++ b/backend/prisma/schema.prisma
+@@ -386,3 +386,14 @@ model AiRule {
+   @@unique([tenantId, term])
+   @@map("ai_rules")
+ }
++
++model Superadmin {
++  id           String   @id @default(cuid())
++  email        String   @unique
++  passwordHash String   @map("password_hash")
++  name         String
++  createdAt    DateTime @default(now()) @map("created_at")
++  updatedAt    DateTime @updatedAt @map("updated_at")
++
++  @@map("superadmins")
++}
+diff --git a/backend/prisma/seed.js b/backend/prisma/seed.js
+index 12fe626..37aaec2 100644
+--- a/backend/prisma/seed.js
++++ b/backend/prisma/seed.js
+@@ -69,7 +69,17 @@ async function main() {
+     create: { groupId: group.id, userId: vendor.id },
+   });
+ 
+-  console.log('Seed completed:', { tenant: tenant.id, admin: admin.id, coord: coord.id, vendor: vendor.id });
++  const superadmin = await prisma.superadmin.upsert({
++    where: { email: 'admin@salesflow.app' },
++    update: {},
++    create: {
++      name: 'Super Admin',
++      email: 'admin@salesflow.app',
++      passwordHash: await bcrypt.hash('superpassword', 10),
++    },
++  });
++
++  console.log('Seed completed:', { tenant: tenant.id, admin: admin.id, coord: coord.id, vendor: vendor.id, superadmin: superadmin.id });
+ }
+ 
+ main()
+diff --git a/backend/src/app.js b/backend/src/app.js
+index 2465f32..78144f9 100644
+--- a/backend/src/app.js
++++ b/backend/src/app.js
+@@ -8,6 +8,7 @@ const errorHandler = require('./middleware/errorHandler');
+ const healthRoutes = require('./routes/health.routes');
+ const swaggerRoutes = require('./routes/swagger.routes');
+ const authRoutes = require('./routes/auth.routes');
++const superadminAuthRoutes = require('./routes/superadmin.auth.routes');
+ const usersRoutes = require('./routes/users.routes');
+ const groupsRoutes = require('./routes/groups.routes');
+ const tenantRoutes = require('./routes/tenant.routes');
+@@ -45,6 +46,7 @@ app.use('/uploads', authenticate, (req, res, next) => {
+ }, express.static(path.join(__dirname, '../uploads')));
+ 
+ app.use('/api/auth', authRoutes);
++app.use('/api/superadmin/auth', superadminAuthRoutes);
+ app.use('/api/health', healthRoutes);
+ app.use('/api/users', usersRoutes);
+ app.use('/api/groups', groupsRoutes);
+diff --git a/backend/src/config/env.js b/backend/src/config/env.js
+index ad79d5e..f0bb791 100644
+--- a/backend/src/config/env.js
++++ b/backend/src/config/env.js
+@@ -4,6 +4,8 @@ const env = {
+   databaseUrl: process.env.DATABASE_URL,
+   jwtSecret: process.env.JWT_SECRET,
+   jwtRefreshSecret: process.env.JWT_REFRESH_SECRET,
++  superadminJwtSecret: process.env.SUPERADMIN_JWT_SECRET || (() => { throw new Error('SUPERADMIN_JWT_SECRET must be defined in environment'); })(),
++  superadminJwtExpiresIn: process.env.SUPERADMIN_JWT_EXPIRES_IN || '1h',
+   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '1h',
+   jwtRefreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d',
+   aiProvider: process.env.AI_PROVIDER || 'gemini',
+diff --git a/backend/src/middleware/superadmin.auth.middleware.js b/backend/src/middleware/superadmin.auth.middleware.js
+new file mode 100644
+index 0000000..1879cb8
+--- /dev/null
++++ b/backend/src/middleware/superadmin.auth.middleware.js
+@@ -0,0 +1,30 @@
++const jwt = require('jsonwebtoken');
++const env = require('../config/env');
++const ApiError = require('../utils/ApiError');
++
++function isSuperadmin(req, res, next) {
++  const authHeader = req.headers.authorization;
++  if (!authHeader || !authHeader.startsWith('Bearer ')) {
++    return next(ApiError.unauthorized('Token no provisto'));
++  }
++
++  const token = authHeader.split(' ')[1];
++
++  try {
++    const decoded = jwt.verify(token, env.superadminJwtSecret);
++    
++    if (decoded.role !== 'SUPERADMIN') {
++      return next(ApiError.forbidden('Acceso denegado: Se requiere rol SUPERADMIN'));
++    }
++
++    req.superadmin = decoded;
++    next();
++  } catch (err) {
++    if (err.name === 'JsonWebTokenError' && err.message === 'invalid signature') {
++      return next(ApiError.forbidden('Firma de token inválida para esta ruta'));
++    }
++    return next(ApiError.unauthorized('Token inválido o expirado'));
++  }
++}
++
++module.exports = isSuperadmin;
+diff --git a/backend/src/routes/superadmin.auth.routes.js b/backend/src/routes/superadmin.auth.routes.js
+new file mode 100644
+index 0000000..c0638cd
+--- /dev/null
++++ b/backend/src/routes/superadmin.auth.routes.js
+@@ -0,0 +1,8 @@
++const { Router } = require('express');
++const superadminAuthController = require('../controllers/superadmin.auth.controller');
++
++const router = Router();
++
++router.post('/login', superadminAuthController.rateLimitLogin, superadminAuthController.login);
++
++module.exports = router;
+diff --git a/backend/src/services/superadmin.auth.service.js b/backend/src/services/superadmin.auth.service.js
+new file mode 100644
+index 0000000..0c39d29
+--- /dev/null
++++ b/backend/src/services/superadmin.auth.service.js
+@@ -0,0 +1,42 @@
++const bcrypt = require('bcryptjs');
++const jwt = require('jsonwebtoken');
++const prisma = require('../config/database');
++const env = require('../config/env');
++const ApiError = require('../utils/ApiError');
++
++// Dummy hash to prevent timing attacks (hash of 'dummy')
++const DUMMY_HASH = '$2a$10$C.Xv.hFqL1N.O3X.pX.0.e9Q.Q3.8.v.p.r.x.v.v.v.v.v.v.v';
++
++function generateTokens(payload) {
++  const expiresIn = env.superadminJwtExpiresIn;
++  const token = jwt.sign(payload, env.superadminJwtSecret, { expiresIn });
++  return { token };
++}
++
++async function login(email, password) {
++  const admin = await prisma.superadmin.findUnique({
++    where: { email },
++  });
++
++  const hashToCompare = admin ? admin.passwordHash : DUMMY_HASH;
++  const valid = await bcrypt.compare(password, hashToCompare);
++
++  if (!admin || !valid) {
++    throw ApiError.unauthorized('Credenciales inválidas');
++  }
++
++  const payload = { id: admin.id, role: 'SUPERADMIN' };
++  const { token } = generateTokens(payload);
++
++  return {
++    admin: {
++      id: admin.id,
++      name: admin.name,
++      email: admin.email,
++      role: 'SUPERADMIN',
++    },
++    token,
++  };
++}
++
++module.exports = { login };
+diff --git a/backend/src/controllers/superadmin.auth.controller.js b/backend/src/controllers/superadmin.auth.controller.js
+new file mode 100644
+index 0000000..83db76a
+--- /dev/null
++++ b/backend/src/controllers/superadmin.auth.controller.js
+@@ -0,0 +1,77 @@
++const superadminAuthService = require('../services/superadmin.auth.service');
++const ApiError = require('../utils/ApiError');
++const { success } = require('../utils/response');
++
++const loginAttempts = new Map();
++const WINDOW_MS = 60 * 1000;
++const MAX_ATTEMPTS = 10;
++
++// Cleanup memory leak
++setInterval(() => {
++  const now = Date.now();
++  for (const [ip, timestamps] of loginAttempts.entries()) {
++    const active = timestamps.filter((t) => now - t < WINDOW_MS);
++    if (active.length === 0) {
++      loginAttempts.delete(ip);
++    } else {
++      loginAttempts.set(ip, active);
++    }
++  }
++}, WINDOW_MS * 2).unref();
++
++function rateLimitLogin(req, res, next) {
++  const ip = req.ip || (req.connection && req.connection.remoteAddress) || (req.socket && req.socket.remoteAddress) || 'unknown';
++  
++  if (ip === 'unknown') {
++    return next(); // Bypass rate limiting for unresolvable IPs to prevent collateral blocking
++  }
++
++  const now = Date.now();
++
++  if (!loginAttempts.has(ip)) {
++    loginAttempts.set(ip, []);
++  }
++
++  const timestamps = loginAttempts.get(ip).filter((t) => now - t < WINDOW_MS);
++  
++  if (timestamps.length >= MAX_ATTEMPTS) {
++    return next(ApiError.rateLimited('Demasiados intentos. Intente más tarde.'));
++  }
++  
++  timestamps.push(now);
++  loginAttempts.set(ip, timestamps);
++
++  next();
++}
++
++async function login(req, res, next) {
++  try {
++    const { email, password } = req.body;
++    
++    // Validate types to prevent 500s or NoSQL injections
++    if (!email || !password || typeof email !== 'string' || typeof password !== 'string') {
++      throw ApiError.badRequest('Email y contraseña son requeridos y deben ser texto');
++    }
++    
++    // Enforce max password length for bcrypt safety
++    if (password.length > 72) {
++      throw ApiError.badRequest('Contraseña excede el límite permitido');
++    }
++    
++    // Basic email validation
++    if (!/^\S+@\S+\.\S+$/.test(email)) {
++      throw ApiError.badRequest('Formato de email inválido');
++    }
++
++    const normalizedEmail = email.toLowerCase();
++    const result = await superadminAuthService.login(normalizedEmail, password);
++    success(res, result);
++  } catch (err) {
++    next(err);
++  }
++}
++
++module.exports = {
++  rateLimitLogin,
++  login,
++};

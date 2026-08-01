@@ -14,8 +14,8 @@ class ApiError extends Error {
     return new ApiError(401, message, 'UNAUTHORIZED');
   }
 
-  static forbidden(message = 'Forbidden') {
-    return new ApiError(403, message, 'FORBIDDEN');
+  static forbidden(message = 'Forbidden', code = 'FORBIDDEN') {
+    return new ApiError(403, message, code);
   }
 
   static notFound(message = 'Resource not found') {

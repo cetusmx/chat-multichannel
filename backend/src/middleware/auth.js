@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
 const ApiError = require('../utils/ApiError');
 const env = require('../config/env');
+const logger = require('../utils/logger');
 const { getTenantStatusAsync } = require('../utils/tenant-cache.util');
 
 async function authenticate(req, _res, next) {
@@ -20,12 +21,14 @@ async function authenticate(req, _res, next) {
       }
       try {
         const status = await getTenantStatusAsync(decoded.tenantId);
-        if (!status || status === 'suspended') {
-          return next(new ApiError(403, 'Tenant is suspended or not found', 'TENANT_SUSPENDED'));
+        if (status === 'suspended') {
+          return next(new ApiError(403, 'Tenant is suspended', 'TENANT_SUSPENDED'));
+        }
+        if (!status) {
+          return next(ApiError.unauthorized('Tenant not found'));
         }
       } catch (err) {
-        // Log DB error but don't fail authentication with an invalid token error, pass a 500 or 403
-        return next(new ApiError(500, 'Internal Server Error verifying tenant', 'INTERNAL_ERROR'));
+        return next(ApiError.internal('Failed to verify tenant status'));
       }
     }
 

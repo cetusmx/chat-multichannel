@@ -16,11 +16,11 @@ const ApiError = require('../utils/ApiError');
 async function isTenantSuspended(tenantId) {
   try {
     const status = await getTenantStatusAsync(tenantId);
+    // If status is null (tenant not found), treat as suspended/invalid
     return !status || status === 'suspended';
   } catch (err) {
-    logger.error(`[WHATSAPP_SERVICE] Error checking tenant status for ${tenantId}:`, err);
-    // Fail safe to suspended if we can't query the database
-    return true;
+    // DO NOT implicitly treat as suspended on timeout/db error
+    throw err;
   }
 }
 
@@ -583,7 +583,7 @@ const whatsappService = {
       if (conversation.client.isBlocked) throw new Error('Client is blocked');
       
       if (await isTenantSuspended(conversation.tenantId)) {
-        throw new ApiError(403, 'Tenant is currently suspended.', 'TENANT_SUSPENDED');
+        throw new ApiError(403, 'Tenant is suspended. Cannot send messages.', 'TENANT_SUSPENDED');
       }
       
       const config = await this.getConfig(conversation.tenantId);
@@ -669,7 +669,7 @@ const whatsappService = {
       if (conversation.client.isBlocked) throw new Error('Client is blocked');
       
       if (await isTenantSuspended(conversation.tenantId)) {
-        throw new ApiError(403, 'Tenant is currently suspended.', 'TENANT_SUSPENDED');
+        throw new ApiError(403, 'Tenant is suspended. Cannot send messages.', 'TENANT_SUSPENDED');
       }
       
       const config = await this.getConfig(conversation.tenantId);

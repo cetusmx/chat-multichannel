@@ -67,10 +67,9 @@ router.get('/webhook/:tenantId', async (req, res, next) => {
 router.post('/webhook/:tenantId', async (req, res, next) => {
   try {
     await whatsappService.handleIncomingMessage(req.body, req.params.tenantId);
-    // Siempre debemos retornar 200 OK inmediatamente para que Meta no reintente
+    // Siempre debemos retornar 200 OK si es exitoso
     res.status(200).send('EVENT_RECEIVED');
   } catch (error) {
-    // Aún si hay error interno, responder OK a Meta y loggear.
     console.error('Webhook processing error:', error.message);
     res.status(200).send('EVENT_RECEIVED');
   }

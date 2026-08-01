@@ -215,16 +215,24 @@ export default function UserListPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [editingUser, setEditingUser] = useState(null);
+  const [tenantProfile, setTenantProfile] = useState(null);
   const user = useAuthStore((s) => s.user);
 
   async function loadUsers(page = 1) {
     setLoading(true);
     setError('');
     try {
-      const params = new URLSearchParams({ page, limit: 20 });
-      if (role) params.set('role', role);
-      if (search) params.set('search', search);
-      const res = await get(`/users?${params}`);
+      const [profileRes, usersRes] = await Promise.all([
+        get('/tenant/profile'),
+        get(`/users?${new URLSearchParams({ page, limit: 20, ...(role ? { role } : {}), ...(search ? { search } : {}) })}`)
+      ]);
+      
+      if (profileRes.ok) {
+        const pBody = await profileRes.json();
+        setTenantProfile(pBody.data);
+      }
+
+      const res = usersRes;
       const body = await res.json();
       if (!res.ok) {
         if (res.status === 403) {
@@ -257,13 +265,31 @@ export default function UserListPage() {
     <div>
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-semibold text-sales-slate-100">Usuarios</h1>
+        
         {user?.role !== 'VENDOR' && (
-          <a
-            href="/users/new"
-            className="rounded-lg bg-sales-orange px-4 py-2 text-sm font-medium text-white hover:bg-sales-orange-light transition-colors"
-          >
-            + Nuevo Usuario
-          </a>
+          <div className="flex items-center gap-4">
+            {tenantProfile && tenantProfile.maxUsers !== -1 && (
+              <span className="text-sm font-medium text-sales-slate-300">
+                Asientos: {tenantProfile.currentUsersCount}/{tenantProfile.maxUsers}
+              </span>
+            )}
+            {tenantProfile && tenantProfile.maxUsers !== -1 && tenantProfile.currentUsersCount >= tenantProfile.maxUsers ? (
+              <button
+                disabled
+                className="rounded-lg bg-slate-700 px-4 py-2 text-sm font-medium text-sales-slate-400 cursor-not-allowed"
+                title="Límite de asientos alcanzado"
+              >
+                + Nuevo Usuario
+              </button>
+            ) : (
+              <a
+                href="/users/new"
+                className="rounded-lg bg-sales-orange px-4 py-2 text-sm font-medium text-white hover:bg-sales-orange-light transition-colors"
+              >
+                + Nuevo Usuario
+              </a>
+            )}
+          </div>
         )}
       </div>
 

@@ -1,6 +1,12 @@
 const superadminAuthService = require('../services/superadmin.auth.service');
 const ApiError = require('../utils/ApiError');
 const { success } = require('../utils/response');
+const { z } = require('zod');
+
+const loginSchema = z.object({
+  email: z.string().email('Formato de email inválido'),
+  password: z.string().min(1, 'Contraseña es requerida').max(72, 'Contraseña excede el límite permitido')
+});
 
 const loginAttempts = new Map();
 const WINDOW_MS = 60 * 1000;
@@ -21,11 +27,7 @@ setInterval(() => {
 }, WINDOW_MS * 2).unref();
 
 function rateLimitLogin(req, res, next) {
-  const ip = req.ip || (req.connection && req.connection.remoteAddress) || (req.socket && req.socket.remoteAddress) || 'unknown';
-  
-  if (ip === 'unknown') {
-    return next(); // Bypass rate limiting for unresolvable IPs to prevent collateral blocking
-  }
+  let ip = req.ip || (req.connection && req.connection.remoteAddress) || (req.socket && req.socket.remoteAddress) || 'unknown-ip';
 
   const now = Date.now();
 
@@ -51,22 +53,15 @@ function rateLimitLogin(req, res, next) {
 
 async function login(req, res, next) {
   try {
-    const { email, password } = req.body || {};
-    
-    // Validate types to prevent 500s or NoSQL injections
-    if (!email || !password || typeof email !== 'string' || typeof password !== 'string') {
-      throw ApiError.badRequest('Email y contraseña son requeridos y deben ser texto');
+    const parsed = loginSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({
+        success: false,
+        message: 'Validation failed',
+        errors: parsed.error.errors
+      });
     }
-    
-    // Enforce max password length for bcrypt safety
-    if (password.length > 72) {
-      throw ApiError.badRequest('Contraseña excede el límite permitido');
-    }
-    
-    // Basic email validation
-    if (!/^\S+@\S+\.\S+$/.test(email)) {
-      throw ApiError.badRequest('Formato de email inválido');
-    }
+    const { email, password } = parsed.data;
 
     const normalizedEmail = email.toLowerCase();
     const result = await superadminAuthService.login(normalizedEmail, password);

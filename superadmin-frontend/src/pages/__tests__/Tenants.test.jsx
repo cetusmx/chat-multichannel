@@ -75,6 +75,10 @@ describe('Tenants Page', () => {
 
     // Click to suspend
     fireEvent.click(toggleBtn);
+    
+    // Should immediately show loading state
+    expect(toggleBtn).toHaveTextContent('Procesando...');
+    expect(toggleBtn).toBeDisabled();
 
     // Should call API
     expect(api.patch).toHaveBeenCalledWith('/api/superadmin/tenants/1/status', { status: 'suspended' });

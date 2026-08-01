@@ -1,0 +1,196 @@
+diff --git a/backend/prisma/schema.prisma b/backend/prisma/schema.prisma
+index 374ac30..74cef4d 100644
+--- a/backend/prisma/schema.prisma
++++ b/backend/prisma/schema.prisma
+@@ -386,3 +386,14 @@ model AiRule {
+   @@unique([tenantId, term])
+   @@map("ai_rules")
+ }
++
++model Superadmin {
++  id           String   @id @default(cuid())
++  email        String   @unique
++  passwordHash String   @map("password_hash")
++  name         String
++  createdAt    DateTime @default(now()) @map("created_at")
++  updatedAt    DateTime @updatedAt @map("updated_at")
++
++  @@map("superadmins")
++}
+diff --git a/backend/prisma/seed.js b/backend/prisma/seed.js
+index 12fe626..37aaec2 100644
+--- a/backend/prisma/seed.js
++++ b/backend/prisma/seed.js
+@@ -69,7 +69,17 @@ async function main() {
+     create: { groupId: group.id, userId: vendor.id },
+   });
+ 
+-  console.log('Seed completed:', { tenant: tenant.id, admin: admin.id, coord: coord.id, vendor: vendor.id });
++  const superadmin = await prisma.superadmin.upsert({
++    where: { email: 'admin@salesflow.app' },
++    update: {},
++    create: {
++      name: 'Super Admin',
++      email: 'admin@salesflow.app',
++      passwordHash: await bcrypt.hash('superpassword', 10),
++    },
++  });
++
++  console.log('Seed completed:', { tenant: tenant.id, admin: admin.id, coord: coord.id, vendor: vendor.id, superadmin: superadmin.id });
+ }
+ 
+ main()
+diff --git a/backend/src/app.js b/backend/src/app.js
+index 2465f32..28ac10d 100644
+--- a/backend/src/app.js
++++ b/backend/src/app.js
+@@ -45,6 +45,7 @@ app.use('/uploads', authenticate, (req, res, next) => {
+ }, express.static(path.join(__dirname, '../uploads')));
+ 
+ app.use('/api/auth', authRoutes);
++app.use('/api/superadmin/auth', require('./routes/superadmin.auth.routes'));
+ app.use('/api/health', healthRoutes);
+ app.use('/api/users', usersRoutes);
+ app.use('/api/groups', groupsRoutes);
+diff --git a/backend/src/config/env.js b/backend/src/config/env.js
+index ad79d5e..6c9f497 100644
+--- a/backend/src/config/env.js
++++ b/backend/src/config/env.js
+@@ -4,6 +4,7 @@ const env = {
+   databaseUrl: process.env.DATABASE_URL,
+   jwtSecret: process.env.JWT_SECRET,
+   jwtRefreshSecret: process.env.JWT_REFRESH_SECRET,
++  superadminJwtSecret: process.env.SUPERADMIN_JWT_SECRET || process.env.JWT_SECRET || 'superadmin-secret-fallback',
+   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '1h',
+   jwtRefreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d',
+   aiProvider: process.env.AI_PROVIDER || 'gemini',
+diff --git a/backend/src/middleware/superadmin.auth.middleware.js b/backend/src/middleware/superadmin.auth.middleware.js
+new file mode 100644
+index 0000000..4e963dd
+--- /dev/null
++++ b/backend/src/middleware/superadmin.auth.middleware.js
+@@ -0,0 +1,27 @@
++const jwt = require('jsonwebtoken');
++const env = require('../config/env');
++const ApiError = require('../utils/ApiError');
++
++function isSuperadmin(req, res, next) {
++  const authHeader = req.headers.authorization;
++  if (!authHeader || !authHeader.startsWith('Bearer ')) {
++    return next(ApiError.unauthorized('Token no provisto'));
++  }
++
++  const token = authHeader.split(' ')[1];
++
++  try {
++    const decoded = jwt.verify(token, env.superadminJwtSecret);
++    
++    if (decoded.role !== 'SUPERADMIN') {
++      return next(ApiError.forbidden('Acceso denegado: Se requiere rol SUPERADMIN'));
++    }
++
++    req.superadmin = decoded;
++    next();
++  } catch (err) {
++    return next(ApiError.unauthorized('Token inválido o expirado'));
++  }
++}
++
++module.exports = isSuperadmin;
+diff --git a/backend/src/routes/superadmin.auth.routes.js b/backend/src/routes/superadmin.auth.routes.js
+new file mode 100644
+index 0000000..0b517c7
+--- /dev/null
++++ b/backend/src/routes/superadmin.auth.routes.js
+@@ -0,0 +1,44 @@
++const { Router } = require('express');
++const superadminAuthService = require('../services/superadmin.auth.service');
++const ApiError = require('../utils/ApiError');
++const { success } = require('../utils/response');
++
++const loginAttempts = new Map();
++
++function rateLimitLogin(req, res, next) {
++  const ip = req.ip || req.connection.remoteAddress;
++  const now = Date.now();
++  const windowMs = 60 * 1000;
++  const maxAttempts = 10;
++
++  if (!loginAttempts.has(ip)) {
++    loginAttempts.set(ip, []);
++  }
++
++  const timestamps = loginAttempts.get(ip).filter((t) => now - t < windowMs);
++  timestamps.push(now);
++  loginAttempts.set(ip, timestamps);
++
++  if (timestamps.length > maxAttempts) {
++    return res.status(429).json({ error: { message: 'Demasiados intentos. Intente más tarde.', code: 'RATE_LIMITED' } });
++  }
++
++  next();
++}
++
++const router = Router();
++
++router.post('/login', rateLimitLogin, async (req, res, next) => {
++  try {
++    const { email, password } = req.body;
++    if (!email || !password) {
++      throw ApiError.badRequest('Email y contraseña son requeridos');
++    }
++    const result = await superadminAuthService.login(email, password);
++    success(res, result);
++  } catch (err) {
++    next(err);
++  }
++});
++
++module.exports = router;
+diff --git a/backend/src/services/superadmin.auth.service.js b/backend/src/services/superadmin.auth.service.js
+new file mode 100644
+index 0000000..27c3988
+--- /dev/null
++++ b/backend/src/services/superadmin.auth.service.js
+@@ -0,0 +1,41 @@
++const bcrypt = require('bcryptjs');
++const jwt = require('jsonwebtoken');
++const prisma = require('../config/database');
++const env = require('../config/env');
++const ApiError = require('../utils/ApiError');
++
++function generateTokens(payload) {
++  const expiresIn = '1h'; // Superadmin tokens are short-lived
++  const token = jwt.sign(payload, env.superadminJwtSecret, { expiresIn });
++  return { token };
++}
++
++async function login(email, password) {
++  const admin = await prisma.superadmin.findUnique({
++    where: { email },
++  });
++
++  if (!admin) {
++    throw ApiError.unauthorized('Credenciales inválidas');
++  }
++
++  const valid = await bcrypt.compare(password, admin.passwordHash);
++  if (!valid) {
++    throw ApiError.unauthorized('Credenciales inválidas');
++  }
++
++  const payload = { id: admin.id, role: 'SUPERADMIN' };
++  const { token } = generateTokens(payload);
++
++  return {
++    admin: {
++      id: admin.id,
++      name: admin.name,
++      email: admin.email,
++      role: 'SUPERADMIN',
++    },
++    token,
++  };
++}
++
++module.exports = { login };

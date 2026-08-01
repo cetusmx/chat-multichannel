@@ -34,28 +34,35 @@ function invalidateTenantCache(tenantId) {
  */
 async function getTenantStatusAsync(tenantId) {
   let status = getTenantStatus(tenantId);
-  if (status) return status;
+  if (status !== undefined) return status;
 
   if (!pendingFetches.has(tenantId)) {
     const dbPromise = prisma.tenant.findUnique({
       where: { id: tenantId },
       select: { status: true }
     });
+    
+    // Prevent unhandled promise rejection if dbPromise fails after race finishes
+    dbPromise.catch((err) => {
+      const logger = require('./logger');
+      logger.error('Background DB fetch failed for tenant cache:', err);
+    });
 
+    let timeoutId;
     const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => reject(new Error('Tenant status fetch timeout')), 5000);
+      timeoutId = setTimeout(() => reject(new Error('Tenant status fetch timeout')), 5000);
     });
 
     const fetchPromise = Promise.race([dbPromise, timeoutPromise])
       .then(tenant => {
+        clearTimeout(timeoutId);
         const fetchedStatus = tenant ? tenant.status : null;
-        if (fetchedStatus) {
-          setTenantStatus(tenantId, fetchedStatus);
-        }
+        setTenantStatus(tenantId, fetchedStatus);
         pendingFetches.delete(tenantId);
         return fetchedStatus;
       })
       .catch(err => {
+        clearTimeout(timeoutId);
         pendingFetches.delete(tenantId);
         throw err;
       });
