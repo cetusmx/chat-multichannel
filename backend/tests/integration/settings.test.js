@@ -24,6 +24,8 @@ beforeAll(async () => {
   const group = await prisma.group.findFirst({ where: { branchId: testBranchId } });
   testGroupId = group.id;
 
+  await prisma.tenant.update({ where: { id: testTenantId }, data: { maxUsers: -1 } });
+
   adminToken = jwt.sign(
     { id: 'test-admin', tenantId: testTenantId, role: 'ADMIN' },
     JWT_SECRET,
@@ -375,9 +377,13 @@ describe('Coordinator auto-assignment', () => {
   });
 
   afterAll(async () => {
-    await prisma.groupVendor.deleteMany({ where: { userId: coordId } });
-    await prisma.user.delete({ where: { id: coordId } });
-    await prisma.group.delete({ where: { id: testGroupForCoord } });
+    if (coordId) {
+      await prisma.groupVendor.deleteMany({ where: { userId: coordId } });
+      await prisma.user.deleteMany({ where: { id: coordId } });
+    }
+    if (testGroupForCoord) {
+      await prisma.group.deleteMany({ where: { id: testGroupForCoord } });
+    }
   });
 
   it('should auto-assign coordinator from group on vendor creation', async () => {
@@ -474,9 +480,15 @@ describe('Coordinator group protection', () => {
   });
 
   afterAll(async () => {
-    await prisma.groupVendor.deleteMany({ where: { userId: { in: [coordId, vendorId] } } });
-    await prisma.user.deleteMany({ where: { id: { in: [coordId, vendorId] } } });
-    await prisma.group.deleteMany({ where: { id: { in: [groupWithVendors, groupWithoutVendors] } } });
+    const userIds = [coordId, vendorId].filter(Boolean);
+    if (userIds.length > 0) {
+      await prisma.groupVendor.deleteMany({ where: { userId: { in: userIds } } });
+      await prisma.user.deleteMany({ where: { id: { in: userIds } } });
+    }
+    const groupIds = [groupWithVendors, groupWithoutVendors].filter(Boolean);
+    if (groupIds.length > 0) {
+      await prisma.group.deleteMany({ where: { id: { in: groupIds } } });
+    }
   });
 
   it('should reject removing a group that has vendors from a coordinator', async () => {

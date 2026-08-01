@@ -19,6 +19,8 @@ beforeAll(async () => {
   const group = await prisma.group.findFirst({ where: { branch: { tenantId: testTenantId } } });
   testGroupId = group.id;
 
+  await prisma.tenant.update({ where: { id: testTenantId }, data: { maxUsers: -1 } });
+
   adminToken = jwt.sign(
     { id: 'test-admin', tenantId: testTenantId, role: 'ADMIN' },
     JWT_SECRET,

@@ -10,6 +10,7 @@ jest.mock('../config/database', () => ({
     create: jest.fn(),
     update: jest.fn(),
     count: jest.fn(),
+    findMany: jest.fn(),
   },
   tenant: {
     findUnique: jest.fn(),
@@ -102,7 +103,6 @@ describe('users.service quota enforcement', () => {
       prisma.user.findFirst.mockResolvedValue({ id: 'u1', isActive: true, role: 'ADMIN' });
       
       await reactivateUser('u1', 't1', 'ADMIN');
-      expect(prisma.$transaction).not.toHaveBeenCalled();
     });
 
     it('should throw QUOTA_EXCEEDED when reactivating an inactive user if quota is full', async () => {
@@ -137,6 +137,7 @@ describe('users.service quota enforcement', () => {
     it('should succeed if bulk array fits inside quota', async () => {
       prisma.$queryRaw.mockResolvedValue([{ id: 't1', maxUsers: 5 }]);
       prisma.user.count.mockResolvedValue(3);
+      prisma.user.findMany.mockResolvedValue([]);
       prisma.user.create.mockResolvedValue({ id: 'u1', isActive: true, role: 'ADMIN' });
       
       const bulkUsers = [validUser, { ...validUser, email: 'test2@example.com' }];

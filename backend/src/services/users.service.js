@@ -13,12 +13,11 @@ async function enforceQuota(tx, tenantId, newUsersCount = 1) {
 
   let tenant;
   try {
-    const rows = await tx.$queryRaw(Prisma.sql`SELECT id, "max_users" as "maxUsers" FROM "Tenant" WHERE id = ${tenantId}::uuid FOR UPDATE`);
+    const rows = await tx.$queryRaw(Prisma.sql`SELECT id, "max_users" as "maxUsers" FROM "tenants" WHERE id = ${tenantId} FOR UPDATE`);
     if (!rows || rows.length === 0) throw ApiError.notFound('Tenant not found');
     tenant = rows[0];
   } catch (error) {
     if (error instanceof ApiError) throw error;
-    if (error.message && error.message.includes('uuid')) throw ApiError.badRequest('Invalid tenant ID format');
     throw ApiError.conflict('System busy, please try again');
   }
 
