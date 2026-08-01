@@ -1,10 +1,14 @@
 -- CreateEnum
-CREATE TYPE "license_type" AS ENUM ('SUBSCRIPTION', 'LIFETIME');
+DO $$ BEGIN
+    CREATE TYPE "license_type" AS ENUM ('SUBSCRIPTION', 'LIFETIME');
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
 
 -- AlterTable
 ALTER TABLE "tenants" ADD COLUMN     "license_type" "license_type" NOT NULL DEFAULT 'LIFETIME',
 ADD COLUMN     "max_ai_tokens" INTEGER NOT NULL DEFAULT 0,
-ADD COLUMN     "max_users" INTEGER NOT NULL DEFAULT 1,
+ADD COLUMN     "max_users" INTEGER NOT NULL DEFAULT -1,
 ADD COLUMN     "subscription_end_date" TIMESTAMPTZ(3);
 
 -- CreateIndex

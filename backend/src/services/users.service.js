@@ -9,7 +9,7 @@ const VALID_CREATOR_ROLES = ['ADMIN', 'COORDINATOR'];
 
 async function enforceQuota(tx, tenantId, newUsersCount = 1) {
   // strict Zod validation for bulk payload array length / sizes
-  try { z.number().int().positive().max(10000).parse(newUsersCount); } catch (e) { throw ApiError.badRequest('Invalid bulk payload size'); }
+  try { z.number().int().positive().max(10000).parse(newUsersCount); } catch (e) { throw ApiError.badRequest(`Invalid bulk payload size: ${e.errors ? e.errors[0].message : e.message}`); }
 
   let tenant;
   try {
@@ -18,7 +18,10 @@ async function enforceQuota(tx, tenantId, newUsersCount = 1) {
     tenant = rows[0];
   } catch (error) {
     if (error instanceof ApiError) throw error;
-    throw ApiError.conflict('System busy, please try again');
+    if (error.message && (error.message.includes('timeout') || error.message.includes('deadlock'))) {
+      throw ApiError.conflict('System busy, please try again');
+    }
+    throw ApiError.internal('Database error: ' + error.message);
   }
 
   if (tenant.maxUsers === -1) return;
@@ -157,7 +160,7 @@ async function createUser(data, tenantId, actorRole) {
     });
 
     return formatUser(user);
-  }, { timeout: 10000 });
+  });
   } catch (error) {
     if (error instanceof ApiError) throw error;
     if (error.code === 'P2028' || (error.message && error.message.includes('timeout'))) {
@@ -185,9 +188,19 @@ async function createBulkUsers(dataArray, tenantId, actorRole) {
       await enforceQuota(tx, tenantId, processedData.length);
 
       const emails = processedData.map(d => d.email);
+      if (new Set(emails).size !== emails.length) {
+        throw ApiError.badRequest('Duplicate emails in payload');
+      }
+
       const existingUsers = await tx.user.findMany({ where: { email: { in: emails } } });
       if (existingUsers.length > 0) {
         throw ApiError.conflict('One or more emails already in use');
+      }
+
+      for (const data of processedData) {
+        if (data.groupIds && new Set(data.groupIds).size !== data.groupIds.length) {
+          throw ApiError.badRequest('Duplicate group IDs in payload');
+        }
       }
 
       const createdUsers = [];
@@ -249,7 +262,7 @@ async function createBulkUsers(dataArray, tenantId, actorRole) {
         createdUsers.push(formatUser(user));
       }
       return createdUsers;
-    }, { timeout: 10000 });
+    });
   } catch (error) {
     if (error instanceof ApiError) throw error;
     if (error.code === 'P2028' || (error.message && error.message.includes('timeout'))) {
@@ -353,7 +366,7 @@ function formatUser(user) {
   };
 }
 
-async function reactivateUser(id, tenantId, actorRole) {
+async function reactivateUser(id, tenantId, actorRole, actorId) {
   try {
     return await prisma.$transaction(async (tx) => {
       const user = await tx.user.findFirst({ where: { id, tenantId } });
@@ -361,6 +374,21 @@ async function reactivateUser(id, tenantId, actorRole) {
       
       if (actorRole === 'COORDINATOR' && user.role !== 'VENDOR') {
         throw ApiError.forbidden('Coordinator can only reactivate vendor users');
+      }
+
+      if (actorRole === 'COORDINATOR' && actorId) {
+        const groupVendor = await tx.groupVendor.findFirst({
+          where: { userId: user.id },
+          include: { group: true }
+        });
+        if (groupVendor) {
+          const isCoordinator = await tx.groupVendor.findFirst({
+            where: { groupId: groupVendor.groupId, userId: actorId, user: { role: 'COORDINATOR' } }
+          });
+          if (!isCoordinator) {
+             throw ApiError.forbidden('Coordinator can only reactivate vendors in their own group');
+          }
+        }
       }
 
       if (user.isActive) {
@@ -404,7 +432,7 @@ async function updateUser(id, tenantId, actorRole, data) {
         throw ApiError.forbidden('Coordinator cannot change role to non-vendor');
       }
 
-      if (data.isActive === true && !user.isActive) {
+      if (data.isActive && !user.isActive) {
         await enforceQuota(tx, tenantId, 1);
       }
 
@@ -509,7 +537,7 @@ async function updateUser(id, tenantId, actorRole, data) {
       });
 
       return formatUser(updated);
-    }, { timeout: 10000 });
+    });
   } catch (error) {
     if (error instanceof ApiError) throw error;
     if (error.code === 'P2028' || (error.message && error.message.includes('timeout'))) {

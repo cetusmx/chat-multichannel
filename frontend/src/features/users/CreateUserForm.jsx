@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
 import { get, post } from '../../services/api.js';
+import { useNavigate } from 'react-router-dom';
 
 export default function CreateUserForm({ onSuccess }) {
   const [form, setForm] = useState({
     name: '', email: '', phone: '', password: '', role: 'VENDOR', groupIds: [],
   });
+  const navigate = useNavigate();
   const [groups, setGroups] = useState([]);
   const [tenantProfile, setTenantProfile] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -185,7 +187,10 @@ export default function CreateUserForm({ onSuccess }) {
         </button>
         <button
           type="button"
-          onClick={() => onSuccess?.()}
+          onClick={() => {
+            if (onSuccess) onSuccess();
+            else navigate(-1);
+          }}
           className="rounded-lg border border-slate-700 px-6 py-2 text-sm text-sales-slate-400 hover:bg-slate-800 transition-colors"
         >
           Cancelar

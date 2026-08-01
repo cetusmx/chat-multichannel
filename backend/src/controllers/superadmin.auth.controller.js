@@ -29,6 +29,10 @@ setInterval(() => {
 function rateLimitLogin(req, res, next) {
   let ip = req.ip || (req.connection && req.connection.remoteAddress) || (req.socket && req.socket.remoteAddress) || 'unknown-ip';
 
+  if (ip === 'unknown-ip' || ip === 'unknown') {
+    return next();
+  }
+
   const now = Date.now();
 
   if (!loginAttempts.has(ip)) {

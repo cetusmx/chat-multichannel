@@ -34,6 +34,6 @@ FROM tenant_stats ts
 WHERE tenants.id = ts.id;
 
 -- Check constraints
-ALTER TABLE tenants ADD CONSTRAINT tenants_max_users_check CHECK (max_users >= 1);
+ALTER TABLE tenants ADD CONSTRAINT tenants_max_users_check CHECK (max_users >= 1 OR max_users = -1);
 ALTER TABLE tenants ADD CONSTRAINT tenants_max_ai_tokens_check CHECK (max_ai_tokens >= -1);
 ALTER TABLE tenants ADD CONSTRAINT tenants_lifetime_no_end_date_check CHECK (license_type = 'SUBSCRIPTION'::"license_type" OR subscription_end_date IS NULL);

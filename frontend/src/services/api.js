@@ -7,9 +7,12 @@ async function handle403(res) {
   if (res.status === 403) {
     const cloned = res.clone();
     try {
-      const body = await cloned.json();
-      if (body.error?.code === 'QUOTA_EXCEEDED' && typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('QUOTA_EXCEEDED_MODAL'));
+      const contentType = cloned.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const body = await cloned.json();
+        if (body.error?.code === 'QUOTA_EXCEEDED' && typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('QUOTA_EXCEEDED_MODAL'));
+        }
       }
     } catch (e) {
       console.warn('Failed to parse 403 error body', e);
@@ -126,8 +129,12 @@ export async function getAiConfig() {
     let errMsg = typeof error.error === 'object' ? error.error.message : error.error;
     throw new Error(errMsg || 'Failed to fetch AI config');
   }
-  const json = await res.json();
-  return json.data;
+  const contentType = res.headers.get('content-type');
+  if (contentType && contentType.includes('application/json')) {
+    const json = await res.json();
+    return json.data;
+  }
+  return null;
 }
 
 /**
@@ -152,8 +159,12 @@ export async function updateAiConfig(data) {
     let errMsg = typeof error.error === 'object' ? error.error.message : error.error;
     throw new Error(errMsg || 'Failed to update AI config');
   }
-  const json = await res.json();
-  return json.data;
+  const contentType = res.headers.get('content-type');
+  if (contentType && contentType.includes('application/json')) {
+    const json = await res.json();
+    return json.data;
+  }
+  return null;
 }
 
 /**
@@ -221,7 +232,11 @@ export async function getKnowledgeBaseDocuments() {
     }
     throw new Error(error.error || 'Failed to fetch knowledge base documents');
   }
-  return res.json();
+  const contentType = res.headers.get('content-type');
+  if (contentType && contentType.includes('application/json')) {
+    return res.json();
+  }
+  return null;
 }
 
 // Assignment Config

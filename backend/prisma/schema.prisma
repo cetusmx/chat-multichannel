@@ -72,7 +72,7 @@ model Tenant {
   businessHours Json?    @map("business_hours")
   rfc                 String?
   bankDetails         Json?       @map("bank_details")
-  maxUsers            Int         @default(1) @map("max_users")
+  maxUsers            Int         @default(-1) @map("max_users")
   maxAiTokens         Int         @default(0) @map("max_ai_tokens") /// 0 = disabled, -1 = unlimited
   licenseType         LicenseType @default(LIFETIME) @map("license_type")
   subscriptionEndDate DateTime?   @db.Timestamptz(3) @map("subscription_end_date") /// NULL is valid for LIFETIME or unbounded SUBSCRIPTION

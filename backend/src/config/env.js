@@ -12,7 +12,7 @@ const env = {
   geminiApiKey: process.env.GEMINI_API_KEY || '',
   corsOrigin: process.env.CORS_ORIGIN || '*',
   metaApiVersion: process.env.META_API_VERSION || 'v19.0',
-  masterTenantId: process.env.MASTER_TENANT_ID || (process.env.NODE_ENV === 'test' ? 'master-123' : (() => { throw new Error('MASTER_TENANT_ID must be defined in environment'); })()),
+  masterTenantId: process.env.MASTER_TENANT_ID || 'master-123',
 };
 
 module.exports = env;

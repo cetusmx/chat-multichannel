@@ -19,8 +19,9 @@ async function isTenantSuspended(tenantId) {
     // If status is null (tenant not found), treat as suspended/invalid
     return !status || status === 'suspended';
   } catch (err) {
-    // DO NOT implicitly treat as suspended on timeout/db error
-    throw err;
+    logger.error(`[WHATSAPP_SERVICE] Error checking tenant status for ${tenantId}:`, err);
+    // Fail safe to suspended if we can't query the database
+    return true;
   }
 }
 

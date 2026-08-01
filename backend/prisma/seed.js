@@ -69,17 +69,7 @@ async function main() {
     create: { groupId: group.id, userId: vendor.id },
   });
 
-  const superadmin = await prisma.superadmin.upsert({
-    where: { email: 'admin@salesflow.app' },
-    update: {},
-    create: {
-      name: 'Super Admin',
-      email: 'admin@salesflow.app',
-      passwordHash: await bcrypt.hash('superpassword', 10),
-    },
-  });
-
-  console.log('Seed completed:', { tenant: tenant.id, admin: admin.id, coord: coord.id, vendor: vendor.id, superadmin: superadmin.id });
+  console.log('Seed completed:', { tenant: tenant.id, admin: admin.id, coord: coord.id, vendor: vendor.id });
 }
 
 main()

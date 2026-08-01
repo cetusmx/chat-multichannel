@@ -1,0 +1,1505 @@
+diff --git a/backend/drift.sql b/backend/drift.sql
+new file mode 100644
+index 0000000..4326166
+--- /dev/null
++++ b/backend/drift.sql
+@@ -0,0 +1,12 @@
++-- CreateEnum
++CREATE TYPE "license_type" AS ENUM ('SUBSCRIPTION', 'LIFETIME');
++
++-- AlterTable
++ALTER TABLE "tenants" ADD COLUMN     "license_type" "license_type" NOT NULL DEFAULT 'LIFETIME',
++ADD COLUMN     "max_ai_tokens" INTEGER NOT NULL DEFAULT 0,
++ADD COLUMN     "max_users" INTEGER NOT NULL DEFAULT 1,
++ADD COLUMN     "subscription_end_date" TIMESTAMPTZ(3);
++
++-- CreateIndex
++CREATE INDEX "idx_tenant_license_end_date" ON "tenants"("license_type", "subscription_end_date");
++
+diff --git a/backend/package-lock.json b/backend/package-lock.json
+index 0d11f89..9f50f3c 100644
+--- a/backend/package-lock.json
++++ b/backend/package-lock.json
+@@ -31,7 +31,8 @@
+         "puppeteer": "^25.3.0",
+         "socket.io": "^4.8.1",
+         "swagger-jsdoc": "^6.2.8",
+-        "swagger-ui-express": "^5.0.1"
++        "swagger-ui-express": "^5.0.1",
++        "zod": "^4.4.3"
+       },
+       "devDependencies": {
+         "eslint": "^10.0.3",
+@@ -3023,6 +3024,15 @@
+         "devtools-protocol": "*"
+       }
+     },
++    "node_modules/chromium-bidi/node_modules/zod": {
++      "version": "3.25.76",
++      "resolved": "https://registry.npmjs.org/zod/-/zod-3.25.76.tgz",
++      "integrity": "sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==",
++      "license": "MIT",
++      "funding": {
++        "url": "https://github.com/sponsors/colinhacks"
++      }
++    },
+     "node_modules/ci-info": {
+       "version": "3.9.0",
+       "resolved": "https://registry.npmjs.org/ci-info/-/ci-info-3.9.0.tgz",
+@@ -9192,9 +9202,9 @@
+       }
+     },
+     "node_modules/zod": {
+-      "version": "3.25.76",
+-      "resolved": "https://registry.npmjs.org/zod/-/zod-3.25.76.tgz",
+-      "integrity": "sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==",
++      "version": "4.4.3",
++      "resolved": "https://registry.npmjs.org/zod/-/zod-4.4.3.tgz",
++      "integrity": "sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==",
+       "license": "MIT",
+       "funding": {
+         "url": "https://github.com/sponsors/colinhacks"
+diff --git a/backend/package.json b/backend/package.json
+index 1ec54a0..31d31f5 100644
+--- a/backend/package.json
++++ b/backend/package.json
+@@ -41,7 +41,8 @@
+     "puppeteer": "^25.3.0",
+     "socket.io": "^4.8.1",
+     "swagger-jsdoc": "^6.2.8",
+-    "swagger-ui-express": "^5.0.1"
++    "swagger-ui-express": "^5.0.1",
++    "zod": "^4.4.3"
+   },
+   "devDependencies": {
+     "eslint": "^10.0.3",
+diff --git a/backend/src/config/env.js b/backend/src/config/env.js
+index 42706ad..1591fbf 100644
+--- a/backend/src/config/env.js
++++ b/backend/src/config/env.js
+@@ -12,6 +12,7 @@ const env = {
+   geminiApiKey: process.env.GEMINI_API_KEY || '',
+   corsOrigin: process.env.CORS_ORIGIN || '*',
+   metaApiVersion: process.env.META_API_VERSION || 'v19.0',
++  masterTenantId: process.env.MASTER_TENANT_ID || (process.env.NODE_ENV === 'test' ? 'master-123' : (() => { throw new Error('MASTER_TENANT_ID must be defined in environment'); })()),
+ };
+ 
+ module.exports = env;
+diff --git a/backend/src/controllers/superadmin.auth.controller.js b/backend/src/controllers/superadmin.auth.controller.js
+index 4fff4f4..5fab10b 100644
+--- a/backend/src/controllers/superadmin.auth.controller.js
++++ b/backend/src/controllers/superadmin.auth.controller.js
+@@ -1,6 +1,12 @@
+ const superadminAuthService = require('../services/superadmin.auth.service');
+ const ApiError = require('../utils/ApiError');
+ const { success } = require('../utils/response');
++const { z } = require('zod');
++
++const loginSchema = z.object({
++  email: z.string().email('Formato de email inválido'),
++  password: z.string().min(1, 'Contraseña es requerida').max(72, 'Contraseña excede el límite permitido')
++});
+ 
+ const loginAttempts = new Map();
+ const WINDOW_MS = 60 * 1000;
+@@ -21,11 +27,7 @@ setInterval(() => {
+ }, WINDOW_MS * 2).unref();
+ 
+ function rateLimitLogin(req, res, next) {
+-  const ip = req.ip || (req.connection && req.connection.remoteAddress) || (req.socket && req.socket.remoteAddress) || 'unknown';
+-  
+-  if (ip === 'unknown') {
+-    return next(); // Bypass rate limiting for unresolvable IPs to prevent collateral blocking
+-  }
++  let ip = req.ip || (req.connection && req.connection.remoteAddress) || (req.socket && req.socket.remoteAddress) || 'unknown-ip';
+ 
+   const now = Date.now();
+ 
+@@ -51,22 +53,15 @@ function rateLimitLogin(req, res, next) {
+ 
+ async function login(req, res, next) {
+   try {
+-    const { email, password } = req.body || {};
+-    
+-    // Validate types to prevent 500s or NoSQL injections
+-    if (!email || !password || typeof email !== 'string' || typeof password !== 'string') {
+-      throw ApiError.badRequest('Email y contraseña son requeridos y deben ser texto');
+-    }
+-    
+-    // Enforce max password length for bcrypt safety
+-    if (password.length > 72) {
+-      throw ApiError.badRequest('Contraseña excede el límite permitido');
+-    }
+-    
+-    // Basic email validation
+-    if (!/^\S+@\S+\.\S+$/.test(email)) {
+-      throw ApiError.badRequest('Formato de email inválido');
++    const parsed = loginSchema.safeParse(req.body);
++    if (!parsed.success) {
++      return res.status(400).json({
++        success: false,
++        message: 'Validation failed',
++        errors: parsed.error.errors
++      });
+     }
++    const { email, password } = parsed.data;
+ 
+     const normalizedEmail = email.toLowerCase();
+     const result = await superadminAuthService.login(normalizedEmail, password);
+diff --git a/backend/src/middleware/auth.js b/backend/src/middleware/auth.js
+index ae7d942..cbb93ff 100644
+--- a/backend/src/middleware/auth.js
++++ b/backend/src/middleware/auth.js
+@@ -1,6 +1,7 @@
+ const jwt = require('jsonwebtoken');
+ const ApiError = require('../utils/ApiError');
+ const env = require('../config/env');
++const logger = require('../utils/logger');
+ const { getTenantStatusAsync } = require('../utils/tenant-cache.util');
+ 
+ async function authenticate(req, _res, next) {
+@@ -20,12 +21,14 @@ async function authenticate(req, _res, next) {
+       }
+       try {
+         const status = await getTenantStatusAsync(decoded.tenantId);
+-        if (!status || status === 'suspended') {
+-          return next(new ApiError(403, 'Tenant is suspended or not found', 'TENANT_SUSPENDED'));
++        if (status === 'suspended') {
++          return next(new ApiError(403, 'Tenant is suspended', 'TENANT_SUSPENDED'));
++        }
++        if (!status) {
++          return next(ApiError.unauthorized('Tenant not found'));
+         }
+       } catch (err) {
+-        // Log DB error but don't fail authentication with an invalid token error, pass a 500 or 403
+-        return next(new ApiError(500, 'Internal Server Error verifying tenant', 'INTERNAL_ERROR'));
++        return next(ApiError.internal('Failed to verify tenant status'));
+       }
+     }
+ 
+diff --git a/backend/src/routes/whatsapp.routes.js b/backend/src/routes/whatsapp.routes.js
+index fe3c2b8..369598f 100644
+--- a/backend/src/routes/whatsapp.routes.js
++++ b/backend/src/routes/whatsapp.routes.js
+@@ -67,10 +67,9 @@ router.get('/webhook/:tenantId', async (req, res, next) => {
+ router.post('/webhook/:tenantId', async (req, res, next) => {
+   try {
+     await whatsappService.handleIncomingMessage(req.body, req.params.tenantId);
+-    // Siempre debemos retornar 200 OK inmediatamente para que Meta no reintente
++    // Siempre debemos retornar 200 OK si es exitoso
+     res.status(200).send('EVENT_RECEIVED');
+   } catch (error) {
+-    // Aún si hay error interno, responder OK a Meta y loggear.
+     console.error('Webhook processing error:', error.message);
+     res.status(200).send('EVENT_RECEIVED');
+   }
+diff --git a/backend/src/services/tenant.service.js b/backend/src/services/tenant.service.js
+index 5716573..364f037 100644
+--- a/backend/src/services/tenant.service.js
++++ b/backend/src/services/tenant.service.js
+@@ -11,6 +11,7 @@ async function getProfile(tenantId) {
+       phone: true, email: true, address: true,
+       status: true, createdAt: true, updatedAt: true,
+       rfc: true, bankDetails: true, businessHours: true,
++      maxUsers: true,
+     },
+   });
+ 
+@@ -18,6 +19,10 @@ async function getProfile(tenantId) {
+     throw ApiError.notFound('Tenant not found');
+   }
+ 
++  tenant.currentUsersCount = await prisma.user.count({
++    where: { tenantId, isActive: true },
++  });
++
+   return tenant;
+ }
+ 
+diff --git a/backend/src/services/users.service.js b/backend/src/services/users.service.js
+index 4a65c95..2288f31 100644
+--- a/backend/src/services/users.service.js
++++ b/backend/src/services/users.service.js
+@@ -1,13 +1,42 @@
+ const bcrypt = require('bcryptjs');
++const { Prisma } = require('@prisma/client');
++const { z } = require('zod');
+ const prisma = require('../config/database');
+ const ApiError = require('../utils/ApiError');
+ 
+ const SALT_ROUNDS = 10;
+ const VALID_CREATOR_ROLES = ['ADMIN', 'COORDINATOR'];
+ 
+-async function validateCoordinator(coordinatorId, tenantId) {
++async function enforceQuota(tx, tenantId, newUsersCount = 1) {
++  // strict Zod validation for bulk payload array length / sizes
++  try { z.number().int().positive().max(10000).parse(newUsersCount); } catch (e) { throw ApiError.badRequest('Invalid bulk payload size'); }
++
++  let tenant;
++  try {
++    const rows = await tx.$queryRaw(Prisma.sql`SELECT id, "max_users" as "maxUsers" FROM "tenants" WHERE id = ${tenantId} FOR UPDATE`);
++    if (!rows || rows.length === 0) throw ApiError.notFound('Tenant not found');
++    tenant = rows[0];
++  } catch (error) {
++    if (error instanceof ApiError) throw error;
++    throw ApiError.conflict('System busy, please try again');
++  }
++
++  if (tenant.maxUsers === -1) return;
++
++  if (tenant.maxUsers === 0) {
++    throw ApiError.forbidden('Quota exceeded', 'QUOTA_EXCEEDED');
++  }
++
++  const currentCount = await tx.user.count({ where: { tenantId, isActive: true } });
++  if (currentCount + newUsersCount > tenant.maxUsers) {
++    console.warn(`QUOTA_EXCEEDED_ATTEMPT: tenant ${tenantId} tried to exceed maxUsers of ${tenant.maxUsers}`);
++    throw ApiError.forbidden('Quota exceeded', 'QUOTA_EXCEEDED');
++  }
++}
++
++async function validateCoordinator(tx, coordinatorId, tenantId) {
+   if (!coordinatorId) return;
+-  const coordinator = await prisma.user.findFirst({
++  const coordinator = await tx.user.findFirst({
+     where: { id: coordinatorId, tenantId, role: 'COORDINATOR' },
+   });
+   if (!coordinator) {
+@@ -15,13 +44,13 @@ async function validateCoordinator(coordinatorId, tenantId) {
+   }
+ }
+ 
+-async function validateGroupCoordinatorLimit(groupIds, tenantId, excludeUserId) {
++async function validateGroupCoordinatorLimit(tx, groupIds, tenantId, excludeUserId) {
+   const where = {
+     groupId: { in: groupIds },
+     user: { role: 'COORDINATOR', tenantId },
+     ...(excludeUserId ? { userId: { not: excludeUserId } } : {}),
+   };
+-  const existing = await prisma.groupVendor.findMany({
++  const existing = await tx.groupVendor.findMany({
+     where,
+     include: {
+       group: { select: { name: true } },
+@@ -38,9 +67,9 @@ async function validateGroupCoordinatorLimit(groupIds, tenantId, excludeUserId)
+   }
+ }
+ 
+-async function resolveGroupCoordinator(groupIds, tenantId) {
++async function resolveGroupCoordinator(tx, groupIds, tenantId) {
+   if (!groupIds || groupIds.length === 0) return null;
+-  const coordGv = await prisma.groupVendor.findFirst({
++  const coordGv = await tx.groupVendor.findFirst({
+     where: { groupId: groupIds[0], user: { role: 'COORDINATOR', tenantId } },
+     select: { userId: true },
+   });
+@@ -48,6 +77,10 @@ async function resolveGroupCoordinator(groupIds, tenantId) {
+ }
+ 
+ async function createUser(data, tenantId, actorRole) {
++  if (Array.isArray(data)) {
++    return createBulkUsers(data, tenantId, actorRole);
++  }
++
+   if (!VALID_CREATOR_ROLES.includes(actorRole)) {
+     throw ApiError.forbidden('Insufficient permissions');
+   }
+@@ -56,66 +89,174 @@ async function createUser(data, tenantId, actorRole) {
+     throw ApiError.badRequest('Password must be at least 6 characters');
+   }
+ 
+-  const existing = await prisma.user.findUnique({ where: { email: data.email } });
+-  if (existing) {
+-    throw ApiError.conflict('Email already in use');
+-  }
+-
+   if (actorRole === 'COORDINATOR' && data.role !== 'VENDOR') {
+     throw ApiError.forbidden('Coordinator can only create vendors');
+   }
+ 
+-  let coordinatorId = null;
+-  if (data.role === 'VENDOR') {
+-    if (!data.groupIds || data.groupIds.length === 0) {
+-      throw ApiError.badRequest('At least one group is required for vendor role');
++  try {
++    return await prisma.$transaction(async (tx) => {
++    await enforceQuota(tx, tenantId, 1);
++
++    const existing = await tx.user.findUnique({ where: { email: data.email } });
++    if (existing) {
++      throw ApiError.conflict('Email already in use');
++    }
++
++    if (data.role === 'ADMIN' && data.groupIds && data.groupIds.length > 0) {
++      throw ApiError.badRequest('Group assignment is not available for admin users');
+     }
+-    if (data.groupIds.length > 1) {
+-      throw ApiError.badRequest('A vendor can only be assigned to one group');
++
++    let coordinatorId = null;
++    if (data.role === 'VENDOR') {
++      if (!data.groupIds || data.groupIds.length === 0) {
++        throw ApiError.badRequest('At least one group is required for vendor role');
++      }
++      if (data.groupIds.length > 1) {
++        throw ApiError.badRequest('A vendor can only be assigned to one group');
++      }
++      coordinatorId = await resolveGroupCoordinator(tx, data.groupIds, tenantId);
+     }
+-    coordinatorId = await resolveGroupCoordinator(data.groupIds, tenantId);
+-  }
+ 
+-  if (data.role === 'COORDINATOR' && data.coordinatorId) {
+-    await validateCoordinator(data.coordinatorId, tenantId);
+-    coordinatorId = data.coordinatorId;
+-  }
++    if (data.role === 'COORDINATOR' && data.coordinatorId) {
++      await validateCoordinator(tx, data.coordinatorId, tenantId);
++      coordinatorId = data.coordinatorId;
++    }
+ 
+-  if (data.groupIds && data.groupIds.length > 0) {
+-    const validGroups = await prisma.group.count({
+-      where: { id: { in: data.groupIds }, branch: { tenantId } },
++    if (data.groupIds && data.groupIds.length > 0) {
++      const validGroups = await tx.group.count({
++        where: { id: { in: data.groupIds }, branch: { tenantId } },
++      });
++      if (validGroups !== data.groupIds.length) {
++        throw ApiError.badRequest('One or more groups are invalid or belong to another tenant');
++      }
++    }
++
++    if (data.role === 'COORDINATOR' && data.groupIds && data.groupIds.length > 0) {
++      await validateGroupCoordinatorLimit(tx, data.groupIds, tenantId);
++    }
++
++    const passwordHash = await bcrypt.hash(data.password, SALT_ROUNDS);
++
++    const user = await tx.user.create({
++      data: {
++        name: data.name,
++        email: data.email,
++        phone: data.phone || null,
++        passwordHash,
++        role: data.role,
++        tenantId,
++        coordinatorId,
++        groups: data.groupIds && data.groupIds.length > 0
++          ? { create: data.groupIds.map((groupId) => ({ groupId })) }
++          : undefined,
++      },
++      include: {
++        groups: { include: { group: { select: { id: true, name: true } } } },
++        coordinator: { select: { id: true, name: true, email: true } },
++      },
+     });
+-    if (validGroups !== data.groupIds.length) {
+-      throw ApiError.badRequest('One or more groups are invalid or belong to another tenant');
++
++    return formatUser(user);
++  }, { timeout: 10000 });
++  } catch (error) {
++    if (error instanceof ApiError) throw error;
++    if (error.code === 'P2028' || (error.message && error.message.includes('timeout'))) {
++      throw ApiError.conflict('System busy, please try again');
+     }
++    throw error;
+   }
++}
+ 
+-  if (data.role === 'COORDINATOR' && data.groupIds && data.groupIds.length > 0) {
+-    await validateGroupCoordinatorLimit(data.groupIds, tenantId);
++async function createBulkUsers(dataArray, tenantId, actorRole) {
++  if (!VALID_CREATOR_ROLES.includes(actorRole)) {
++    throw ApiError.forbidden('Insufficient permissions');
+   }
+ 
+-  const passwordHash = await bcrypt.hash(data.password, SALT_ROUNDS);
+-
+-  const user = await prisma.user.create({
+-    data: {
+-      name: data.name,
+-      email: data.email,
+-      phone: data.phone || null,
+-      passwordHash,
+-      role: data.role,
+-      tenantId,
+-      coordinatorId,
+-      groups: data.groupIds && data.groupIds.length > 0
+-        ? { create: data.groupIds.map((groupId) => ({ groupId })) }
+-        : undefined,
+-    },
+-    include: {
+-      groups: { include: { group: { select: { id: true, name: true } } } },
+-      coordinator: { select: { id: true, name: true, email: true } },
+-    },
+-  });
++  const processedData = await Promise.all(dataArray.map(async (data) => {
++    if (!data.password || data.password.length < 6) {
++      throw ApiError.badRequest('Password must be at least 6 characters');
++    }
++    const passwordHash = await bcrypt.hash(data.password, SALT_ROUNDS);
++    return { ...data, passwordHash };
++  }));
++
++  try {
++    return await prisma.$transaction(async (tx) => {
++      await enforceQuota(tx, tenantId, processedData.length);
++
++      const emails = processedData.map(d => d.email);
++      const existingUsers = await tx.user.findMany({ where: { email: { in: emails } } });
++      if (existingUsers.length > 0) {
++        throw ApiError.conflict('One or more emails already in use');
++      }
+ 
+-  return formatUser(user);
++      const createdUsers = [];
++      for (const data of processedData) {
++        if (actorRole === 'COORDINATOR' && data.role !== 'VENDOR') {
++          throw ApiError.forbidden('Coordinator can only create vendors');
++        }
++
++        if (data.role === 'ADMIN' && data.groupIds && data.groupIds.length > 0) {
++          throw ApiError.badRequest('Group assignment is not available for admin users');
++        }
++
++        let coordinatorId = null;
++        if (data.role === 'VENDOR') {
++          if (!data.groupIds || data.groupIds.length === 0) {
++            throw ApiError.badRequest('At least one group is required for vendor role');
++          }
++          if (data.groupIds.length > 1) {
++            throw ApiError.badRequest('A vendor can only be assigned to one group');
++          }
++          coordinatorId = await resolveGroupCoordinator(tx, data.groupIds, tenantId);
++        }
++
++        if (data.role === 'COORDINATOR' && data.coordinatorId) {
++          await validateCoordinator(tx, data.coordinatorId, tenantId);
++          coordinatorId = data.coordinatorId;
++        }
++
++        if (data.groupIds && data.groupIds.length > 0) {
++          const validGroups = await tx.group.count({
++            where: { id: { in: data.groupIds }, branch: { tenantId } },
++          });
++          if (validGroups !== data.groupIds.length) {
++            throw ApiError.badRequest('One or more groups are invalid or belong to another tenant');
++          }
++        }
++        if (data.role === 'COORDINATOR' && data.groupIds && data.groupIds.length > 0) {
++          await validateGroupCoordinatorLimit(tx, data.groupIds, tenantId);
++        }
++
++        const user = await tx.user.create({
++          data: {
++            name: data.name,
++            email: data.email,
++            phone: data.phone || null,
++            passwordHash: data.passwordHash,
++            role: data.role,
++            tenantId,
++            coordinatorId,
++            groups: data.groupIds && data.groupIds.length > 0
++              ? { create: data.groupIds.map((groupId) => ({ groupId })) }
++              : undefined,
++          },
++          include: {
++            groups: { include: { group: { select: { id: true, name: true } } } },
++            coordinator: { select: { id: true, name: true, email: true } },
++          },
++        });
++        createdUsers.push(formatUser(user));
++      }
++      return createdUsers;
++    }, { timeout: 10000 });
++  } catch (error) {
++    if (error instanceof ApiError) throw error;
++    if (error.code === 'P2028' || (error.message && error.message.includes('timeout'))) {
++      throw ApiError.conflict('System busy, please try again');
++    }
++    throw error;
++  }
+ }
+ 
+ async function listUsers(tenantId, filters = {}, actorRole) {
+@@ -212,118 +353,170 @@ function formatUser(user) {
+   };
+ }
+ 
+-async function updateUser(id, tenantId, actorRole, data) {
+-  const user = await prisma.user.findFirst({ where: { id, tenantId } });
+-  if (!user) {
+-    throw ApiError.notFound('User not found');
+-  }
++async function reactivateUser(id, tenantId, actorRole) {
++  try {
++    return await prisma.$transaction(async (tx) => {
++      const user = await tx.user.findFirst({ where: { id, tenantId } });
++      if (!user) throw ApiError.notFound('User not found');
++      
++      if (actorRole === 'COORDINATOR' && user.role !== 'VENDOR') {
++        throw ApiError.forbidden('Coordinator can only reactivate vendor users');
++      }
+ 
+-  if (actorRole === 'COORDINATOR' && user.role !== 'VENDOR') {
+-    throw ApiError.forbidden('Coordinator can only edit vendor users');
+-  }
++      if (user.isActive) {
++        return formatUser(user);
++      }
+ 
+-  if (actorRole === 'COORDINATOR' && data.role && data.role !== 'VENDOR') {
+-    throw ApiError.forbidden('Coordinator cannot change role to non-vendor');
+-  }
++      await enforceQuota(tx, tenantId, 1);
+ 
+-  if (data.email && data.email !== user.email) {
+-    const existing = await prisma.user.findUnique({ where: { email: data.email } });
+-    if (existing) {
+-      throw ApiError.conflict('Email already in use');
++      const updated = await tx.user.update({
++        where: { id },
++        data: { isActive: true },
++        include: {
++          groups: { include: { group: { select: { id: true, name: true } } } },
++          coordinator: { select: { id: true, name: true, email: true } },
++        },
++      });
++      return formatUser(updated);
++    }, { timeout: 10000 });
++  } catch (error) {
++    if (error instanceof ApiError) throw error;
++    if (error.code === 'P2028' || (error.message && error.message.includes('timeout'))) {
++      throw ApiError.conflict('System busy, please try again');
+     }
++    throw error;
+   }
++}
+ 
+-  let coordinatorValue;
+-  if (user.role === 'VENDOR') {
+-    if (data.groupIds !== undefined) {
+-      coordinatorValue = await resolveGroupCoordinator(data.groupIds, tenantId);
+-    }
+-  } else if (data.coordinatorId !== undefined) {
+-    coordinatorValue = data.coordinatorId || null;
+-    if (coordinatorValue) {
+-      await validateCoordinator(coordinatorValue, tenantId);
+-    }
+-  }
++async function updateUser(id, tenantId, actorRole, data) {
++  try {
++    return await prisma.$transaction(async (tx) => {
++      const user = await tx.user.findFirst({ where: { id, tenantId } });
++      if (!user) {
++        throw ApiError.notFound('User not found');
++      }
+ 
+-  const updateData = {
+-    name: data.name !== undefined ? data.name : undefined,
+-    email: data.email !== undefined ? data.email : undefined,
+-    phone: data.phone !== undefined ? data.phone : undefined,
+-    coordinatorId: coordinatorValue !== undefined ? coordinatorValue : undefined,
+-    isActive: data.isActive !== undefined ? data.isActive : undefined,
+-  };
++      if (actorRole === 'COORDINATOR' && user.role !== 'VENDOR') {
++        throw ApiError.forbidden('Coordinator can only edit vendor users');
++      }
+ 
+-  if (data.groupIds !== undefined) {
+-    if (user.role === 'ADMIN') {
+-      throw ApiError.badRequest('Group assignment is not available for admin users');
+-    }
++      if (actorRole === 'COORDINATOR' && data.role && data.role !== 'VENDOR') {
++        throw ApiError.forbidden('Coordinator cannot change role to non-vendor');
++      }
+ 
+-    if (data.groupIds.length === 0) {
+-      throw ApiError.badRequest('At least one group is required');
+-    }
++      if (data.isActive === true && !user.isActive) {
++        await enforceQuota(tx, tenantId, 1);
++      }
+ 
+-    if (user.role === 'VENDOR' && data.groupIds.length > 1) {
+-      throw ApiError.badRequest('A vendor can only be assigned to one group');
+-    }
++      if (data.email && data.email !== user.email) {
++        const existing = await tx.user.findUnique({ where: { email: data.email } });
++        if (existing) {
++          throw ApiError.conflict('Email already in use');
++        }
++      }
+ 
+-    const validGroups = await prisma.group.count({
+-      where: { id: { in: data.groupIds }, branch: { tenantId } },
+-    });
+-    if (validGroups !== data.groupIds.length) {
+-      throw ApiError.badRequest('One or more groups are invalid or belong to another tenant');
+-    }
++      let coordinatorValue;
++      if (user.role === 'VENDOR') {
++        if (data.groupIds !== undefined && data.groupIds !== null) {
++          coordinatorValue = await resolveGroupCoordinator(tx, data.groupIds, tenantId);
++        }
++      } else if (data.coordinatorId !== undefined) {
++        coordinatorValue = data.coordinatorId || null;
++        if (coordinatorValue) {
++          await validateCoordinator(tx, coordinatorValue, tenantId);
++        }
++      }
+ 
+-    if (user.role === 'COORDINATOR') {
+-      await validateGroupCoordinatorLimit(data.groupIds, tenantId, id);
+-      const currentGroups = await prisma.groupVendor.findMany({
+-        where: { userId: id },
+-        select: { groupId: true },
+-      });
+-      const removedGroupIds = currentGroups
+-        .map((gv) => gv.groupId)
+-        .filter((gid) => !data.groupIds.includes(gid));
+-
+-      if (removedGroupIds.length > 0) {
+-        const groupsWithVendors = await prisma.groupVendor.groupBy({
+-          by: ['groupId'],
+-          where: {
+-            groupId: { in: removedGroupIds },
+-            user: { role: 'VENDOR' },
+-          },
+-          _count: { groupId: true },
++      const updateData = {
++        name: data.name !== undefined ? data.name : undefined,
++        email: data.email !== undefined ? data.email : undefined,
++        phone: data.phone !== undefined ? data.phone : undefined,
++        coordinatorId: coordinatorValue !== undefined ? coordinatorValue : undefined,
++        isActive: data.isActive !== undefined ? data.isActive : undefined,
++      };
++
++      if (data.groupIds !== undefined && data.groupIds !== null) {
++        if (user.role === 'ADMIN') {
++          throw ApiError.badRequest('Group assignment is not available for admin users');
++        }
++
++        if (data.groupIds.length === 0) {
++          throw ApiError.badRequest('At least one group is required');
++        }
++
++        if (user.role === 'VENDOR' && data.groupIds.length > 1) {
++          throw ApiError.badRequest('A vendor can only be assigned to one group');
++        }
++
++        const validGroups = await tx.group.count({
++          where: { id: { in: data.groupIds }, branch: { tenantId } },
+         });
++        if (validGroups !== data.groupIds.length) {
++          throw ApiError.badRequest('One or more groups are invalid or belong to another tenant');
++        }
+ 
+-        if (groupsWithVendors.length > 0) {
+-          const groupNames = await prisma.group.findMany({
+-            where: { id: { in: groupsWithVendors.map((g) => g.groupId) } },
+-            select: { name: true },
++        if (user.role === 'COORDINATOR') {
++          await validateGroupCoordinatorLimit(tx, data.groupIds, tenantId, id);
++        }
++        
++        const currentGroups = await tx.groupVendor.findMany({
++          where: { userId: id },
++          select: { groupId: true },
++        });
++        const currentGroupIds = currentGroups.map((gv) => gv.groupId);
++        const removedGroupIds = currentGroupIds.filter((gid) => !data.groupIds.includes(gid));
++        const addedGroupIds = data.groupIds.filter((gid) => !currentGroupIds.includes(gid));
++
++        if (user.role === 'COORDINATOR' && removedGroupIds.length > 0) {
++          const groupsWithVendors = await tx.groupVendor.groupBy({
++            by: ['groupId'],
++            where: {
++              groupId: { in: removedGroupIds },
++              user: { role: 'VENDOR' },
++            },
++            _count: { groupId: true },
+           });
+-          throw ApiError.badRequest(
+-            `Cannot remove groups with active vendors: ${groupNames.map((g) => g.name).join(', ')}`,
+-          );
++
++          if (groupsWithVendors.length > 0) {
++            const groupNames = await tx.group.findMany({
++              where: { id: { in: groupsWithVendors.map((g) => g.groupId) } },
++              select: { name: true },
++            });
++            throw ApiError.badRequest(
++              `Cannot remove groups with active vendors: ${groupNames.map((g) => g.name).join(', ')}`
++            );
++          }
++        }
++
++        if (removedGroupIds.length > 0) {
++          await tx.groupVendor.deleteMany({ where: { userId: id, groupId: { in: removedGroupIds } } });
+         }
+-      }
+-    }
+ 
+-    await prisma.groupVendor.deleteMany({ where: { userId: id } });
++        if (addedGroupIds.length > 0) {
++          await tx.groupVendor.createMany({
++            data: addedGroupIds.map((groupId) => ({ groupId, userId: id })),
++          });
++        }
++      }
+ 
+-    if (data.groupIds.length > 0) {
+-      await prisma.groupVendor.createMany({
+-        data: data.groupIds.map((groupId) => ({ groupId, userId: id })),
++      const updated = await tx.user.update({
++        where: { id },
++        data: updateData,
++        include: {
++          groups: { include: { group: { select: { id: true, name: true } } } },
++          coordinator: { select: { id: true, name: true, email: true } },
++        },
+       });
++
++      return formatUser(updated);
++    }, { timeout: 10000 });
++  } catch (error) {
++    if (error instanceof ApiError) throw error;
++    if (error.code === 'P2028' || (error.message && error.message.includes('timeout'))) {
++      throw ApiError.conflict('System busy, please try again');
+     }
++    throw error;
+   }
+-
+-  const updated = await prisma.user.update({
+-    where: { id },
+-    data: updateData,
+-    include: {
+-      groups: { include: { group: { select: { id: true, name: true } } } },
+-      coordinator: { select: { id: true, name: true, email: true } },
+-    },
+-  });
+-
+-  return formatUser(updated);
+ }
+ 
+ async function registerFcmToken(userId, token) {
+@@ -353,4 +546,4 @@ async function testPushNotification(userId) {
+   });
+ }
+ 
+-module.exports = { createUser, listUsers, getUserById, updateUser, registerFcmToken, removeFcmToken, testPushNotification };
++module.exports = { createUser, listUsers, getUserById, updateUser, reactivateUser, registerFcmToken, removeFcmToken, testPushNotification };
+diff --git a/backend/src/services/users.service.test.js b/backend/src/services/users.service.test.js
+new file mode 100644
+index 0000000..387fb63
+--- /dev/null
++++ b/backend/src/services/users.service.test.js
+@@ -0,0 +1,171 @@
++const { createUser, updateUser, reactivateUser } = require('./users.service');
++const prisma = require('../config/database');
++const ApiError = require('../utils/ApiError');
++
++jest.mock('../config/database', () => ({
++  $transaction: jest.fn(),
++  user: {
++    findUnique: jest.fn(),
++    findFirst: jest.fn(),
++    create: jest.fn(),
++    update: jest.fn(),
++    count: jest.fn(),
++    findMany: jest.fn(),
++  },
++  tenant: {
++    findUnique: jest.fn(),
++  },
++  group: {
++    count: jest.fn(),
++  },
++  groupVendor: {
++    findFirst: jest.fn(),
++    findMany: jest.fn(),
++    deleteMany: jest.fn(),
++    createMany: jest.fn(),
++  },
++  $queryRaw: jest.fn(),
++}));
++
++jest.mock('bcryptjs', () => ({
++  hash: jest.fn().mockResolvedValue('hashed_password'),
++}));
++
++describe('users.service quota enforcement', () => {
++  beforeEach(() => {
++    jest.clearAllMocks();
++    prisma.$transaction.mockImplementation(async (callback) => {
++      // Pass a mocked tx object
++      return callback({
++        $queryRaw: prisma.$queryRaw,
++        tenant: prisma.tenant,
++        user: prisma.user,
++        group: prisma.group,
++        groupVendor: prisma.groupVendor,
++      });
++    });
++  });
++
++  const validUser = { name: 'Test', email: 'test@example.com', password: 'password123', role: 'ADMIN' };
++
++  describe('Limits (under, exact, over)', () => {
++    it('under limit: should succeed', async () => {
++      prisma.$queryRaw.mockResolvedValue([{ id: 't1', maxUsers: 5 }]);
++      prisma.user.count.mockResolvedValue(3); // 3 active + 1 new = 4 <= 5
++      prisma.user.create.mockResolvedValue({ id: 'u1', isActive: true, role: 'ADMIN' });
++      
++      const res = await createUser(validUser, 't1', 'ADMIN');
++      expect(res.id).toBe('u1');
++      expect(prisma.user.count).toHaveBeenCalledWith({ where: { tenantId: 't1', isActive: true } });
++    });
++
++    it('exact limit: should fail when trying to exceed', async () => {
++      prisma.$queryRaw.mockResolvedValue([{ id: 't1', maxUsers: 5 }]);
++      prisma.user.count.mockResolvedValue(5); // 5 active + 1 new = 6 > 5
++      
++      await expect(createUser(validUser, 't1', 'ADMIN'))
++        .rejects.toMatchObject({ status: 403, code: 'QUOTA_EXCEEDED' });
++    });
++  });
++
++  describe('Edge limits (-1, 0)', () => {
++    it('edge limit -1: should skip quota check', async () => {
++      prisma.$queryRaw.mockResolvedValue([{ id: 't1', maxUsers: -1 }]);
++      prisma.user.create.mockResolvedValue({ id: 'u1', isActive: true, role: 'ADMIN' });
++      
++      await createUser(validUser, 't1', 'ADMIN');
++      // Count should NOT be called
++      expect(prisma.user.count).not.toHaveBeenCalled();
++    });
++
++    it('edge limit 0: should immediately throw QUOTA_EXCEEDED', async () => {
++      prisma.$queryRaw.mockResolvedValue([{ id: 't1', maxUsers: 0 }]);
++      
++      await expect(createUser(validUser, 't1', 'ADMIN'))
++        .rejects.toMatchObject({ status: 403, code: 'QUOTA_EXCEEDED' });
++      expect(prisma.user.count).not.toHaveBeenCalled();
++    });
++  });
++
++  describe('Pending invitations', () => {
++    it('should query explicitly for isActive: true, ignoring pending/inactive', async () => {
++      prisma.$queryRaw.mockResolvedValue([{ id: 't1', maxUsers: 5 }]);
++      prisma.user.count.mockResolvedValue(2);
++      prisma.user.create.mockResolvedValue({ id: 'u1', isActive: true, role: 'ADMIN' });
++      
++      await createUser(validUser, 't1', 'ADMIN');
++      expect(prisma.user.count).toHaveBeenCalledWith({ where: { tenantId: 't1', isActive: true } });
++    });
++  });
++
++  describe('Reactivation Loophole', () => {
++    it('should bypass quota check if user is already active', async () => {
++      prisma.user.findFirst.mockResolvedValue({ id: 'u1', isActive: true, role: 'ADMIN' });
++      
++      await reactivateUser('u1', 't1', 'ADMIN');
++    });
++
++    it('should throw QUOTA_EXCEEDED when reactivating an inactive user if quota is full', async () => {
++      prisma.user.findFirst.mockResolvedValue({ id: 'u1', isActive: false, role: 'ADMIN' });
++      prisma.$queryRaw.mockResolvedValue([{ id: 't1', maxUsers: 5 }]);
++      prisma.user.count.mockResolvedValue(5);
++      
++      await expect(reactivateUser('u1', 't1', 'ADMIN'))
++        .rejects.toMatchObject({ status: 403, code: 'QUOTA_EXCEEDED' });
++    });
++
++    it('should enforce quota in updateUser if isActive changes from false to true', async () => {
++      prisma.user.findFirst.mockResolvedValue({ id: 'u1', isActive: false, role: 'ADMIN' });
++      prisma.$queryRaw.mockResolvedValue([{ id: 't1', maxUsers: 5 }]);
++      prisma.user.count.mockResolvedValue(5);
++
++      await expect(updateUser('u1', 't1', 'ADMIN', { isActive: true }))
++        .rejects.toMatchObject({ status: 403, code: 'QUOTA_EXCEEDED' });
++    });
++  });
++
++  describe('Bulk creation', () => {
++    it('should throw QUOTA_EXCEEDED if bulk array size exceeds available quota', async () => {
++      prisma.$queryRaw.mockResolvedValue([{ id: 't1', maxUsers: 5 }]);
++      prisma.user.count.mockResolvedValue(4);
++      
++      const bulkUsers = [validUser, { ...validUser, email: 'test2@example.com' }];
++      await expect(createUser(bulkUsers, 't1', 'ADMIN'))
++        .rejects.toMatchObject({ status: 403, code: 'QUOTA_EXCEEDED' });
++    });
++
++    it('should succeed if bulk array fits inside quota', async () => {
++      prisma.$queryRaw.mockResolvedValue([{ id: 't1', maxUsers: 5 }]);
++      prisma.user.count.mockResolvedValue(3);
++      prisma.user.findMany.mockResolvedValue([]);
++      prisma.user.create.mockResolvedValue({ id: 'u1', isActive: true, role: 'ADMIN' });
++      
++      const bulkUsers = [validUser, { ...validUser, email: 'test2@example.com' }];
++      await createUser(bulkUsers, 't1', 'ADMIN');
++      
++      expect(prisma.user.create).toHaveBeenCalledTimes(2);
++    });
++  });
++
++  describe('Transaction concurrency lock', () => {
++    it('should execute SELECT FOR UPDATE raw query on tenant', async () => {
++      prisma.$queryRaw.mockResolvedValue([{ id: 't1', maxUsers: 5 }]);
++      prisma.user.count.mockResolvedValue(1);
++      prisma.user.create.mockResolvedValue({ id: 'u1', isActive: true, role: 'ADMIN' });
++      
++      await createUser(validUser, 't1', 'ADMIN');
++      
++      expect(prisma.$queryRaw).toHaveBeenCalled();
++      const callArgs = prisma.$queryRaw.mock.calls[0][0];
++      // Test that the raw query uses FOR UPDATE (it's a Prisma.sql object)
++      expect(callArgs.text).toContain('FOR UPDATE');
++    });
++
++    it('should convert transaction timeout or deadlock errors into 409 Conflict', async () => {
++      prisma.$queryRaw.mockRejectedValue(new Error('timeout'));
++      
++      await expect(createUser(validUser, 't1', 'ADMIN'))
++        .rejects.toMatchObject({ status: 409, message: 'System busy, please try again' });
++    });
++  });
++});
+diff --git a/backend/src/services/whatsapp.service.js b/backend/src/services/whatsapp.service.js
+index 9e16547..0b1023e 100644
+--- a/backend/src/services/whatsapp.service.js
++++ b/backend/src/services/whatsapp.service.js
+@@ -16,11 +16,11 @@ const ApiError = require('../utils/ApiError');
+ async function isTenantSuspended(tenantId) {
+   try {
+     const status = await getTenantStatusAsync(tenantId);
++    // If status is null (tenant not found), treat as suspended/invalid
+     return !status || status === 'suspended';
+   } catch (err) {
+-    logger.error(`[WHATSAPP_SERVICE] Error checking tenant status for ${tenantId}:`, err);
+-    // Fail safe to suspended if we can't query the database
+-    return true;
++    // DO NOT implicitly treat as suspended on timeout/db error
++    throw err;
+   }
+ }
+ 
+@@ -583,7 +583,7 @@ const whatsappService = {
+       if (conversation.client.isBlocked) throw new Error('Client is blocked');
+       
+       if (await isTenantSuspended(conversation.tenantId)) {
+-        throw new ApiError(403, 'Tenant is currently suspended.', 'TENANT_SUSPENDED');
++        throw new ApiError(403, 'Tenant is suspended. Cannot send messages.', 'TENANT_SUSPENDED');
+       }
+       
+       const config = await this.getConfig(conversation.tenantId);
+@@ -669,7 +669,7 @@ const whatsappService = {
+       if (conversation.client.isBlocked) throw new Error('Client is blocked');
+       
+       if (await isTenantSuspended(conversation.tenantId)) {
+-        throw new ApiError(403, 'Tenant is currently suspended.', 'TENANT_SUSPENDED');
++        throw new ApiError(403, 'Tenant is suspended. Cannot send messages.', 'TENANT_SUSPENDED');
+       }
+       
+       const config = await this.getConfig(conversation.tenantId);
+diff --git a/backend/src/utils/ApiError.js b/backend/src/utils/ApiError.js
+index 88abaac..66c3639 100644
+--- a/backend/src/utils/ApiError.js
++++ b/backend/src/utils/ApiError.js
+@@ -14,8 +14,8 @@ class ApiError extends Error {
+     return new ApiError(401, message, 'UNAUTHORIZED');
+   }
+ 
+-  static forbidden(message = 'Forbidden') {
+-    return new ApiError(403, message, 'FORBIDDEN');
++  static forbidden(message = 'Forbidden', code = 'FORBIDDEN') {
++    return new ApiError(403, message, code);
+   }
+ 
+   static notFound(message = 'Resource not found') {
+diff --git a/backend/src/utils/tenant-cache.util.js b/backend/src/utils/tenant-cache.util.js
+index 77ba1b2..30fdc2b 100644
+--- a/backend/src/utils/tenant-cache.util.js
++++ b/backend/src/utils/tenant-cache.util.js
+@@ -34,28 +34,35 @@ function invalidateTenantCache(tenantId) {
+  */
+ async function getTenantStatusAsync(tenantId) {
+   let status = getTenantStatus(tenantId);
+-  if (status) return status;
++  if (status !== undefined) return status;
+ 
+   if (!pendingFetches.has(tenantId)) {
+     const dbPromise = prisma.tenant.findUnique({
+       where: { id: tenantId },
+       select: { status: true }
+     });
++    
++    // Prevent unhandled promise rejection if dbPromise fails after race finishes
++    dbPromise.catch((err) => {
++      const logger = require('./logger');
++      logger.error('Background DB fetch failed for tenant cache:', err);
++    });
+ 
++    let timeoutId;
+     const timeoutPromise = new Promise((_, reject) => {
+-      setTimeout(() => reject(new Error('Tenant status fetch timeout')), 5000);
++      timeoutId = setTimeout(() => reject(new Error('Tenant status fetch timeout')), 5000);
+     });
+ 
+     const fetchPromise = Promise.race([dbPromise, timeoutPromise])
+       .then(tenant => {
++        clearTimeout(timeoutId);
+         const fetchedStatus = tenant ? tenant.status : null;
+-        if (fetchedStatus) {
+-          setTenantStatus(tenantId, fetchedStatus);
+-        }
++        setTenantStatus(tenantId, fetchedStatus);
+         pendingFetches.delete(tenantId);
+         return fetchedStatus;
+       })
+       .catch(err => {
++        clearTimeout(timeoutId);
+         pendingFetches.delete(tenantId);
+         throw err;
+       });
+diff --git a/backend/sync.sql b/backend/sync.sql
+new file mode 100644
+index 0000000..e69de29
+diff --git a/backend/tests/integration/settings.test.js b/backend/tests/integration/settings.test.js
+index d3dec75..8089f7e 100644
+--- a/backend/tests/integration/settings.test.js
++++ b/backend/tests/integration/settings.test.js
+@@ -24,6 +24,8 @@ beforeAll(async () => {
+   const group = await prisma.group.findFirst({ where: { branchId: testBranchId } });
+   testGroupId = group.id;
+ 
++  await prisma.tenant.update({ where: { id: testTenantId }, data: { maxUsers: -1 } });
++
+   adminToken = jwt.sign(
+     { id: 'test-admin', tenantId: testTenantId, role: 'ADMIN' },
+     JWT_SECRET,
+@@ -375,9 +377,13 @@ describe('Coordinator auto-assignment', () => {
+   });
+ 
+   afterAll(async () => {
+-    await prisma.groupVendor.deleteMany({ where: { userId: coordId } });
+-    await prisma.user.delete({ where: { id: coordId } });
+-    await prisma.group.delete({ where: { id: testGroupForCoord } });
++    if (coordId) {
++      await prisma.groupVendor.deleteMany({ where: { userId: coordId } });
++      await prisma.user.deleteMany({ where: { id: coordId } });
++    }
++    if (testGroupForCoord) {
++      await prisma.group.deleteMany({ where: { id: testGroupForCoord } });
++    }
+   });
+ 
+   it('should auto-assign coordinator from group on vendor creation', async () => {
+@@ -474,9 +480,15 @@ describe('Coordinator group protection', () => {
+   });
+ 
+   afterAll(async () => {
+-    await prisma.groupVendor.deleteMany({ where: { userId: { in: [coordId, vendorId] } } });
+-    await prisma.user.deleteMany({ where: { id: { in: [coordId, vendorId] } } });
+-    await prisma.group.deleteMany({ where: { id: { in: [groupWithVendors, groupWithoutVendors] } } });
++    const userIds = [coordId, vendorId].filter(Boolean);
++    if (userIds.length > 0) {
++      await prisma.groupVendor.deleteMany({ where: { userId: { in: userIds } } });
++      await prisma.user.deleteMany({ where: { id: { in: userIds } } });
++    }
++    const groupIds = [groupWithVendors, groupWithoutVendors].filter(Boolean);
++    if (groupIds.length > 0) {
++      await prisma.group.deleteMany({ where: { id: { in: groupIds } } });
++    }
+   });
+ 
+   it('should reject removing a group that has vendors from a coordinator', async () => {
+diff --git a/backend/tests/integration/users.test.js b/backend/tests/integration/users.test.js
+index 6e051a7..0b35e71 100644
+--- a/backend/tests/integration/users.test.js
++++ b/backend/tests/integration/users.test.js
+@@ -19,6 +19,8 @@ beforeAll(async () => {
+   const group = await prisma.group.findFirst({ where: { branch: { tenantId: testTenantId } } });
+   testGroupId = group.id;
+ 
++  await prisma.tenant.update({ where: { id: testTenantId }, data: { maxUsers: -1 } });
++
+   adminToken = jwt.sign(
+     { id: 'test-admin', tenantId: testTenantId, role: 'ADMIN' },
+     JWT_SECRET,
+diff --git a/backend/tests/unit/auth.middleware.test.js b/backend/tests/unit/auth.middleware.test.js
+index 085b201..7e968c7 100644
+--- a/backend/tests/unit/auth.middleware.test.js
++++ b/backend/tests/unit/auth.middleware.test.js
+@@ -59,7 +59,7 @@ describe('Auth Middleware', () => {
+     expect(getTenantStatusAsync).toHaveBeenCalledWith('tenant-1');
+     expect(next).toHaveBeenCalledWith(expect.objectContaining({ 
+       status: 403,
+-      message: 'Tenant is suspended or not found'
++      message: 'Tenant is suspended'
+     }));
+   });
+ 
+diff --git a/backend/tests/unit/superadmin.tenant.service.test.js b/backend/tests/unit/superadmin.tenant.service.test.js
+index 026e472..46c9053 100644
+--- a/backend/tests/unit/superadmin.tenant.service.test.js
++++ b/backend/tests/unit/superadmin.tenant.service.test.js
+@@ -18,6 +18,22 @@ jest.mock('../../src/config/database', () => ({
+   }
+ }));
+ 
++jest.mock('../../src/utils/tenant-cache.util', () => ({
++  setTenantStatus: jest.fn()
++}));
++
++jest.mock('../../src/config/env', () => ({
++  masterTenantId: 'master-123'
++}));
++
++jest.mock('../../src/socket', () => ({
++  getIo: jest.fn().mockReturnValue({
++    of: jest.fn().mockReturnValue({
++      sockets: new Map()
++    })
++  })
++}));
++
+ describe('Superadmin Tenant Service', () => {
+   beforeEach(() => {
+     jest.clearAllMocks();
+@@ -151,4 +167,31 @@ describe('Superadmin Tenant Service', () => {
+       await expect(superadminTenantService.createTenantWithAdmin(tenantData)).rejects.toThrow('Database Error');
+     });
+   });
++
++  describe('updateTenantStatus', () => {
++    it('should update tenant status and clear cache', async () => {
++      const mockTenant = { id: 't1', status: 'suspended' };
++      prisma.tenant.findUnique = jest.fn().mockResolvedValue({ id: 't1', status: 'active' });
++      prisma.tenant.update = jest.fn().mockResolvedValue(mockTenant);
++      
++      const { setTenantStatus } = require('../../src/utils/tenant-cache.util');
++      
++      const result = await superadminTenantService.updateTenantStatus('t1', 'suspended');
++      
++      expect(prisma.tenant.update).toHaveBeenCalledWith({
++        where: { id: 't1' },
++        data: { status: 'suspended' }
++      });
++      expect(setTenantStatus).toHaveBeenCalledWith('t1', 'suspended');
++      expect(result).toEqual(mockTenant);
++    });
++
++    it('should block suspending the master tenant', async () => {
++      const { masterTenantId } = require('../../src/config/env');
++      
++      await expect(superadminTenantService.updateTenantStatus(masterTenantId, 'suspended'))
++        .rejects
++        .toThrow('Cannot suspend the master tenant');
++    });
++  });
+ });
+diff --git a/backend/tests/whatsapp.service.test.js b/backend/tests/whatsapp.service.test.js
+index a118580..ba55467 100644
+--- a/backend/tests/whatsapp.service.test.js
++++ b/backend/tests/whatsapp.service.test.js
+@@ -11,6 +11,9 @@ jest.mock('@prisma/client', () => {
+     tenant: {
+       findUnique: jest.fn(),
+     },
++    conversation: {
++      findUnique: jest.fn(),
++    }
+   };
+   return { PrismaClient: jest.fn(() => mPrismaClient) };
+ });
+@@ -95,4 +98,27 @@ describe('WhatsApp Service', () => {
+       });
+     });
+   });
++
++  describe('sendMessage', () => {
++    it('should throw TENANT_SUSPENDED error if tenant is suspended', async () => {
++      prisma.conversation.findUnique.mockResolvedValue({ tenantId: 'tenant-123', client: { isBlocked: false } });
++      prisma.tenant.findUnique.mockResolvedValue({ status: 'suspended' });
++      await expect(whatsappService.sendMessage('tenant-123', 'client-123', 'hello'))
++        .rejects
++        .toMatchObject({ code: 'TENANT_SUSPENDED' });
++    });
++  });
++
++  describe('sendMedia', () => {
++    it('should throw TENANT_SUSPENDED error if tenant is suspended', async () => {
++      prisma.conversation.findUnique.mockResolvedValue({ tenantId: 'tenant-123', client: { isBlocked: false } });
++      prisma.tenant.findUnique.mockResolvedValue({ status: 'suspended' });
++      
++      const dummyFile = { path: '/tmp/test.jpg', mimetype: 'image/jpeg', originalname: 'test.jpg' };
++      
++      await expect(whatsappService.sendMedia('conv-123', dummyFile, 'caption', 'agent-1'))
++        .rejects
++        .toMatchObject({ code: 'TENANT_SUSPENDED' });
++    });
++  });
+ });
+diff --git a/frontend/src/App.jsx b/frontend/src/App.jsx
+index 9b8a4a1..3674f67 100644
+--- a/frontend/src/App.jsx
++++ b/frontend/src/App.jsx
+@@ -1,3 +1,4 @@
++import { useState, useEffect } from 'react';
+ import { Routes, Route, Navigate } from 'react-router-dom';
+ import useAuthStore from './stores/useAuthStore.js';
+ import Sidebar from './components/layout/Sidebar.jsx';
+@@ -40,13 +41,47 @@ function ProtectedRoute({ children }) {
+   return children;
+ }
+ 
++function UpgradePlanModal() {
++  const [isOpen, setIsOpen] = useState(false);
++  
++  useEffect(() => {
++    const handler = () => setIsOpen(true);
++    window.addEventListener('QUOTA_EXCEEDED_MODAL', handler);
++    return () => window.removeEventListener('QUOTA_EXCEEDED_MODAL', handler);
++  }, []);
++  
++  if (!isOpen) return null;
++  
++  return (
++    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50">
++      <div className="w-full max-w-md rounded-xl border border-slate-700 bg-slate-900 p-6 shadow-2xl">
++        <h3 className="text-xl font-semibold text-sales-slate-100 mb-2">Límite de Asientos Alcanzado</h3>
++        <p className="text-sm text-sales-slate-400 mb-6">
++          Has alcanzado el límite de usuarios permitidos en tu plan actual. Para agregar más usuarios, por favor actualiza tu plan.
++        </p>
++        <div className="flex justify-end gap-3">
++          <button onClick={() => setIsOpen(false)} className="rounded-lg border border-slate-700 px-4 py-2 text-sm text-sales-slate-400 hover:bg-slate-800 transition-colors">
++            Cerrar
++          </button>
++          <button onClick={() => { setIsOpen(false); window.location.href = '/settings'; }} className="rounded-lg bg-sales-orange px-4 py-2 text-sm font-medium text-white hover:bg-sales-orange-light transition-colors">
++            Mejorar Plan
++          </button>
++        </div>
++      </div>
++    </div>
++  );
++}
++
+ export default function App() {
+   const token = useAuthStore((s) => s.token);
+ 
+   return (
+-    <Routes>
+-      <Route path="/login" element={token ? <Navigate to="/" replace /> : <LoginPage />} />
+-      <Route path="/*" element={<ProtectedRoute><AppLayout /></ProtectedRoute>} />
+-    </Routes>
++    <>
++      <Routes>
++        <Route path="/login" element={token ? <Navigate to="/" replace /> : <LoginPage />} />
++        <Route path="/*" element={<ProtectedRoute><AppLayout /></ProtectedRoute>} />
++      </Routes>
++      <UpgradePlanModal />
++    </>
+   );
+ }
+diff --git a/frontend/src/features/users/CreateUserForm.jsx b/frontend/src/features/users/CreateUserForm.jsx
+index 1c118b7..7a8000c 100644
+--- a/frontend/src/features/users/CreateUserForm.jsx
++++ b/frontend/src/features/users/CreateUserForm.jsx
+@@ -6,6 +6,7 @@ export default function CreateUserForm({ onSuccess }) {
+     name: '', email: '', phone: '', password: '', role: 'VENDOR', groupIds: [],
+   });
+   const [groups, setGroups] = useState([]);
++  const [tenantProfile, setTenantProfile] = useState(null);
+   const [loading, setLoading] = useState(false);
+   const [error, setError] = useState('');
+ 
+@@ -14,6 +15,10 @@ export default function CreateUserForm({ onSuccess }) {
+       const body = await res.json();
+       if (res.ok) setGroups(body.data || []);
+     });
++    get('/tenant/profile').then(async (res) => {
++      const body = await res.json();
++      if (res.ok) setTenantProfile(body.data);
++    });
+   }, []);
+ 
+   function handleChange(e) {
+@@ -50,9 +55,18 @@ export default function CreateUserForm({ onSuccess }) {
+     }
+   }
+ 
++  const isQuotaExceeded = tenantProfile && tenantProfile.maxUsers !== -1 && tenantProfile.currentUsersCount >= tenantProfile.maxUsers;
++
+   return (
+     <form onSubmit={handleSubmit} className="space-y-4">
+-      <h2 className="text-xl font-semibold text-sales-slate-100">Nuevo Usuario</h2>
++      <div className="flex items-center justify-between">
++        <h2 className="text-xl font-semibold text-sales-slate-100">Nuevo Usuario</h2>
++        {tenantProfile && tenantProfile.maxUsers !== -1 && (
++          <span className="text-sm font-medium text-sales-slate-300">
++            Asientos: {tenantProfile.currentUsersCount}/{tenantProfile.maxUsers}
++          </span>
++        )}
++      </div>
+ 
+       {error && (
+         <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-400">
+@@ -163,8 +177,9 @@ export default function CreateUserForm({ onSuccess }) {
+       <div className="flex gap-3 pt-2">
+         <button
+           type="submit"
+-          disabled={loading}
+-          className="rounded-lg bg-sales-orange px-6 py-2 text-sm font-medium text-white hover:bg-sales-orange-light transition-colors disabled:opacity-50"
++          disabled={loading || isQuotaExceeded}
++          className="rounded-lg bg-sales-orange px-6 py-2 text-sm font-medium text-white hover:bg-sales-orange-light transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
++          title={isQuotaExceeded ? "Límite de asientos alcanzado" : undefined}
+         >
+           {loading ? 'Creando...' : 'Crear Usuario'}
+         </button>
+diff --git a/frontend/src/features/users/UserListPage.jsx b/frontend/src/features/users/UserListPage.jsx
+index 6b2813b..4f1be71 100644
+--- a/frontend/src/features/users/UserListPage.jsx
++++ b/frontend/src/features/users/UserListPage.jsx
+@@ -215,16 +215,26 @@ export default function UserListPage() {
+   const [loading, setLoading] = useState(true);
+   const [error, setError] = useState('');
+   const [editingUser, setEditingUser] = useState(null);
++  const [tenantProfile, setTenantProfile] = useState(null);
+   const user = useAuthStore((s) => s.user);
+ 
++  async function loadTenantProfile() {
++    try {
++      const res = await get('/tenant/profile');
++      if (res.ok) {
++        const body = await res.json();
++        setTenantProfile(body.data);
++      }
++    } catch (err) {}
++  }
++
+   async function loadUsers(page = 1) {
+     setLoading(true);
+     setError('');
+     try {
+-      const params = new URLSearchParams({ page, limit: 20 });
+-      if (role) params.set('role', role);
+-      if (search) params.set('search', search);
+-      const res = await get(`/users?${params}`);
++      const usersRes = await get(`/users?${new URLSearchParams({ page, limit: 20, ...(role ? { role } : {}), ...(search ? { search } : {}) })}`);
++      
++      const res = usersRes;
+       const body = await res.json();
+       if (!res.ok) {
+         if (res.status === 403) {
+@@ -247,23 +257,48 @@ export default function UserListPage() {
+ 
+   function refreshAfterEdit() {
+     loadUsers(meta.page);
++    loadTenantProfile();
+   }
+ 
+   useEffect(() => {
+     loadUsers();
+   }, [role]);
+ 
++  useEffect(() => {
++    loadTenantProfile();
++  }, []);
++
+   return (
+     <div>
+       <div className="mb-6 flex items-center justify-between">
+         <h1 className="text-2xl font-semibold text-sales-slate-100">Usuarios</h1>
++        
+         {user?.role !== 'VENDOR' && (
+-          <a
+-            href="/users/new"
+-            className="rounded-lg bg-sales-orange px-4 py-2 text-sm font-medium text-white hover:bg-sales-orange-light transition-colors"
+-          >
+-            + Nuevo Usuario
+-          </a>
++          <div className="flex items-center gap-4">
++            {tenantProfile && tenantProfile.maxUsers !== -1 && (
++              <span className="text-sm font-medium text-sales-slate-300">
++                Asientos: {tenantProfile.currentUsersCount}/{tenantProfile.maxUsers}
++              </span>
++            )}
++            {tenantProfile && tenantProfile.maxUsers !== -1 && tenantProfile.currentUsersCount >= tenantProfile.maxUsers ? (
++              <a
++                href={undefined}
++                aria-disabled={true}
++                className="rounded-lg bg-slate-700 px-4 py-2 text-sm font-medium text-sales-slate-400 cursor-not-allowed"
++                title="Límite de asientos alcanzado"
++                onClick={(e) => e.preventDefault()}
++              >
++                + Nuevo Usuario
++              </a>
++            ) : (
++              <a
++                href="/users/new"
++                className="rounded-lg bg-sales-orange px-4 py-2 text-sm font-medium text-white hover:bg-sales-orange-light transition-colors"
++              >
++                + Nuevo Usuario
++              </a>
++            )}
++          </div>
+         )}
+       </div>
+ 
+diff --git a/frontend/src/services/api.js b/frontend/src/services/api.js
+index 2afabf6..fb776a1 100644
+--- a/frontend/src/services/api.js
++++ b/frontend/src/services/api.js
+@@ -3,6 +3,20 @@ import useAuthStore from '../stores/useAuthStore.js';
+ const BASE_URL = '/api';
+ let refreshPromise = null;
+ 
++async function handle403(res) {
++  if (res.status === 403) {
++    const cloned = res.clone();
++    try {
++      const body = await cloned.json();
++      if (body.error?.code === 'QUOTA_EXCEEDED' && typeof window !== 'undefined') {
++        window.dispatchEvent(new CustomEvent('QUOTA_EXCEEDED_MODAL'));
++      }
++    } catch (e) {
++      console.warn('Failed to parse 403 error body', e);
++    }
++  }
++}
++
+ async function request(endpoint, options = {}, isFormData = false) {
+   const { token } = useAuthStore.getState();
+   const headers = { ...options.headers };
+@@ -53,9 +67,11 @@ async function request(endpoint, options = {}, isFormData = false) {
+     const newToken = await refreshPromise;
+     headers.Authorization = `Bearer ${newToken}`;
+     const retryRes = await fetch(`${BASE_URL}${endpoint}`, { ...options, headers });
++    await handle403(retryRes);
+     return retryRes;
+   }
+ 
++  await handle403(res);
+   return res;
+ }
+ 
+diff --git a/superadmin-frontend/src/pages/__tests__/Tenants.test.jsx b/superadmin-frontend/src/pages/__tests__/Tenants.test.jsx
+index 598fd01..873ad37 100644
+--- a/superadmin-frontend/src/pages/__tests__/Tenants.test.jsx
++++ b/superadmin-frontend/src/pages/__tests__/Tenants.test.jsx
+@@ -75,6 +75,10 @@ describe('Tenants Page', () => {
+ 
+     // Click to suspend
+     fireEvent.click(toggleBtn);
++    
++    // Should immediately show loading state
++    expect(toggleBtn).toHaveTextContent('Procesando...');
++    expect(toggleBtn).toBeDisabled();
+ 
+     // Should call API
+     expect(api.patch).toHaveBeenCalledWith('/api/superadmin/tenants/1/status', { status: 'suspended' });

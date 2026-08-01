@@ -58,11 +58,17 @@ export const api = {
       let errorMessage = 'Network response was not ok';
       let errorDataObj = null;
       try {
-        const errorData = await response.json();
-        errorMessage = errorData?.error?.message || errorData.message || errorMessage;
-        errorDataObj = errorData;
+        const contentType = response.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+          const errorData = await response.json();
+          errorMessage = errorData?.error?.message || errorData.message || errorMessage;
+          errorDataObj = errorData;
+        } else {
+          const text = await response.text();
+          errorMessage = text || errorMessage;
+        }
       } catch (e) {
-        // Ignorar si no es JSON
+        // Ignorar si no se puede parsear
       }
 
       if (response.status === 403 && errorDataObj?.error?.code === 'TENANT_SUSPENDED' && window.location.pathname !== '/login') {
