@@ -18,12 +18,12 @@ export const api = {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 15000);
     
-    // Manually link user signal to our timeout controller for older browser support
+    const abortHandler = () => controller.abort();
     if (options.signal) {
       if (options.signal.aborted) {
         controller.abort();
       } else {
-        options.signal.addEventListener('abort', () => controller.abort(), { once: true });
+        options.signal.addEventListener('abort', abortHandler, { once: true });
       }
     }
     const signal = controller.signal;
@@ -42,6 +42,9 @@ export const api = {
       throw new Error('No se pudo conectar con el servidor.');
     } finally {
       clearTimeout(timeoutId);
+      if (options.signal && typeof options.signal.removeEventListener === 'function') {
+        options.signal.removeEventListener('abort', abortHandler);
+      }
     }
 
     if (!response.ok) {
@@ -56,19 +59,16 @@ export const api = {
       let errorDataObj = null;
       try {
         const errorData = await response.json();
-        errorMessage = errorData.message || errorMessage;
+        errorMessage = errorData?.error?.message || errorData.message || errorMessage;
         errorDataObj = errorData;
       } catch (e) {
         // Ignorar si no es JSON
       }
 
-      // Log out if the user's tenant was suspended
-      if (response.status === 403 && window.location.pathname !== '/login') {
-        if (errorDataObj?.error === 'TENANT_SUSPENDED' || errorDataObj?.code === 'TENANT_SUSPENDED') {
-          useAuthStore.getState().logout();
-          window.location.href = '/login';
-          return null;
-        }
+      if (response.status === 403 && errorDataObj?.error?.code === 'TENANT_SUSPENDED' && window.location.pathname !== '/login') {
+        useAuthStore.getState().logout();
+        window.location.href = '/login?suspended=true';
+        return null;
       }
 
       const error = new Error(errorMessage);

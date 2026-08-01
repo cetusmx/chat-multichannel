@@ -50,22 +50,25 @@ export default function TenantDetails() {
   const handleSave = async (e) => {
     e.preventDefault();
     
-    const payloadTokens = licenseType === 'LIFETIME' ? 0 : maxAiTokens;
+    const numUsers = Number(maxUsers);
+    const payloadTokens = licenseType === 'LIFETIME' ? 0 : Number(maxAiTokens);
 
-    if (
-      tenant &&
-      (maxUsers !== -1 && maxUsers < tenant.maxUsers || (payloadTokens !== -1 && payloadTokens < tenant.maxAiTokens && licenseType !== 'LIFETIME'))
-    ) {
-      if (!window.confirm("Estás reduciendo los límites de licencia actuales para este inquilino. ¿Proceder?")) {
-        return;
+    if (tenant) {
+      const isReducingUsers = numUsers !== -1 && numUsers < tenant.maxUsers;
+      const isReducingTokens = payloadTokens !== -1 && payloadTokens < tenant.maxAiTokens && licenseType !== 'LIFETIME';
+
+      if (isReducingUsers || isReducingTokens) {
+        if (!window.confirm("Estás reduciendo los límites de licencia actuales para este inquilino. ¿Proceder?")) {
+          return;
+        }
       }
     }
 
     try {
       setSaving(true);
       const response = await api.put(`/api/superadmin/tenants/${id}/licenses`, {
-        maxUsers: Number(maxUsers),
-        maxAiTokens: Number(payloadTokens),
+        maxUsers: numUsers,
+        maxAiTokens: payloadTokens,
         licenseType
       });
       
@@ -78,7 +81,7 @@ export default function TenantDetails() {
       toast.success('Licencias actualizadas exitosamente');
     } catch (err) {
       toast.error(err.message || 'Error al actualizar licencias');
-      if (err.message && err.message.includes('Cannot set limit below current active users')) {
+      if (err.data?.error?.code === 'BELOW_ACTIVE_USERS') {
         // Recover state by re-fetching
         fetchTenantDetails();
       }
@@ -146,12 +149,12 @@ export default function TenantDetails() {
             <div className="space-y-2">
               <label className="text-sm font-medium text-slate-300">
                 Límite de Usuarios 
-                <span className="text-xs text-slate-500 ml-2">(Actuales: {tenant.currentActiveUsers || 0})</span>
+                <span className="text-xs text-slate-500 ml-2">(Actuales: {tenant.currentActiveUsers ?? 0})</span>
               </label>
               <div className="flex gap-2 items-center">
                 <input 
                   type="number"
-                  min={tenant.currentActiveUsers || -1}
+                  min="-1"
                   value={maxUsers}
                   onChange={(e) => setMaxUsers(e.target.value)}
                   disabled={saving}

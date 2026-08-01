@@ -21,19 +21,19 @@ const updateTenantStatusSchema = z.object({
   status: z.enum(['active', 'suspended']),
 });
 
-const tenantIdSchema = z.string().uuid('Invalid tenant ID format');
+const tenantIdSchema = z.string().refine(val => /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(val) || /^c[^\s-]{7,}$/.test(val), { message: 'Invalid tenant ID format (must be UUID or CUID)' });
 
 const updateTenantLicensesSchema = z.object({
   maxUsers: z.number().int().min(-1).max(2147483647),
   maxAiTokens: z.number().int().min(-1).max(2147483647),
   licenseType: z.enum(['SUBSCRIPTION', 'LIFETIME']),
 }).strict().refine(data => {
-  if (data.licenseType === 'LIFETIME' && data.maxAiTokens > 0) {
+  if (data.licenseType === 'LIFETIME' && data.maxAiTokens !== 0) {
     return false;
   }
   return true;
 }, {
-  message: "LIFETIME licenses must have maxAiTokens set to 0",
+  message: "LIFETIME licenses must have maxAiTokens strictly set to 0",
   path: ["maxAiTokens"],
 });
 
@@ -212,17 +212,19 @@ async function updateTenantLicenses(req, res, next) {
     
     success(res, result);
   } catch (err) {
+    const logger = require('../utils/logger');
+    
     if (err.statusCode === 404) {
-      return res.status(404).json({ success: false, message: 'Tenant not found' });
+      return res.status(404).json({ error: { message: 'Tenant not found' } });
     }
     if (err.statusCode === 400 || err.statusCode === 409) {
-      return res.status(err.statusCode).json({ success: false, message: err.message });
+      logger.warn(`Business validation failed for ${req.params.id}: ${err.message}`);
+      return res.status(err.statusCode).json({ error: { message: err.message, code: err.code || 'VALIDATION_ERROR' } });
     }
-    const logger = require('../utils/logger');
+    
     logger.error(`Error updating tenant licenses for ${req.params.id}:`, err);
     return res.status(500).json({
-      success: false,
-      message: 'Internal server error while updating tenant licenses',
+      error: { message: 'Internal server error while updating tenant licenses' }
     });
   }
 }

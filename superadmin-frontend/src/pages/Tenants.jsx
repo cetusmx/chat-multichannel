@@ -71,6 +71,8 @@ export default function Tenants() {
       return;
     }
 
+    const previousStatus = tenant.status;
+
     try {
       setTogglingTenantIds(prev => new Set(prev).add(tenant.id));
       
@@ -84,7 +86,7 @@ export default function Tenants() {
     } catch (err) {
       // Revert Optimistic Update
       setTenants(prev => prev.map(t => 
-        t.id === tenant.id ? { ...t, status: isCurrentlyActive ? 'active' : 'suspended' } : t
+        t.id === tenant.id ? { ...t, status: previousStatus } : t
       ));
       toast.error('Error al actualizar el estado del inquilino');
     } finally {

@@ -109,7 +109,7 @@ async function createTenantWithAdmin(data) {
 async function updateTenantStatus(id, status) {
   const masterTenantId = env.masterTenantId;
   if (status === 'suspended') {
-    if (id === masterTenantId) {
+    if (masterTenantId && id === masterTenantId) {
       const error = new Error('Cannot suspend the master tenant');
       error.statusCode = 403;
       throw error;
@@ -220,64 +220,75 @@ async function updateTenantLicenses(tenantId, payload, superadminId) {
     maxAiTokens = 0;
   }
 
-  try {
-    const { Prisma } = require('@prisma/client');
-    return await prisma.$transaction(async (tx) => {
-      // Check if tenant exists inside tx
-      const tenant = await tx.tenant.findUnique({
-        where: { id: tenantId }
-      });
-      if (!tenant) {
+  const maxRetries = 3;
+  let attempt = 0;
+  
+  while (attempt < maxRetries) {
+    try {
+      const { Prisma } = require('@prisma/client');
+      return await prisma.$transaction(async (tx) => {
+        // Check if tenant exists inside tx
+        const tenant = await tx.tenant.findUnique({
+          where: { id: tenantId }
+        });
+        if (!tenant) {
+          const error = new Error('Tenant not found');
+          error.statusCode = 404;
+          throw error;
+        }
+
+        // Query active users
+        const activeUsersCount = await tx.user.count({
+          where: {
+            tenantId,
+            isActive: true
+          }
+        });
+
+        if (maxUsers !== -1 && maxUsers < activeUsersCount) {
+          const error = new Error('Cannot set limit below current active users');
+          error.statusCode = 400;
+          error.code = 'BELOW_ACTIVE_USERS';
+          throw error;
+        }
+
+        const updatedTenant = await tx.tenant.update({
+          where: { id: tenantId },
+          data: { maxUsers, maxAiTokens, licenseType }
+        });
+
+        logger.info({
+          action: 'UPDATE_TENANT_LICENSES',
+          superadminId,
+          tenantId,
+          previousValues: {
+            maxUsers: tenant.maxUsers,
+            maxAiTokens: tenant.maxAiTokens,
+            licenseType: tenant.licenseType
+          },
+          newValues: { maxUsers, maxAiTokens, licenseType }
+        });
+
+        return updatedTenant;
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 10000 });
+    } catch (err) {
+      if (err.code === 'P2034' && attempt < maxRetries - 1) {
+        attempt++;
+        await new Promise(resolve => setTimeout(resolve, 50 * attempt));
+        continue;
+      }
+      if (err.code === 'P2034') {
+        const error = new Error('Concurrent modification conflict, please try again');
+        error.statusCode = 409;
+        throw error;
+      }
+      if (err.code === 'P2025') {
         const error = new Error('Tenant not found');
         error.statusCode = 404;
         throw error;
       }
-
-      // Query active users
-      const activeUsersCount = await tx.user.count({
-        where: {
-          tenantId,
-          isActive: true
-        }
-      });
-
-      if (maxUsers !== -1 && maxUsers < activeUsersCount) {
-        const error = new Error('Cannot set limit below current active users');
-        error.statusCode = 400;
-        throw error;
-      }
-
-      const updatedTenant = await tx.tenant.update({
-        where: { id: tenantId },
-        data: { maxUsers, maxAiTokens, licenseType }
-      });
-
-      logger.info(JSON.stringify({
-        action: 'UPDATE_TENANT_LICENSES',
-        superadminId,
-        tenantId,
-        previousValues: {
-          maxUsers: tenant.maxUsers,
-          maxAiTokens: tenant.maxAiTokens,
-          licenseType: tenant.licenseType
-        },
-        newValues: { maxUsers, maxAiTokens, licenseType }
-      }));
-
-      return updatedTenant;
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 10000 });
-  } catch (err) {
-    if (err.code === 'P2034') {
-      const error = new Error('Concurrent modification conflict, please try again');
-      error.statusCode = 409;
-      throw error;
+      throw err;
     }
-    if (err.code === 'P2025') {
-      const error = new Error('Tenant not found');
-      error.statusCode = 404;
-      throw error;
-    }
-    throw err;
   }
 }
 
