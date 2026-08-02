@@ -107,3 +107,8 @@ development_status:
   saas-2-1-esquema-cuotas-licencias-bd: done
   saas-2-2-interfaz-de-gestion-de-licencias: done
   saas-2-3-enforcement-de-cuotas-de-asientos: done
+  saas-2-4-enforcement-de-consumo-de-ia: backlog
+  epic-saas-2-retrospective: optional
+  epic-saas-3: backlog
+  saas-3-1-telemetria-global-saas: backlog
+  saas-3-2-dashboard-superadmin: backlog
