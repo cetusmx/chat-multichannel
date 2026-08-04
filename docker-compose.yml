@@ -29,6 +29,7 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-salesflow}:${POSTGRES_PASSWORD:-salesflow_dev}@postgres:5432/${POSTGRES_DB:-salesflow}?connection_limit=5
       JWT_SECRET: ${JWT_SECRET:-dev-jwt-secret-change-in-production}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-dev-refresh-secret-change-in-production}
+      SUPERADMIN_JWT_SECRET: ${SUPERADMIN_JWT_SECRET:-dev-superadmin-secret-change-in-production}
       AI_PROVIDER: ${AI_PROVIDER:-gemini}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:-12345678901234567890123456789012}
