@@ -55,7 +55,7 @@ export default function ChatList({ conversations, currentConversationId, current
                 : `p-4 hover:bg-sales-slate-800 ${listStyles}`
             }`}
           >
-            <div className="flex justify-between items-start mb-2">
+            <div className="flex justify-between items-start mb-1">
               <span className="font-semibold text-sales-slate-100 pr-2 flex flex-wrap items-center gap-2 min-w-0">
                 <span className="truncate">{conv.client?.name || conv.client?.phoneNumber}</span>
                 {conv.status === 'ESCALATED' && (
@@ -71,18 +71,20 @@ export default function ChatList({ conversations, currentConversationId, current
                   <SlaBadge isSlaBreached={isSlaBreached} breachType={breachType} />
                 )}
               </span>
-              <span className="text-xs text-sales-slate-500 flex-shrink-0 pt-1 flex flex-col items-end gap-1">
-                <span>{new Date(conv.lastMessageAt || conv.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
-                {unreadCount > 0 && (
-                  <span className="bg-sales-cyan-500 text-white text-[10px] font-bold h-5 min-w-[20px] flex items-center justify-center rounded-full px-1 shadow-sm shadow-sales-cyan-500/20">
-                    {unreadCount > 99 ? '99+' : unreadCount}
-                  </span>
-                )}
+              <span className="text-xs text-sales-slate-500 flex-shrink-0 pt-1">
+                {new Date(conv.lastMessageAt || conv.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
               </span>
             </div>
-            <p className={`text-sm text-sales-slate-400 ${isGrid ? 'line-clamp-2' : 'truncate'}`} title={lastMsg}>
-              {lastMsg}
-            </p>
+            <div className="flex justify-between items-center gap-2">
+              <p className={`text-sm text-sales-slate-400 min-w-0 flex-1 ${isGrid ? 'line-clamp-2' : 'truncate'}`} title={lastMsg}>
+                {lastMsg}
+              </p>
+              {unreadCount > 0 && (
+                <span className="bg-emerald-500 text-white text-[10px] font-bold h-5 min-w-[20px] flex items-center justify-center rounded-full px-1.5 shadow-md shadow-emerald-500/30 flex-shrink-0">
+                  {unreadCount > 99 ? '99+' : unreadCount}
+                </span>
+              )}
+            </div>
           </div>
         );
       })}
