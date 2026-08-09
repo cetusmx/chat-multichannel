@@ -18,6 +18,7 @@ jest.mock('../../src/config/database', () => ({
   conversation: {
     updateMany: jest.fn(),
     findFirst: jest.fn(),
+    findUnique: jest.fn(),
   },
   $transaction: jest.fn(),
 }));
@@ -87,6 +88,7 @@ describe('AssignmentService', () => {
       prisma.user.findMany.mockResolvedValue([vendor2]); // The service uses take: 1, so it only gets one user
 
       prisma.conversation.updateMany.mockResolvedValue({ count: 1 });
+      prisma.conversation.findUnique.mockResolvedValue({ id: 'conv-1', status: 'ACTIVE' });
       
       const mockEmit = jest.fn();
       const mockTo = jest.fn().mockReturnValue({ emit: mockEmit });
@@ -103,6 +105,12 @@ describe('AssignmentService', () => {
       
       expect(mockOf).toHaveBeenCalledWith('/chat');
       expect(mockTo).toHaveBeenCalledWith('vendor_v2');
+      
+      expect(mockEmit).toHaveBeenCalledWith('conversation_reassigned', expect.objectContaining({
+        action: 'added',
+        conversationId: 'conv-1'
+      }));
+      
       expect(mockEmit).toHaveBeenCalledWith('chat:assigned', expect.objectContaining({
         type: 'chat:assigned',
         payload: { conversationId: 'conv-1' }
