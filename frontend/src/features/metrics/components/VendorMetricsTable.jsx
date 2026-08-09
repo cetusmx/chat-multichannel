@@ -44,14 +44,15 @@ const VendorMetricsTable = ({ metrics }) => {
             <th>Asesor</th>
             <th>Chats Atendidos</th>
             <th>Tasa de Resolución</th>
-            <th>Tiempo de Respuesta Promedio</th>
+            <th>T. Promedio en Cola</th>
+            <th>T. de Respuesta Promedio</th>
             <th>Rendimiento</th>
           </tr>
         </thead>
         <tbody>
           {isEmpty ? (
             <tr>
-              <td colSpan="5">
+              <td colSpan="6">
                 <div className="empty-state">No hay métricas disponibles para este período.</div>
               </td>
             </tr>
@@ -74,6 +75,7 @@ const VendorMetricsTable = ({ metrics }) => {
                     </span>
                   )}
                 </td>
+                <td>{formatResponseTime(m.averageQueueTime)}</td>
                 <td>{formatResponseTime(m.averageResponseTime)}</td>
                 <td style={{ width: '12rem' }}>
                   <div className="progress-bar-bg">

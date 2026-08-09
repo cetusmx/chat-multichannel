@@ -34,12 +34,12 @@ const getVendorProductivityMetrics = async (tenantId, startDate, endDate) => {
   // 1. One efficient raw SQL query to get all metrics
   const metricsData = await prisma.$queryRaw`
     WITH filtered_conversations AS (
-      SELECT id as conversation_id, vendor_id, status, updated_at
+      SELECT id as conversation_id, vendor_id, status, assigned_at, created_at, updated_at
       FROM conversations
       WHERE tenant_id = ${tenantId} 
         AND created_at >= ${start} AND created_at <= ${end}
       UNION
-      SELECT c.id as conversation_id, c.vendor_id, c.status, c.updated_at
+      SELECT c.id as conversation_id, c.vendor_id, c.status, c.assigned_at, c.created_at, c.updated_at
       FROM conversations c
       WHERE c.tenant_id = ${tenantId}
         AND c.created_at < ${start}
@@ -66,16 +66,20 @@ const getVendorProductivityMetrics = async (tenantId, startDate, endDate) => {
       SELECT DISTINCT ON (ci.conversation_id)
         ci.conversation_id, 
         m.sender_id,
-        EXTRACT(EPOCH FROM (m.created_at - ci.first_msg_time)) as response_delta
+        fc.assigned_at,
+        EXTRACT(EPOCH FROM (m.created_at - COALESCE(fc.assigned_at, ci.first_msg_time))) as response_delta,
+        EXTRACT(EPOCH FROM (COALESCE(fc.assigned_at, m.created_at) - ci.first_msg_time)) as queue_delta
       FROM client_initiated ci
+      JOIN filtered_conversations fc ON ci.conversation_id = fc.conversation_id
       JOIN messages m ON ci.conversation_id = m.conversation_id
-      WHERE m.sender_type = 'VENDOR' AND m.created_at > ci.first_msg_time
+      WHERE m.sender_type = 'VENDOR' AND m.created_at > COALESCE(fc.assigned_at, ci.first_msg_time)
       ORDER BY ci.conversation_id, m.created_at ASC
     ),
     response_times AS (
       SELECT 
         sender_id as vendor_id,
-        AVG(response_delta) as avg_response_time
+        AVG(response_delta) as avg_response_time,
+        AVG(queue_delta) as avg_queue_time
       FROM vendor_first_reply
       GROUP BY sender_id
     ),
@@ -97,7 +101,8 @@ const getVendorProductivityMetrics = async (tenantId, startDate, endDate) => {
       tv.email,
       COALESCE(th.total_chats, 0) as "totalChatsHandled",
       COALESCE(ch.closed_chats, 0) as "closedChats",
-      rt.avg_response_time as "avgResponseTime"
+      rt.avg_response_time as "avgResponseTime",
+      rt.avg_queue_time as "avgQueueTime"
     FROM tenant_vendors tv
     LEFT JOIN total_handled th ON tv.vendor_id = th.vendor_id
     LEFT JOIN closed_handled ch ON tv.vendor_id = ch.vendor_id
@@ -109,6 +114,7 @@ const getVendorProductivityMetrics = async (tenantId, startDate, endDate) => {
     const totalChats = Number(item.totalChatsHandled || 0);
     const closedChats = Number(item.closedChats || 0);
     const avgResponseTime = item.avgResponseTime;
+    const avgQueueTime = item.avgQueueTime;
     
     return {
       vendorId: item.vendorId,
@@ -116,7 +122,8 @@ const getVendorProductivityMetrics = async (tenantId, startDate, endDate) => {
       email: item.email || '',
       totalChatsHandled: totalChats,
       resolutionRate: totalChats > 0 ? (closedChats / totalChats) : 0,
-      averageResponseTime: (avgResponseTime !== null && avgResponseTime !== undefined) ? Number(avgResponseTime) : null
+      averageResponseTime: (avgResponseTime !== null && avgResponseTime !== undefined) ? Number(avgResponseTime) : null,
+      averageQueueTime: (avgQueueTime !== null && avgQueueTime !== undefined) ? Number(avgQueueTime) : null
     };
   });
 };

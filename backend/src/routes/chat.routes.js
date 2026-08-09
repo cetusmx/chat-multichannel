@@ -586,7 +586,9 @@ router.patch('/:conversationId/assign', authenticate, authorize('ADMIN', 'COORDI
       where: { id: conversationId },
       data: {
         vendorId: normalizedVendorId,
-        status: normalizedVendorId ? 'ACTIVE' : 'PENDING_ASSIGNMENT'
+        status: normalizedVendorId ? 'ACTIVE' : 'PENDING_ASSIGNMENT',
+        ...(normalizedVendorId && !oldVendorId && { assignedAt: new Date() }),
+        ...(!normalizedVendorId && { assignedAt: null })
       },
       include: { client: true, messages: { orderBy: { createdAt: 'desc' }, take: 1 } }
     });

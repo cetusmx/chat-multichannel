@@ -166,7 +166,8 @@ class AssignmentService {
           where: { id: conversationId, tenantId, status: 'PENDING_ASSIGNMENT' },
           data: {
             vendorId: vendor.id,
-            status: 'ACTIVE'
+            status: 'ACTIVE',
+            assignedAt: new Date()
           }
         });
 
