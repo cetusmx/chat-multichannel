@@ -26,8 +26,16 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   clearCache();
-  await prisma.user.deleteMany({});
-  await prisma.tenant.deleteMany({});
+  await prisma.user.deleteMany({
+    where: {
+      email: { in: ['active1@test.com', 'active2@test.com', 'inactive@test.com'] }
+    }
+  });
+  await prisma.tenant.deleteMany({
+    where: {
+      domain: { in: ['active1.test.com', 'active2.test.com', 'suspended.test.com'] }
+    }
+  });
 
   // Seed Tenants
   const tenant1 = await prisma.tenant.create({
@@ -36,7 +44,7 @@ beforeEach(async () => {
       domain: 'active1.test.com',
       status: 'active',
       currentMonthAiTokens: 100,
-      monthlyTokenLimit: 1000
+      maxAiTokens: 1000
     }
   });
 
@@ -46,7 +54,7 @@ beforeEach(async () => {
       domain: 'active2.test.com',
       status: 'active',
       currentMonthAiTokens: 200,
-      monthlyTokenLimit: 1000
+      maxAiTokens: 1000
     }
   });
 
@@ -56,7 +64,7 @@ beforeEach(async () => {
       domain: 'suspended.test.com',
       status: 'suspended',
       currentMonthAiTokens: 50,
-      monthlyTokenLimit: 1000
+      maxAiTokens: 1000
     }
   });
 
@@ -96,8 +104,16 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  await prisma.user.deleteMany({});
-  await prisma.tenant.deleteMany({});
+  await prisma.user.deleteMany({
+    where: {
+      email: { in: ['active1@test.com', 'active2@test.com', 'inactive@test.com'] }
+    }
+  });
+  await prisma.tenant.deleteMany({
+    where: {
+      domain: { in: ['active1.test.com', 'active2.test.com', 'suspended.test.com'] }
+    }
+  });
 });
 
 describe('GET /api/superadmin/metrics', () => {
@@ -115,15 +131,23 @@ describe('GET /api/superadmin/metrics', () => {
   });
 
   it('should return correct global metrics for superadmin', async () => {
+    const baseTenants = await prisma.tenant.count({ where: { status: 'active' } });
+    const baseUsers = await prisma.user.count({ where: { isActive: true } });
+    
+    const aggregatedTokensResult = await prisma.tenant.aggregate({
+      _sum: { currentMonthAiTokens: true }
+    });
+    const baseTokens = aggregatedTokensResult._sum.currentMonthAiTokens || 0;
+
     const res = await request(app)
       .get('/api/superadmin/metrics')
       .set('Authorization', `Bearer ${superadminToken}`);
 
     expect(res.status).toBe(200);
     
-    expect(res.body.data.tenants).toBe(2);
-    expect(res.body.data.users).toBe(2);
-    expect(res.body.data.aiTokens).toBe(350); // 100 + 200 + 50
+    expect(res.body.data.tenants).toBe(baseTenants);
+    expect(res.body.data.users).toBe(baseUsers);
+    expect(res.body.data.aiTokens).toBe(baseTokens);
   });
 
   it('should utilize cache on subsequent requests', async () => {
