@@ -1,4 +1,5 @@
 import SlaBadge from '../../metrics/SlaBadge';
+import useChatStore from '../../../stores/useChatStore';
 
 /**
  * ChatList - Muestra las conversaciones en el panel izquierdo o en un grid de vista previa
@@ -6,6 +7,7 @@ import SlaBadge from '../../metrics/SlaBadge';
  * @component
  */
 export default function ChatList({ conversations, currentConversationId, currentConversationIds = [], onSelect, layout = 'list' }) {
+  const unreadCounts = useChatStore(state => state.unreadCounts);
   if (!conversations || conversations.length === 0) {
     return <div className="text-sales-slate-400 p-6 text-sm text-center">No hay conversaciones activas.</div>;
   }
@@ -21,6 +23,7 @@ export default function ChatList({ conversations, currentConversationId, current
         const isSlaBreached = conv.isSlaBreached;
         const breachType = conv.breachType;
         const isFirstResponse = breachType === 'firstResponse';
+        const unreadCount = unreadCounts[conv.id] || 0;
 
         let gridStyles = isSelected 
           ? 'border-sales-coral-400 bg-sales-slate-800/80 shadow-md shadow-sales-coral-500/10' 
@@ -42,7 +45,10 @@ export default function ChatList({ conversations, currentConversationId, current
         return (
           <div 
             key={conv.id} 
-            onClick={() => onSelect(conv.id)}
+            onClick={() => {
+              useChatStore.getState().clearUnreadCount(conv.id);
+              onSelect(conv.id);
+            }}
             className={`cursor-pointer transition-all ${
               isGrid 
                 ? `p-4 rounded-xl border backdrop-blur-md hover:bg-sales-slate-800/70 ${gridStyles}`
@@ -65,8 +71,13 @@ export default function ChatList({ conversations, currentConversationId, current
                   <SlaBadge isSlaBreached={isSlaBreached} breachType={breachType} />
                 )}
               </span>
-              <span className="text-xs text-sales-slate-500 flex-shrink-0 pt-1">
-                {new Date(conv.lastMessageAt || conv.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+              <span className="text-xs text-sales-slate-500 flex-shrink-0 pt-1 flex flex-col items-end gap-1">
+                <span>{new Date(conv.lastMessageAt || conv.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                {unreadCount > 0 && (
+                  <span className="bg-sales-cyan-500 text-white text-[10px] font-bold h-5 min-w-[20px] flex items-center justify-center rounded-full px-1 shadow-sm shadow-sales-cyan-500/20">
+                    {unreadCount > 99 ? '99+' : unreadCount}
+                  </span>
+                )}
               </span>
             </div>
             <p className={`text-sm text-sales-slate-400 ${isGrid ? 'line-clamp-2' : 'truncate'}`} title={lastMsg}>

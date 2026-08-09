@@ -1,6 +1,7 @@
 import { NavLink } from 'react-router-dom';
 import { MessageSquare, LayoutDashboard, Users, UserCog, BarChart3, Settings } from 'lucide-react';
 import useAuthStore from '../../stores/useAuthStore.js';
+import { Logo } from '../Logo.jsx';
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard', roles: ['ADMIN', 'COORDINATOR', 'VENDOR'] },
@@ -22,9 +23,7 @@ export default function Sidebar() {
   return (
     <aside className="flex w-64 flex-col gap-4 border-r border-slate-800 bg-slate-900 py-4 px-3 flex-shrink-0">
       <div className="mb-4 flex h-12 w-full items-center gap-3 px-3">
-        <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-sales-coral to-sales-orange text-sm font-bold text-white">
-          SF
-        </div>
+        <Logo className="flex-shrink-0 w-10 h-10" />
         <span className="font-bold text-white text-lg tracking-wide">SalesFlow</span>
       </div>
       <nav className="flex flex-col gap-2">

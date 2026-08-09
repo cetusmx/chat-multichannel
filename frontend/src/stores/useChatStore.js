@@ -37,7 +37,9 @@ const useChatStore = create((set, get) => ({
   isSearching: false,
   searchError: null,
   highlightedMessageId: null,
+  unreadCounts: {},
   
+  clearUnreadCount: (id) => set((state) => ({ unreadCounts: { ...state.unreadCounts, [id]: 0 } })),
   clearError: () => set({ errorMsg: null }),
   setHighlightedMessageId: (id) => set({ highlightedMessageId: id }),
   clearSearchResults: () => set({ searchResults: [], searchError: null, isSearching: false }),
@@ -123,7 +125,12 @@ const useChatStore = create((set, get) => ({
 
   selectConversation: async (id, aroundMessageId = null) => {
     if (!id) return;
-    set({ currentConversationId: id, messages: [], errorMsg: null });
+    set((state) => ({ 
+      currentConversationId: id, 
+      messages: [], 
+      errorMsg: null,
+      unreadCounts: { ...state.unreadCounts, [id]: 0 }
+    }));
     const { socket } = get();
     
     // Join room
@@ -502,8 +509,18 @@ const useChatStore = create((set, get) => ({
         let nextMessages = state.messages;
         let requiresFetch = false;
         
+        let nextUnreadCounts = { ...state.unreadCounts };
+        const uiState = useUIStore.getState();
+        const isActiveMain = state.currentConversationId === msg.conversationId;
+        const isActiveFocus = uiState.focusedChatIds.includes(msg.conversationId);
+        const isMyMessage = ['VENDOR', 'SYSTEM', 'COORDINATOR', 'ADMIN'].includes(msg.senderType);
+
+        if (!isActiveMain && !isActiveFocus && !isMyMessage) {
+           nextUnreadCounts[msg.conversationId] = (nextUnreadCounts[msg.conversationId] || 0) + 1;
+        }
+
         // Solo lo agregamos si estamos en la conversacion activa
-        if (state.currentConversationId === msg.conversationId) {
+        if (isActiveMain) {
           // Evitar duplicados (por si entra por WS y por HTTP simultáneo o update optimista)
           // Look for an optimistic message with the same content sent very recently
           const isOptimisticDuplicate = state.messages.find(m => 
@@ -548,7 +565,7 @@ const useChatStore = create((set, get) => ({
           global._fetchConvTimeout = setTimeout(() => get().fetchConversations(), 300);
         }
 
-        return { messages: nextMessages, conversations: nextConversations };
+        return { messages: nextMessages, conversations: nextConversations, unreadCounts: nextUnreadCounts };
       });
     });
 
