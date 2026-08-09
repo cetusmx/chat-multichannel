@@ -1,6 +1,7 @@
 const EventEmitter = require('events');
 const prisma = require('../config/database');
 const ApiError = require('../utils/ApiError');
+const { getBusinessMinutesElapsed } = require('../utils/date');
 
 class SlaService extends EventEmitter {
   constructor() {
@@ -151,15 +152,28 @@ class SlaService extends EventEmitter {
       // Batch pre-fetch SLA configs to avoid N+1
       const tenantIds = [...new Set(conversations.map(c => c.tenantId))];
       const configs = {};
+      const businessHoursMap = {};
+      
       await Promise.all(tenantIds.map(tId => 
         this.getSlaConfig(tId)
           .then(cfg => { configs[tId] = cfg; })
           .catch(e => console.error(`Error fetching SLA config for tenant ${tId}:`, e))
       ));
+      
+      try {
+        const tenants = await prisma.tenant.findMany({
+          where: { id: { in: tenantIds } },
+          select: { id: true, businessHours: true }
+        });
+        tenants.forEach(t => { businessHoursMap[t.id] = t.businessHours; });
+      } catch (e) {
+        console.error('Error prefetching tenant business hours', e);
+      }
 
       for (const conv of conversations) {
         try {
           const config = configs[conv.tenantId];
+          const businessHours = businessHoursMap[conv.tenantId];
           if (!config) continue;
           
           let metric = null;
@@ -178,7 +192,8 @@ class SlaService extends EventEmitter {
 
           if (metric && startTime) {
             const startTimeMs = startTime instanceof Date ? startTime.getTime() : new Date(startTime).getTime();
-            const elapsedMins = (now - startTimeMs) / (1000 * 60);
+            const elapsedMins = getBusinessMinutesElapsed(startTimeMs, now, businessHours);
+            
             if (elapsedMins > thresholdMins) {
               const excessMinutes = Math.round(elapsedMins - thresholdMins);
               const notifKey = `${conv.id}:${metric}:${startTimeMs}`;

@@ -1,12 +1,33 @@
 import { useState, useEffect } from 'react';
 import { get, put } from '../../services/api.js';
 
+const DAYS_MAP = [
+  { id: 1, name: 'Lunes' },
+  { id: 2, name: 'Martes' },
+  { id: 3, name: 'Miércoles' },
+  { id: 4, name: 'Jueves' },
+  { id: 5, name: 'Viernes' },
+  { id: 6, name: 'Sábado' },
+  { id: 0, name: 'Domingo' }
+];
+
+const DEFAULT_SCHEDULE = {
+  1: { isOpen: true, start: '09:00', end: '18:00' },
+  2: { isOpen: true, start: '09:00', end: '18:00' },
+  3: { isOpen: true, start: '09:00', end: '18:00' },
+  4: { isOpen: true, start: '09:00', end: '18:00' },
+  5: { isOpen: true, start: '09:00', end: '18:00' },
+  6: { isOpen: false, start: '09:00', end: '14:00' },
+  0: { isOpen: false, start: '09:00', end: '14:00' }
+};
+
 export default function CompanyProfileSection() {
   const [profile, setProfile] = useState(null);
   const [form, setForm] = useState({ 
     name: '', domain: '', phone: '', email: '', address: '',
     rfc: '', bank: '', account: '', clabe: '',
-    bhStart: '', bhEnd: '', bhTimezone: 'America/Mexico_City', bhDays: [1, 2, 3, 4, 5]
+    bhTimezone: 'America/Mexico_City',
+    schedule: { ...DEFAULT_SCHEDULE }
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -18,6 +39,28 @@ export default function CompanyProfileSection() {
       const body = await res.json();
       if (res.ok) {
         setProfile(body.data);
+        
+        let initialSchedule = { ...DEFAULT_SCHEDULE };
+        let timezone = 'America/Mexico_City';
+        
+        // Convert old legacy format to new format if needed
+        if (body.data.businessHours) {
+          const bh = body.data.businessHours;
+          timezone = bh.timezone || timezone;
+          
+          if (bh.schedule) {
+            initialSchedule = { ...DEFAULT_SCHEDULE, ...bh.schedule };
+          } else if (bh.start && bh.end && bh.days) {
+            // Legacy conversion
+            const legacySched = {};
+            [0,1,2,3,4,5,6].forEach(d => {
+              const isOpen = bh.days.includes(d);
+              legacySched[d] = { isOpen, start: bh.start, end: bh.end };
+            });
+            initialSchedule = legacySched;
+          }
+        }
+
         setForm({
           name: body.data.name || '',
           domain: body.data.domain || '',
@@ -28,10 +71,8 @@ export default function CompanyProfileSection() {
           bank: body.data.bankDetails?.bank || '',
           account: body.data.bankDetails?.account || '',
           clabe: body.data.bankDetails?.clabe || '',
-          bhStart: body.data.businessHours?.start || '',
-          bhEnd: body.data.businessHours?.end || '',
-          bhTimezone: body.data.businessHours?.timezone || 'America/Mexico_City',
-          bhDays: body.data.businessHours?.days || [1, 2, 3, 4, 5],
+          bhTimezone: timezone,
+          schedule: initialSchedule
         });
       } else {
         setError(body.error?.message || 'Error al cargar perfil');
@@ -39,6 +80,19 @@ export default function CompanyProfileSection() {
     }).catch(() => setError('Error de conexión'))
       .finally(() => setLoading(false));
   }, []);
+
+  const handleDayChange = (dayId, field, value) => {
+    setForm(prev => ({
+      ...prev,
+      schedule: {
+        ...prev.schedule,
+        [dayId]: {
+          ...prev.schedule[dayId],
+          [field]: value
+        }
+      }
+    }));
+  };
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -58,12 +112,10 @@ export default function CompanyProfileSection() {
           account: form.account,
           clabe: form.clabe
         },
-        businessHours: form.bhStart && form.bhEnd ? {
-          start: form.bhStart,
-          end: form.bhEnd,
+        businessHours: {
           timezone: form.bhTimezone,
-          days: form.bhDays
-        } : null
+          schedule: form.schedule
+        }
       };
       const res = await put('/tenant/profile', payload);
       if (!res.ok) {
@@ -95,7 +147,7 @@ export default function CompanyProfileSection() {
 
       {saved && (
         <div className="mb-4 rounded-lg border border-green-500/30 bg-green-500/10 px-4 py-2 text-sm text-green-400">
-          Perfil actualizado correctamente
+          Perfil y horarios actualizados correctamente
         </div>
       )}
 
@@ -145,94 +197,86 @@ export default function CompanyProfileSection() {
               className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-sales-slate-100 focus:outline-none focus:ring-2 focus:ring-sales-coral/50"
             />
           </div>
-          <div className="col-span-2 mt-4">
-            <h4 className="text-md font-medium text-sales-slate-200 border-b border-slate-700 pb-2 mb-4">Datos Fiscales y Bancarios</h4>
-          </div>
-          <div>
-            <label className="mb-1 block text-sm text-sales-slate-400">RFC de la Empresa</label>
-            <input
-              value={form.rfc}
-              onChange={(e) => setForm({ ...form, rfc: e.target.value })}
-              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-sales-slate-100 focus:outline-none focus:ring-2 focus:ring-sales-coral/50"
-              placeholder="Ej. XAXX010101000"
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-sm text-sales-slate-400">Banco</label>
-            <input
-              value={form.bank}
-              onChange={(e) => setForm({ ...form, bank: e.target.value })}
-              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-sales-slate-100 focus:outline-none focus:ring-2 focus:ring-sales-coral/50"
-              placeholder="Ej. BANCOMER / BANAMEX"
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-sm text-sales-slate-400">Cuenta Bancaria</label>
-            <input
-              value={form.account}
-              onChange={(e) => setForm({ ...form, account: e.target.value })}
-              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-sales-slate-100 focus:outline-none focus:ring-2 focus:ring-sales-coral/50"
-              placeholder="Ej. 0194674065"
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-sm text-sales-slate-400">CLABE Interbancaria</label>
-            <input
-              value={form.clabe}
-              onChange={(e) => setForm({ ...form, clabe: e.target.value })}
-              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-sales-slate-100 focus:outline-none focus:ring-2 focus:ring-sales-coral/50"
-              placeholder="Ej. 012320001946740654"
-            />
-          </div>
         </div>
         
         <div className="mt-8">
-          <h4 className="mb-4 text-md font-semibold text-sales-slate-100 border-b border-slate-700 pb-2">Horario Laboral (Para respuesta fuera de horario de la IA)</h4>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="mb-1 block text-sm text-sales-slate-400">Hora de Apertura (HH:mm)</label>
-              <input
-                type="time"
-                value={form.bhStart}
-                onChange={(e) => setForm({ ...form, bhStart: e.target.value })}
-                className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-sales-slate-100 focus:outline-none focus:ring-2 focus:ring-sales-coral/50"
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-sm text-sales-slate-400">Hora de Cierre (HH:mm)</label>
-              <input
-                type="time"
-                value={form.bhEnd}
-                onChange={(e) => setForm({ ...form, bhEnd: e.target.value })}
-                className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-sales-slate-100 focus:outline-none focus:ring-2 focus:ring-sales-coral/50"
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-sm text-sales-slate-400">Zona Horaria</label>
+          <div className="flex flex-col border-t border-slate-700 pt-6">
+            <h4 className="mb-1 text-lg font-semibold text-sales-slate-100">Horarios de Operación (Business Hours)</h4>
+            <p className="mb-6 text-sm text-sales-slate-400">
+              Define los horarios laborales. Los relojes del SLA se pausarán fuera de estos horarios y el agente IA enviará notificaciones de "Fuera de Horario".
+            </p>
+
+            <div className="mb-6 max-w-sm">
+              <label className="mb-1 block text-sm font-medium text-sales-slate-300">Zona Horaria de Operación</label>
               <select
                 value={form.bhTimezone}
                 onChange={(e) => setForm({ ...form, bhTimezone: e.target.value })}
-                className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-sales-slate-100 focus:outline-none focus:ring-2 focus:ring-sales-coral/50"
+                className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-sales-slate-100 focus:outline-none focus:ring-2 focus:ring-sales-cyan-500/50"
               >
                 <option value="America/Mexico_City">Ciudad de México / Centro</option>
                 <option value="America/Tijuana">Tijuana / Pacífico</option>
                 <option value="America/Mazatlan">Mazatlán / Montaña</option>
                 <option value="America/Cancun">Cancún / Sureste</option>
+                <option value="America/Bogota">Bogotá / Lima / Quito</option>
+                <option value="America/Argentina/Buenos_Aires">Buenos Aires</option>
               </select>
             </div>
+
+            <div className="flex flex-col gap-3">
+              {DAYS_MAP.map(day => {
+                const dayConfig = form.schedule[day.id];
+                return (
+                  <div key={day.id} className={`flex items-center gap-4 p-3 rounded-lg border transition-colors ${dayConfig.isOpen ? 'bg-sales-slate-800/80 border-sales-slate-700' : 'bg-sales-slate-900/50 border-sales-slate-800'}`}>
+                    <div className="w-32 flex items-center gap-3">
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input 
+                          type="checkbox" 
+                          className="sr-only peer" 
+                          checked={dayConfig.isOpen}
+                          onChange={(e) => handleDayChange(day.id, 'isOpen', e.target.checked)}
+                        />
+                        <div className="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-sales-cyan-500"></div>
+                      </label>
+                      <span className={`text-sm font-medium ${dayConfig.isOpen ? 'text-sales-slate-200' : 'text-sales-slate-500'}`}>{day.name}</span>
+                    </div>
+
+                    <div className="flex-1 flex items-center gap-3">
+                      {dayConfig.isOpen ? (
+                        <>
+                          <input
+                            type="time"
+                            value={dayConfig.start}
+                            onChange={(e) => handleDayChange(day.id, 'start', e.target.value)}
+                            className="rounded-md border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm text-sales-slate-100 focus:outline-none focus:ring-1 focus:ring-sales-cyan-500"
+                          />
+                          <span className="text-sales-slate-500">a</span>
+                          <input
+                            type="time"
+                            value={dayConfig.end}
+                            onChange={(e) => handleDayChange(day.id, 'end', e.target.value)}
+                            className="rounded-md border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm text-sales-slate-100 focus:outline-none focus:ring-1 focus:ring-sales-cyan-500"
+                          />
+                        </>
+                      ) : (
+                        <span className="text-sm font-medium text-sales-slate-500/70 italic px-2">Cerrado</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
-          <p className="mt-2 text-xs text-sales-slate-400">
-            * Deja las horas en blanco si deseas que la IA opere en modo "Siempre Abierto" (24/7).
-          </p>
         </div>
 
-        <button
-          type="submit"
-          disabled={saving}
-          className="rounded-lg bg-sales-orange px-6 py-2 text-sm font-medium text-white hover:bg-sales-orange-light transition-colors disabled:opacity-50"
-        >
-          {saving ? 'Guardando...' : 'Guardar Cambios'}
-        </button>
+        <div className="mt-8 pt-6 border-t border-slate-800">
+          <button
+            type="submit"
+            disabled={saving}
+            className="rounded-lg bg-sales-cyan-600 px-6 py-2.5 text-sm font-bold text-white hover:bg-sales-cyan-500 transition-colors shadow-md disabled:opacity-50"
+          >
+            {saving ? 'Guardando...' : 'Guardar Configuración Global'}
+          </button>
+        </div>
       </form>
     </div>
   );
