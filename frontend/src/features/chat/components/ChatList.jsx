@@ -42,6 +42,11 @@ export default function ChatList({ conversations, currentConversationId, current
           }
         }
 
+        if (conv.status === 'CLOSED') {
+          listStyles += ' opacity-75 grayscale-[0.2]';
+          gridStyles += ' opacity-75 grayscale-[0.2]';
+        }
+
         return (
           <div 
             key={conv.id} 
@@ -58,6 +63,22 @@ export default function ChatList({ conversations, currentConversationId, current
             <div className="flex justify-between items-start mb-1">
               <span className="font-semibold text-sales-slate-100 pr-2 flex flex-wrap items-center gap-2 min-w-0">
                 <span className="truncate">{conv.client?.name || conv.client?.phoneNumber}</span>
+                {conv.status === 'PENDING_ASSIGNMENT' && (
+                  <span 
+                    className="flex-shrink-0 px-1.5 py-0.5 rounded bg-sales-cyan-500/20 text-sales-cyan-400 border border-sales-cyan-500/30 text-[10px] font-bold uppercase tracking-wider"
+                    title="Nuevo chat sin asesor asignado"
+                  >
+                    Nuevo
+                  </span>
+                )}
+                {conv.status === 'CLOSED' && (
+                  <span 
+                    className="flex-shrink-0 px-1.5 py-0.5 rounded bg-sales-slate-700/50 text-sales-slate-400 border border-sales-slate-600 text-[10px] font-bold uppercase tracking-wider"
+                    title="Chat finalizado"
+                  >
+                    Cerrado
+                  </span>
+                )}
                 {conv.status === 'ESCALATED' && (
                   <span 
                     className="flex-shrink-0 px-1.5 py-0.5 rounded bg-red-500 text-white shadow-sm shadow-red-500/20 text-[10px] font-bold uppercase tracking-wider"
@@ -67,7 +88,7 @@ export default function ChatList({ conversations, currentConversationId, current
                     Escalado
                   </span>
                 )}
-                {isSlaBreached && (
+                {isSlaBreached && conv.status !== 'CLOSED' && (
                   <SlaBadge isSlaBreached={isSlaBreached} breachType={breachType} />
                 )}
               </span>
