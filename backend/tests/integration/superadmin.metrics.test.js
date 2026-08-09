@@ -4,7 +4,7 @@ const app = require('../../src/app');
 const prisma = require('../../src/config/database');
 const { clearCache } = require('../../src/services/superadmin.metrics.service');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'test-secret';
+const env = require('../../src/config/env');
 
 let superadminToken;
 let normalToken;
@@ -12,14 +12,14 @@ beforeAll(async () => {
   // Create Superadmin Token
   superadminToken = jwt.sign(
     { id: 'test-superadmin', role: 'SUPERADMIN' },
-    JWT_SECRET,
+    env.superadminJwtSecret,
     { expiresIn: '1h' }
   );
 
   // Create Normal Admin Token
   normalToken = jwt.sign(
     { id: 'test-normal', role: 'ADMIN' },
-    JWT_SECRET,
+    env.jwtSecret,
     { expiresIn: '1h' }
   );
 });
