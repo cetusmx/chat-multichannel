@@ -465,12 +465,17 @@ const whatsappService = {
                     const aiConfig = await prisma.aiConfig.findUnique({ where: { tenantId } });
                     const isAiActive = aiConfig ? aiConfig.isActive : true;
 
-                    if (!isAiActive) {
-                      // Silently escalate if AI is disabled
-                      const updatedConv = await prisma.conversation.update({
-                        where: { id: conversation.id },
-                        data: { status: 'ESCALATED' }
-                      });
+                    // Pre-flight check para cuota de IA
+                    const quotaService = require('./quota.service');
+                    const isQuotaExceeded = await quotaService.checkAiQuotaExceeded(tenantId);
+
+                    if (!isAiActive || isQuotaExceeded) {
+                      if (isQuotaExceeded) {
+                        logger.warn(`[WHATSAPP_SERVICE] QUOTA_EXCEEDED for tenant ${tenantId}. Bypassing AI.`);
+                      }
+
+                      const fallbackResult = await assignmentService.fallbackToHuman(tenantId, conversation.id);
+
                       try {
                         const io = socket.getIo();
                         io.of('/chat')
@@ -478,13 +483,21 @@ const whatsappService = {
                           .emit('chat:escalated', { 
                             type: 'ESCALATION_ALERT', 
                             conversationId: conversation.id, 
-                            message: 'Nueva conversación requiere atención (IA inactiva).' 
+                            message: isQuotaExceeded ? 'Nueva conversación requiere atención (Cuota IA excedida).' : 'Nueva conversación requiere atención (IA inactiva).' 
                           });
                         io.of('/chat')
                           .to(`tenant_${tenantId}_vendors`)
-                          .emit('conversation_escalated', updatedConv);
+                          .emit('conversation_escalated', fallbackResult.conversation);
                       } catch (e) {
                         logger.error('Socket notification error on silent escalation:', e);
+                      }
+
+                      if (!fallbackResult.vendor) {
+                        try {
+                          await this.sendMessage(conversation.id, 'Nuestro asistente virtual no está disponible en este momento. Un humano te atenderá a la brevedad.', null, 'SYSTEM');
+                        } catch (msgErr) {
+                          logger.error('Error sending fallback message:', msgErr);
+                        }
                       }
                       return;
                     }

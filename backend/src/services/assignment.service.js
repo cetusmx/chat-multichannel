@@ -197,6 +197,26 @@ class AssignmentService {
       throw error;
     }
   }
+
+  async fallbackToHuman(tenantId, conversationId) {
+    try {
+      let vendor = await this.autoAssign(tenantId, conversationId);
+      let conversation;
+      if (!vendor) {
+        // Encapsulate fallback PENDING_ASSIGNMENT state change
+        conversation = await prisma.conversation.update({
+          where: { id: conversationId },
+          data: { status: 'PENDING_ASSIGNMENT', aiPendingEscalation: false }
+        });
+      } else {
+        conversation = await prisma.conversation.findUnique({ where: { id: conversationId } });
+      }
+      return { vendor, conversation };
+    } catch (error) {
+      console.error(`[AssignmentService] Error in fallbackToHuman:`, error);
+      throw error;
+    }
+  }
 }
 
 module.exports = new AssignmentService();

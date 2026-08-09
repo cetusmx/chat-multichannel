@@ -7,7 +7,7 @@ export default function SuperadminLayout() {
   const location = useLocation();
 
   const navItems = [
-    { path: '/', label: 'Dashboard', icon: LayoutDashboard },
+    { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { path: '/tenants', label: 'Inquilinos', icon: Users },
     { path: '/licenses', label: 'Licencias', icon: CreditCard },
   ];

@@ -102,7 +102,10 @@ class GeminiProvider extends AIProvider {
         calls = result.response.functionCalls();
       }
 
-      return { content: result.response.text() };
+      return { 
+        content: result.response.text(),
+        tokens: result.response.usageMetadata?.totalTokenCount || null 
+      };
     } catch (error) {
       if (error.message.includes('404') || error.status === 404) {
         try {

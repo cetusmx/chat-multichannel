@@ -593,6 +593,23 @@ class AIService {
       };
 
       const response = await this.generateResponse(tenantId, formattedHistory, baseSystemInstruction, tools, toolHandlers);
+      
+      const exactTokens = response.tokens;
+      const promptLength = baseSystemInstruction.length + formattedHistory.reduce((acc, msg) => acc + (msg.content?.length || 0), 0);
+      const fallbackTokens = Math.ceil((promptLength + (response.content?.length || 0)) / 4);
+      const consumedTokens = exactTokens != null ? exactTokens : fallbackTokens;
+
+      if (consumedTokens > 0) {
+        try {
+          await prisma.tenant.updateMany({
+            where: { id: tenantId, licenseType: { not: 'LIFETIME' } },
+            data: { currentMonthAiTokens: { increment: consumedTokens } }
+          });
+        } catch (e) {
+          console.error('[AI_SERVICE] Failed to increment AI tokens:', e.message);
+        }
+      }
+
       return response.content;
     } catch (error) {
       console.error('[AI_SERVICE] Error generating auto-response:', error.message);
@@ -615,8 +632,13 @@ class AIService {
       throw new ApiError(400, 'Missing required parameters for inline suggestion');
     }
 
-
     try {
+      const quotaService = require('./quota.service');
+      const isQuotaExceeded = await quotaService.checkAiQuotaExceeded(tenantId);
+      if (isQuotaExceeded) {
+        throw new ApiError(403, 'Cuota de Inteligencia Artificial excedida', 'QUOTA_EXCEEDED');
+      }
+
       const history = await prisma.message.findMany({
         where: { 
           conversationId,
@@ -657,6 +679,23 @@ ${contextString}`;
       formattedHistory.push({ role: 'user', content: `Vendor Prompt: ${userPrompt}` });
 
       const response = await this.generateResponse(tenantId, formattedHistory, systemInstruction);
+      
+      const exactTokens = response.tokens;
+      const promptLength = systemInstruction.length + formattedHistory.reduce((acc, msg) => acc + (msg.content?.length || 0), 0);
+      const fallbackTokens = Math.ceil((promptLength + (response.content?.length || 0)) / 4);
+      const consumedTokens = exactTokens != null ? exactTokens : fallbackTokens;
+
+      if (consumedTokens > 0) {
+        try {
+          await prisma.tenant.updateMany({
+            where: { id: tenantId, licenseType: { not: 'LIFETIME' } },
+            data: { currentMonthAiTokens: { increment: consumedTokens } }
+          });
+        } catch (e) {
+          console.error('[AI_SERVICE] Failed to increment AI tokens:', e.message);
+        }
+      }
+
       return response.content;
     } catch (error) {
       console.error('[AI_SERVICE] Error generating inline suggestion:', error.message);

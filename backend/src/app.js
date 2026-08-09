@@ -66,6 +66,7 @@ app.use('/uploads', authenticate, (req, res, next) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/superadmin/auth', superadminAuthRoutes);
 app.use('/api/superadmin/tenants', superadminTenantRoutes);
+app.use('/api/superadmin/metrics', require('./routes/superadmin.metrics.routes'));
 app.use('/api/health', healthRoutes);
 app.use('/api/users', usersRoutes);
 app.use('/api/groups', groupsRoutes);

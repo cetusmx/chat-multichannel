@@ -1,5 +1,6 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { BrowserRouter } from 'react-router-dom';
 import Tenants from '../Tenants';
 import { api } from '../../services/api';
 
@@ -38,7 +39,7 @@ describe('Tenants Page', () => {
       meta: { total: 1, page: 1, limit: 10 }
     });
 
-    render(<Tenants />);
+    render(<BrowserRouter><Tenants /></BrowserRouter>);
 
     // Shows loading state initially
     expect(document.querySelector('.animate-pulse')).toBeInTheDocument();
@@ -61,7 +62,7 @@ describe('Tenants Page', () => {
     
     api.patch.mockResolvedValueOnce({ success: true });
 
-    render(<Tenants />);
+    render(<BrowserRouter><Tenants /></BrowserRouter>);
 
     await waitFor(() => {
       expect(screen.getByText('Acme Corp')).toBeInTheDocument();
@@ -99,7 +100,7 @@ describe('Tenants Page', () => {
     
     api.patch.mockRejectedValueOnce(new Error('Network error'));
 
-    render(<Tenants />);
+    render(<BrowserRouter><Tenants /></BrowserRouter>);
 
     await waitFor(() => {
       expect(screen.getByText('Acme Corp')).toBeInTheDocument();

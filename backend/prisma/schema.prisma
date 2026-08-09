@@ -62,33 +62,35 @@ enum LicenseType {
 }
 
 model Tenant {
-  id            String   @id @default(cuid())
-  name          String
-  domain        String   @unique
-  phone         String?
-  email         String?
-  address       String?
-  status        String   @default("active")
-  businessHours Json?    @map("business_hours")
-  rfc                 String?
-  bankDetails         Json?       @map("bank_details")
-  maxUsers            Int         @default(-1) @map("max_users")
-  maxAiTokens         Int         @default(0) @map("max_ai_tokens") /// 0 = disabled, -1 = unlimited
-  licenseType         LicenseType @default(LIFETIME) @map("license_type")
-  subscriptionEndDate DateTime?   @db.Timestamptz(3) @map("subscription_end_date") /// NULL is valid for LIFETIME or unbounded SUBSCRIPTION
-  createdAt           DateTime    @default(now()) @map("created_at")
-  updatedAt           DateTime    @updatedAt @map("updated_at")
+  id                   String      @id @default(cuid())
+  name                 String
+  domain               String      @unique
+  phone                String?
+  email                String?
+  address              String?
+  status               String      @default("active")
+  businessHours        Json?       @map("business_hours")
+  rfc                  String?
+  bankDetails          Json?       @map("bank_details")
+  maxUsers             Int         @default(-1) @map("max_users")
+  maxAiTokens          Int         @default(0) @map("max_ai_tokens") /// 0 = disabled, -1 = unlimited
+  currentMonthAiTokens Int         @default(0) @map("current_month_ai_tokens")
+  lastTokenResetDate   DateTime    @default(now()) @map("last_token_reset_date")
+  licenseType          LicenseType @default(LIFETIME) @map("license_type")
+  subscriptionEndDate  DateTime?   @map("subscription_end_date") @db.Timestamptz(3) /// NULL is valid for LIFETIME or unbounded SUBSCRIPTION
+  createdAt            DateTime    @default(now()) @map("created_at")
+  updatedAt            DateTime    @updatedAt @map("updated_at")
 
-  users          User[]
-  branches       Branch[]
-  whatsappConfig WhatsAppConfig?
-  aiConfig       AiConfig?
-  assignmentRule AssignmentRule?
-  slaConfig      SlaConfig?
-  clients        Client[]
-  conversations  Conversation[]
-  documents      Document[]
-  documentChunks DocumentChunk[]
+  users           User[]
+  branches        Branch[]
+  whatsappConfig  WhatsAppConfig?
+  aiConfig        AiConfig?
+  assignmentRule  AssignmentRule?
+  slaConfig       SlaConfig?
+  clients         Client[]
+  conversations   Conversation[]
+  documents       Document[]
+  documentChunks  DocumentChunk[]
   cannedResponses CannedResponse[]
   aiRules         AiRule[]
 
@@ -143,12 +145,12 @@ model User {
 
   coordinatorId String? @map("coordinator_id")
 
-  tenant        Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  groups        GroupVendor[]
-  coordinator   User?            @relation("UserCoordinator", fields: [coordinatorId], references: [id])
-  assignees     User[]           @relation("UserCoordinator")
-  conversations Conversation[]   @relation("VendorConversations")
-  eligibleRules EligibleVendor[]
+  tenant               Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  groups               GroupVendor[]
+  coordinator          User?                 @relation("UserCoordinator", fields: [coordinatorId], references: [id])
+  assignees            User[]                @relation("UserCoordinator")
+  conversations        Conversation[]        @relation("VendorConversations")
+  eligibleRules        EligibleVendor[]
   cannedResponseUsages CannedResponseUsage[]
 
   @@index([tenantId])
@@ -336,13 +338,13 @@ model Document {
 }
 
 model DocumentChunk {
-  id         String                     @id @default(uuid())
-  text       String                     @db.Text
+  id         String                @id @default(uuid())
+  text       String                @db.Text
   embedding  Unsupported("vector")
-  documentId String                     @map("document_id")
-  tenantId   String                     @map("tenant_id")
-  createdAt  DateTime                   @default(now()) @map("created_at")
-  updatedAt  DateTime                   @updatedAt @map("updated_at")
+  documentId String                @map("document_id")
+  tenantId   String                @map("tenant_id")
+  createdAt  DateTime              @default(now()) @map("created_at")
+  updatedAt  DateTime              @updatedAt @map("updated_at")
 
   document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
   tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -361,8 +363,8 @@ model CannedResponse {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  usages    CannedResponseUsage[]
+  tenant Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  usages CannedResponseUsage[]
 
   @@index([tenantId])
   @@map("canned_responses")
@@ -375,8 +377,8 @@ model CannedResponseUsage {
   lastUsedAt       DateTime @default(now()) @map("last_used_at")
   useCount         Int      @default(0) @map("use_count")
 
-  user             User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  cannedResponse   CannedResponse @relation(fields: [cannedResponseId], references: [id], onDelete: Cascade)
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  cannedResponse CannedResponse @relation(fields: [cannedResponseId], references: [id], onDelete: Cascade)
 
   @@unique([userId, cannedResponseId])
   @@index([userId])
@@ -384,17 +386,17 @@ model CannedResponseUsage {
 }
 
 model AiRule {
-  id          String   @id @default(cuid())
-  tenantId    String   @map("tenant_id")
-  term        String
-  definition  String   @db.Text
-  isActive    Boolean  @default(true) @map("is_active")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id         String   @id @default(cuid())
+  tenantId   String   @map("tenant_id")
+  term       String
+  definition String   @db.Text
+  isActive   Boolean  @default(true) @map("is_active")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
-  @@index([tenantId])
   @@unique([tenantId, term])
+  @@index([tenantId])
   @@map("ai_rules")
 }
