@@ -346,6 +346,20 @@ const useChatStore = create((set, get) => ({
     }
   },
 
+  resolveConversation: async (conversationId) => {
+    if (!conversationId) return;
+    try {
+      const res = await config.api.patch(`/chat/${conversationId}/resolve`);
+      if (!res.ok) {
+        throw new Error('No se pudo cerrar la conversación');
+      }
+      // Note: socket listener 'chat:resolved' will update the status automatically
+    } catch (error) {
+      console.error('Error closing conversation:', error);
+      set({ errorMsg: 'Failed to close conversation' });
+    }
+  },
+
   addTag: async (messageId, tag) => {
     if (!tag || !tag.trim()) return;
     const { currentConversationId } = get();

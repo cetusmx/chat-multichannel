@@ -622,6 +622,43 @@ router.patch('/:conversationId/assign', authenticate, authorize('ADMIN', 'COORDI
   }
 });
 
+router.patch('/:conversationId/resolve', authenticate, authorize('ADMIN', 'COORDINATOR', 'VENDOR'), async (req, res, next) => {
+  try {
+    const { conversationId } = req.params;
+    const conversation = await prisma.conversation.findUnique({
+      where: { id: conversationId }
+    });
+
+    if (!conversation || conversation.tenantId !== req.user.tenantId) {
+      return res.status(404).json({ error: 'Conversación no encontrada' });
+    }
+
+    if (req.user.role === 'VENDOR' && conversation.vendorId !== req.user.id) {
+      return res.status(403).json({ error: 'No autorizado para cerrar esta conversación' });
+    }
+
+    if (conversation.status === 'CLOSED') {
+      return res.json({ data: conversation });
+    }
+
+    const updatedConversation = await prisma.conversation.update({
+      where: { id: conversationId },
+      data: { status: 'CLOSED' }
+    });
+
+    try {
+      const io = socket.getIo();
+      io.of('/chat').to(`conversation:${conversationId}`).to(`tenant_${req.user.tenantId}_coordinators`).emit('chat:resolved', { conversationId, status: 'CLOSED' });
+    } catch (socketErr) {
+      console.error('Failed to emit chat:resolved', socketErr);
+    }
+
+    res.json({ data: updatedConversation });
+  } catch (error) {
+    next(error);
+  }
+});
+
 // PDF Generation Route
 const PdfGeneratorService = require('../services/pdf.service');
 

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ShoppingCart, X } from 'lucide-react';
+import { ShoppingCart, X, CheckCircle } from 'lucide-react';
 import ChatList from '../features/chat/components/ChatList';
 import MessageList from '../features/chat/components/MessageList';
 import useChatStore from '../stores/useChatStore';
@@ -29,7 +29,8 @@ export default function ChatView() {
     disconnectSocket,
     hasMore,
     loadMoreMessages,
-    isLoadingMore
+    isLoadingMore,
+    resolveConversation
   } = useChatStore();
 
   useEffect(() => {
@@ -81,25 +82,40 @@ export default function ChatView() {
                 loadMoreMessages={() => loadMoreMessages(currentConversationId)}
                 isLoadingMore={isLoadingMore}
                 headerActions={
-                  <button
-                    onClick={() => setIsCartOpen(true)}
-                    className="relative z-40 cursor-pointer bg-gradient-to-r from-sales-cyan-600 to-sales-blue-600 hover:from-sales-cyan-500 hover:to-sales-blue-500 text-white p-2.5 rounded-full shadow-[0_0_12px_rgba(6,182,212,0.6)] border border-sales-cyan-400/50 transition-all duration-300 hover:scale-110 active:scale-95 flex items-center justify-center"
-                    title="Ver Carrito"
-                  >
-                    <ShoppingCart className="w-5 h-5" />
-                    {(() => {
-                      const cData = activeConv?.client?.cartData;
-                      const items = Array.isArray(cData) ? cData : (cData?.items || []);
-                      if (items.length > 0) {
-                        return (
-                          <span className="absolute top-1.5 right-1.5 bg-sales-coral-500 text-[9px] font-bold min-w-[14px] h-[14px] px-1 flex items-center justify-center rounded-full shadow-sm">
-                            {items.length}
-                          </span>
-                        );
-                      }
-                      return null;
-                    })()}
-                  </button>
+                  <div className="flex items-center gap-3">
+                    {activeConv?.status !== 'CLOSED' && (
+                      <button
+                        onClick={() => {
+                          if (window.confirm('¿Estás seguro de finalizar esta conversación? Esto detendrá los medidores de SLA.')) {
+                            resolveConversation(currentConversationId);
+                          }
+                        }}
+                        className="relative z-40 cursor-pointer bg-sales-slate-800 hover:bg-emerald-600/90 text-emerald-500 hover:text-white p-2.5 rounded-full border border-emerald-500/30 hover:border-emerald-500 transition-all duration-300 flex items-center justify-center shadow-sm hover:scale-110 active:scale-95"
+                        title="Finalizar Conversación"
+                      >
+                        <CheckCircle className="w-5 h-5" />
+                      </button>
+                    )}
+                    <button
+                      onClick={() => setIsCartOpen(true)}
+                      className="relative z-40 cursor-pointer bg-gradient-to-r from-sales-cyan-600 to-sales-blue-600 hover:from-sales-cyan-500 hover:to-sales-blue-500 text-white p-2.5 rounded-full shadow-[0_0_12px_rgba(6,182,212,0.6)] border border-sales-cyan-400/50 transition-all duration-300 hover:scale-110 active:scale-95 flex items-center justify-center"
+                      title="Ver Carrito"
+                    >
+                      <ShoppingCart className="w-5 h-5" />
+                      {(() => {
+                        const cData = activeConv?.client?.cartData;
+                        const items = Array.isArray(cData) ? cData : (cData?.items || []);
+                        if (items.length > 0) {
+                          return (
+                            <span className="absolute top-1.5 right-1.5 bg-sales-coral-500 text-[9px] font-bold min-w-[14px] h-[14px] px-1 flex items-center justify-center rounded-full shadow-sm">
+                              {items.length}
+                            </span>
+                          );
+                        }
+                        return null;
+                      })()}
+                    </button>
+                  </div>
                 }
               />
             </div>
