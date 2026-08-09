@@ -6,6 +6,7 @@ import ChatList from './ChatList';
 import FocusPanel from './FocusPanel';
 import { motion } from 'framer-motion';
 import { Users, AlertTriangle, CheckCircle, Clock } from 'lucide-react';
+import * as api from '../../../services/api';
 
 const StatCard = ({ title, value, icon: Icon, iconColor, filterType, activeFilter, setFilter }) => {
   const isActive = activeFilter === filterType;
@@ -30,16 +31,33 @@ const StatCard = ({ title, value, icon: Icon, iconColor, filterType, activeFilte
 
 export default function CoordinatorDashboard() {
   const user = useAuthStore(s => s.user);
-  const { socket, conversations, fetchConversations } = useChatStore();
+  const { socket, conversations, fetchConversations, initializeSocket, disconnectSocket } = useChatStore();
   const coordinatorViewMode = useUIStore(s => s.coordinatorViewMode);
   const focusedChatIds = useUIStore(s => s.focusedChatIds);
   const toggleFocusedChat = useUIStore(s => s.toggleFocusedChat);
 
   const [filter, setFilter] = useState('ALL');
+  const [vendorsMap, setVendorsMap] = useState({});
 
   useEffect(() => {
+    initializeSocket();
     fetchConversations();
-  }, [fetchConversations]);
+    
+    // Fetch users (vendors directory)
+    api.get('/users').then(res => res.json()).then(json => {
+      const map = {};
+      if (json.data) {
+        json.data.forEach(u => {
+          map[u.id] = u.name;
+        });
+      }
+      setVendorsMap(map);
+    }).catch(err => console.error("Error fetching users directory", err));
+
+    return () => {
+      disconnectSocket();
+    };
+  }, [initializeSocket, fetchConversations, disconnectSocket]);
 
   useEffect(() => {
     if (socket && user?.tenantId) {
@@ -67,6 +85,8 @@ export default function CoordinatorDashboard() {
     return true;
   });
 
+  const shouldGroup = filter !== 'ALL' && filter !== 'PENDING';
+
   return (
     <div className="flex flex-col relative w-full h-full bg-sales-slate-900 text-sales-slate-100 rounded-lg border border-sales-slate-800 shadow-xl overflow-hidden">
       
@@ -87,10 +107,10 @@ export default function CoordinatorDashboard() {
             className="w-full h-full overflow-y-auto p-4 custom-scrollbar"
           >
             <div className="flex items-center justify-between mb-4 px-4">
-              <h2 className="text-xl font-bold bg-gradient-to-r from-sales-slate-100 to-sales-slate-300 bg-clip-text text-transparent">
+              <h2 className="text-xl font-bold bg-gradient-to-r from-sales-slate-100 to-sales-slate-300 bg-clip-text text-transparent flex items-center gap-2">
                 {filter === 'ALL' ? 'Vista Global' : 
                  filter === 'PENDING' ? 'Bolsa de Trabajo (En Espera)' :
-                 filter === 'SLA' ? 'Tickets Críticos' : 'Tickets Archivados'}
+                 filter === 'SLA' ? 'Tickets Críticos (Agrupados por Asesor)' : 'Tickets Archivados (Agrupados por Asesor)'}
               </h2>
               <div className="text-sm font-medium text-sales-slate-400 bg-sales-slate-800/50 px-3 py-1 rounded-full border border-sales-slate-700/50">
                 {filteredConversations.length} {filteredConversations.length === 1 ? 'resultado' : 'resultados'}
@@ -101,6 +121,8 @@ export default function CoordinatorDashboard() {
               currentConversationIds={focusedChatIds} 
               onSelect={toggleFocusedChat}
               layout="grid" 
+              groupByVendor={shouldGroup}
+              vendorMap={vendorsMap}
             />
           </motion.div>
         ) : (
@@ -127,6 +149,8 @@ export default function CoordinatorDashboard() {
                   currentConversationIds={focusedChatIds} 
                   onSelect={toggleFocusedChat}
                   layout="list" 
+                  groupByVendor={shouldGroup}
+                  vendorMap={vendorsMap}
                 />
               </div>
             </div>
