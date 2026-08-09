@@ -575,8 +575,8 @@ const useChatStore = create((set, get) => ({
 
         if (requiresFetch) {
           // Fire and forget fetch to update sidebar with new conversation details
-          if (global._fetchConvTimeout) clearTimeout(global._fetchConvTimeout);
-          global._fetchConvTimeout = setTimeout(() => get().fetchConversations(), 300);
+          if (window._fetchConvTimeout) clearTimeout(window._fetchConvTimeout);
+          window._fetchConvTimeout = setTimeout(() => get().fetchConversations(), 300);
         }
 
         return { messages: nextMessages, conversations: nextConversations, unreadCounts: nextUnreadCounts };

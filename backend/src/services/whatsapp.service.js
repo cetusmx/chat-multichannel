@@ -402,7 +402,9 @@ const whatsappService = {
             }
             
             try {
-              socket.getIo().of('/chat').to(`conversation:${conversation.id}`).to(`tenant_${tenantId}_coordinators`).emit('new_message', msgRecord);
+              let ioEvent = socket.getIo().of('/chat').to(`conversation:${conversation.id}`).to(`tenant_${tenantId}_coordinators`);
+              if (conversation.vendorId) ioEvent = ioEvent.to(`vendor_${conversation.vendorId}`);
+              ioEvent.emit('new_message', msgRecord);
             } catch (err) {
               logger.error('[WHATSAPP_SERVICE] No se pudo emitir por socket:', err.message);
             }
@@ -652,7 +654,9 @@ const whatsappService = {
       });
 
       try {
-        socket.getIo().of('/chat').to(`conversation:${conversationId}`).to(`tenant_${conversation.tenantId}_coordinators`).emit('new_message', message);
+        let ioEvent = socket.getIo().of('/chat').to(`conversation:${conversationId}`).to(`tenant_${conversation.tenantId}_coordinators`);
+        if (conversation.vendorId) ioEvent = ioEvent.to(`vendor_${conversation.vendorId}`);
+        ioEvent.emit('new_message', message);
       } catch (err) {
         logger.error('[WHATSAPP_SERVICE] No se pudo emitir por socket:', err.message);
       }
@@ -799,7 +803,9 @@ const whatsappService = {
       }).catch(err => logger.error('Error updating conversation lastMessageAt:', err.message));
 
       try {
-        socket.getIo().of('/chat').to(`conversation:${conversationId}`).to(`tenant_${conversation.tenantId}_coordinators`).emit('new_message', msgRecord);
+        let ioEvent = socket.getIo().of('/chat').to(`conversation:${conversationId}`).to(`tenant_${conversation.tenantId}_coordinators`);
+        if (conversation.vendorId) ioEvent = ioEvent.to(`vendor_${conversation.vendorId}`);
+        ioEvent.emit('new_message', msgRecord);
       } catch (err) {
         logger.error('[WHATSAPP_SERVICE] No se pudo emitir por socket:', err.message);
       }
