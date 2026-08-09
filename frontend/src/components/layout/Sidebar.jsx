@@ -37,10 +37,10 @@ export default function Sidebar() {
             to={item.to}
             end={item.to === '/'}
             className={({ isActive }) =>
-              `flex h-12 w-full items-center gap-3 rounded-lg px-3 transition-colors ${
+              `flex h-12 w-full items-center gap-3 rounded-md px-3 transition-all relative ${
                 isActive
-                  ? 'bg-sales-coral/20 text-sales-coral font-medium'
-                  : 'text-sales-slate-400 hover:bg-slate-800 hover:text-sales-slate-300'
+                  ? 'bg-slate-800/80 text-white font-medium before:absolute before:left-0 before:top-2 before:bottom-2 before:w-1 before:bg-sales-cyan-500 before:rounded-r-md'
+                  : 'text-sales-slate-400 hover:bg-slate-800/50 hover:text-sales-slate-300'
               }`
             }
           >

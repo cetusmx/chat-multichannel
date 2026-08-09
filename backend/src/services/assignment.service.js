@@ -124,7 +124,7 @@ class AssignmentService {
     try {
       if (!tenantId || !conversationId) return null;
 
-      const selectedVendor = await prisma.$transaction(async (tx) => {
+      const selectedResult = await prisma.$transaction(async (tx) => {
         const conversation = await tx.conversation.findFirst({
           where: { id: conversationId, tenantId }
         });
@@ -174,13 +174,28 @@ class AssignmentService {
           return null;
         }
 
-        return vendor;
+        const updatedConv = await tx.conversation.findUnique({
+          where: { id: conversationId },
+          include: { client: true }
+        });
+
+        return { vendor, conversation: updatedConv };
       });
 
-      if (selectedVendor) {
+      if (selectedResult) {
+        const { vendor, conversation } = selectedResult;
         try {
           const io = getIo();
-          io.of('/chat').to(`vendor_${selectedVendor.id}`).emit('chat:assigned', {
+          
+          // Emitir conversation_reassigned para que el front lo agregue a la bandeja y suba el unreadCount
+          io.of('/chat').to(`vendor_${vendor.id}`).emit('conversation_reassigned', {
+            action: 'added',
+            conversationId: conversation.id,
+            conversation: conversation
+          });
+          
+          // Mantener chat:assigned por si hay algo más que lo escuche (opcional)
+          io.of('/chat').to(`vendor_${vendor.id}`).emit('chat:assigned', {
             type: 'chat:assigned',
             payload: { conversationId },
             timestamp: new Date().toISOString(),
@@ -191,7 +206,7 @@ class AssignmentService {
         }
       }
 
-      return selectedVendor;
+      return selectedResult ? selectedResult.vendor : null;
     } catch (error) {
       console.error(`[AssignmentService] Error in autoAssign:`, error);
       throw error;

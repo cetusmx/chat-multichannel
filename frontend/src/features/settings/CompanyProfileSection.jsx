@@ -272,7 +272,7 @@ export default function CompanyProfileSection() {
           <button
             type="submit"
             disabled={saving}
-            className="rounded-lg bg-sales-cyan-600 px-6 py-2.5 text-sm font-bold text-white hover:bg-sales-cyan-500 transition-colors shadow-md disabled:opacity-50"
+            className="rounded-lg bg-blue-600 px-6 py-2.5 text-sm font-bold text-white hover:bg-blue-500 transition-colors shadow-md disabled:opacity-50"
           >
             {saving ? 'Guardando...' : 'Guardar Configuración Global'}
           </button>
