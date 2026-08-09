@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, useMemo } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState, useMemo, Fragment } from 'react';
 import useAuthStore from '../../../stores/useAuthStore';
 import useChatStore from '../../../stores/useChatStore';
 import { post } from '../../../services/api';
@@ -11,6 +11,23 @@ const formatBytes = (bytes, decimals = 1) => {
   const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
+};
+
+const formatDateLabel = (dateString) => {
+  const date = new Date(dateString);
+  if (isNaN(date.getTime())) return '';
+  
+  const today = new Date();
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+  
+  if (date.toDateString() === today.toDateString()) {
+    return 'Hoy';
+  } else if (date.toDateString() === yesterday.toDateString()) {
+    return 'Ayer';
+  } else {
+    return date.toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' });
+  }
 };
 
 /**
@@ -502,15 +519,35 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
           <div className="text-center text-sales-slate-500 mt-10">Envía un mensaje para comenzar a chatear.</div>
         )}
         
-        {useMemo(() => messages.map((msg) => {
+        {useMemo(() => messages.map((msg, index) => {
           const isMyTeam = ['VENDOR', 'SYSTEM', 'COORDINATOR', 'ADMIN', 'IA'].includes(msg.senderType);
           const isHighlighted = msg.id === highlightedMessageId;
+          
+          let showDateLabel = false;
+          if (index === 0) {
+            showDateLabel = true;
+          } else {
+            const prevMsg = messages[index - 1];
+            const currentDate = new Date(msg.createdAt).toDateString();
+            const prevDate = new Date(prevMsg.createdAt).toDateString();
+            if (currentDate !== prevDate) {
+              showDateLabel = true;
+            }
+          }
+
           return (
-            <div 
-              key={msg.id} 
-              className={`flex w-full ${isMyTeam ? 'justify-end' : 'justify-start'} transition-all duration-1000 ${isHighlighted ? 'ring-4 ring-sales-cyan-500 rounded-lg bg-sales-cyan-500/20 p-2' : ''}`}
-              ref={isHighlighted ? highlightedRef : null}
-            >
+            <React.Fragment key={msg.id}>
+              {showDateLabel && (
+                <div className="flex justify-center w-full my-2">
+                  <span className="bg-sales-slate-800/80 text-sales-slate-300 text-xs px-3 py-1 rounded-md shadow-sm border border-sales-slate-700/50 uppercase tracking-wide font-medium">
+                    {formatDateLabel(msg.createdAt)}
+                  </span>
+                </div>
+              )}
+              <div 
+                className={`flex w-full ${isMyTeam ? 'justify-end' : 'justify-start'} transition-all duration-1000 ${isHighlighted ? 'ring-4 ring-sales-cyan-500 rounded-lg bg-sales-cyan-500/20 p-2' : ''}`}
+                ref={isHighlighted ? highlightedRef : null}
+              >
               <div 
                 className={`group max-w-[70%] min-w-0 rounded-lg p-3 shadow-sm ${
                   isMyTeam 
@@ -594,7 +631,7 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
                   )}
                 </div>
               </div>
-            </div>
+            </React.Fragment>
           );
         }), [messages, highlightedMessageId, addingTagTo, tagInput, uploadingIds])}
         <div ref={bottomRef} />
