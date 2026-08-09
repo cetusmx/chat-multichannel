@@ -11,8 +11,10 @@ import Settings from './pages/Settings.jsx';
 import UserListPage from './features/users/UserListPage.jsx';
 import CreateUserForm from './features/users/CreateUserForm.jsx';
 import LoginPage from './features/auth/LoginPage.jsx';
+import useTabNotification from './hooks/useTabNotification.js';
 
 function AppLayout() {
+  useTabNotification();
   return (
     <div className="flex h-screen">
       <Sidebar />
