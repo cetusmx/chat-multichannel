@@ -40,7 +40,6 @@ export default function CoordinatorDashboard() {
   const [vendorsMap, setVendorsMap] = useState({});
 
   useEffect(() => {
-    initializeSocket();
     fetchConversations();
     
     // Fetch users (vendors directory)
@@ -53,11 +52,7 @@ export default function CoordinatorDashboard() {
       }
       setVendorsMap(map);
     }).catch(err => console.error("Error fetching users directory", err));
-
-    return () => {
-      disconnectSocket();
-    };
-  }, [initializeSocket, fetchConversations, disconnectSocket]);
+  }, [fetchConversations]);
 
   useEffect(() => {
     if (socket && user?.tenantId) {

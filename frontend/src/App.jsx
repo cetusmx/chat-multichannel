@@ -11,10 +11,21 @@ import Settings from './pages/Settings.jsx';
 import UserListPage from './features/users/UserListPage.jsx';
 import CreateUserForm from './features/users/CreateUserForm.jsx';
 import LoginPage from './features/auth/LoginPage.jsx';
+import useChatStore from './stores/useChatStore.js';
 import useTabNotification from './hooks/useTabNotification.js';
 
 function AppLayout() {
   useTabNotification();
+  
+  useEffect(() => {
+    useChatStore.getState().initializeSocket();
+    useChatStore.getState().fetchConversations();
+    
+    return () => {
+      useChatStore.getState().disconnectSocket();
+    };
+  }, []);
+
   return (
     <div className="flex h-screen">
       <Sidebar />

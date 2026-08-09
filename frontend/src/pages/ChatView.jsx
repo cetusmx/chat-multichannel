@@ -34,16 +34,9 @@ export default function ChatView() {
   } = useChatStore();
 
   useEffect(() => {
-    // 1. Iniciar conexión Socket.io
-    initializeSocket();
-    // 2. Traer conversaciones iniciales
+    // Solo recargar conversaciones al montar la vista de chat para tener datos frescos (opcional, App.jsx ya lo hace)
     fetchConversations();
-
-    return () => {
-      // Limpiar al desmontar
-      disconnectSocket();
-    };
-  }, [initializeSocket, fetchConversations, disconnectSocket]);
+  }, [fetchConversations]);
 
   const activeConv = conversations.find(c => c.id === currentConversationId);
 

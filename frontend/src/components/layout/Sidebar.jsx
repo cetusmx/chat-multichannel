@@ -1,11 +1,12 @@
 import { NavLink } from 'react-router-dom';
 import { MessageSquare, LayoutDashboard, Users, UserCog, BarChart3, Settings } from 'lucide-react';
 import useAuthStore from '../../stores/useAuthStore.js';
+import useChatStore from '../../stores/useChatStore.js';
 import { Logo } from '../Logo.jsx';
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard', roles: ['ADMIN', 'COORDINATOR', 'VENDOR'] },
-  { to: '/chat', icon: MessageSquare, label: 'Conversaciones', roles: ['ADMIN', 'COORDINATOR', 'VENDOR'] },
+  { to: '/chat', icon: MessageSquare, label: 'Conversaciones', roles: ['ADMIN', 'COORDINATOR', 'VENDOR'], badge: true },
   { to: '/users', icon: UserCog, label: 'Usuarios', roles: ['ADMIN', 'COORDINATOR'] },
   { to: '/clients', icon: Users, label: 'Clientes', roles: ['ADMIN', 'COORDINATOR', 'VENDOR'] },
   { to: '/metrics', icon: BarChart3, label: 'Métricas', roles: ['ADMIN', 'COORDINATOR'] },
@@ -14,6 +15,9 @@ const navItems = [
 
 export default function Sidebar() {
   const user = useAuthStore((s) => s.user);
+  const unreadCounts = useChatStore((s) => s.unreadCounts);
+  
+  const totalUnread = Object.values(unreadCounts).reduce((acc, curr) => acc + curr, 0);
   
   // Filtrar los items de navegación según el rol del usuario
   const visibleNavItems = navItems.filter((item) => 
@@ -41,7 +45,12 @@ export default function Sidebar() {
             }
           >
             <item.icon size={20} className="flex-shrink-0" />
-            <span>{item.label}</span>
+            <span className="flex-1">{item.label}</span>
+            {item.badge && totalUnread > 0 && (
+              <span className="bg-sales-coral text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-lg shadow-sales-coral/20 animate-pulse">
+                {totalUnread > 99 ? '99+' : totalUnread}
+              </span>
+            )}
           </NavLink>
         ))}
       </nav>

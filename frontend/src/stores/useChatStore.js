@@ -617,7 +617,12 @@ const useChatStore = create((set, get) => ({
           }
           // Sort by lastMessageAt desc
           nextConversations.sort((a, b) => new Date(b.lastMessageAt || 0) - new Date(a.lastMessageAt || 0));
-          return { conversations: nextConversations };
+          
+          // Increment unread count to trigger sound/tab notification
+          const nextUnreadCounts = { ...state.unreadCounts };
+          nextUnreadCounts[conversation.id] = (nextUnreadCounts[conversation.id] || 0) + 1;
+
+          return { conversations: nextConversations, unreadCounts: nextUnreadCounts };
         }
         return state;
       });
