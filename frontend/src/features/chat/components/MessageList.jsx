@@ -631,6 +631,7 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
                   )}
                 </div>
               </div>
+              </div>
             </React.Fragment>
           );
         }), [messages, highlightedMessageId, addingTagTo, tagInput, uploadingIds])}
