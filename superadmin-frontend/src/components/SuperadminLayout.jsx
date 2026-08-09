@@ -1,6 +1,7 @@
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { LogOut, LayoutDashboard, Users, CreditCard } from 'lucide-react';
 import useAuthStore from '../store/authStore';
+import { Logo } from './ui/Logo';
 
 export default function SuperadminLayout() {
   const { user, logout } = useAuthStore();
@@ -16,11 +17,14 @@ export default function SuperadminLayout() {
     <div className="min-h-screen bg-slate-950 text-white flex">
       {/* Sidebar */}
       <aside className="w-64 border-r border-slate-800 bg-slate-900/50 p-6 flex flex-col h-screen sticky top-0">
-        <div className="mb-10">
-          <h1 className="text-xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
-            Superadmin
-          </h1>
-          <p className="text-xs text-slate-500 mt-1 uppercase tracking-wider font-semibold">Salesflow Platform</p>
+        <div className="mb-10 flex items-center gap-3">
+          <Logo className="w-10 h-10" />
+          <div>
+            <h1 className="text-xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent leading-tight">
+              Superadmin
+            </h1>
+            <p className="text-[10px] text-slate-500 mt-0.5 uppercase tracking-wider font-semibold">Salesflow Platform</p>
+          </div>
         </div>
 
         <nav className="flex-1 space-y-2">

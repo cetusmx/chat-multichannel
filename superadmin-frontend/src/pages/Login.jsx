@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Shield, KeyRound, ArrowRight, Loader2 } from 'lucide-react';
+import { KeyRound, ArrowRight, Loader2 } from 'lucide-react';
+import { Logo } from '../components/ui/Logo';
 import { api } from '../services/api';
 import useAuthStore from '../store/authStore';
 
@@ -47,8 +48,8 @@ export default function Login() {
 
       <div className="w-full max-w-md bg-slate-900/60 backdrop-blur-xl border border-slate-800 rounded-2xl shadow-2xl p-8 relative z-10">
         <div className="text-center mb-10">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-blue-500/10 text-blue-400 mb-6 border border-blue-500/20 shadow-[0_0_15px_rgba(59,130,246,0.15)]">
-            <Shield size={32} strokeWidth={1.5} />
+          <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-slate-800/30 text-blue-400 mb-6 border border-white/5 shadow-2xl">
+            <Logo className="w-14 h-14" />
           </div>
           <h1 className="text-3xl font-bold text-white tracking-tight">Superadmin Portal</h1>
           <p className="text-slate-400 mt-2 text-sm">Identifícate para gestionar la plataforma</p>
