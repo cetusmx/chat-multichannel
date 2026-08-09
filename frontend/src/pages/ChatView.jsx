@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { ShoppingCart, X, CheckCircle } from 'lucide-react';
 import ChatList from '../features/chat/components/ChatList';
 import MessageList from '../features/chat/components/MessageList';
+import ConfirmModal from '../components/ConfirmModal';
 import useChatStore from '../stores/useChatStore';
 
 import CommandPalette from '../features/chat/components/CommandPalette';
@@ -14,6 +15,7 @@ import CartViewer from '../features/chat/components/CartViewer';
  */
 export default function ChatView() {
   const [isCartOpen, setIsCartOpen] = useState(false);
+  const [confirmClose, setConfirmClose] = useState(false);
   const { 
     conversations, 
     currentConversationId, 
@@ -78,11 +80,7 @@ export default function ChatView() {
                   <div className="flex items-center gap-3">
                     {activeConv?.status !== 'CLOSED' && (
                       <button
-                        onClick={() => {
-                          if (window.confirm('¿Estás seguro de finalizar esta conversación? Esto detendrá los medidores de SLA.')) {
-                            resolveConversation(currentConversationId);
-                          }
-                        }}
+                        onClick={() => setConfirmClose(true)}
                         className="relative z-40 cursor-pointer bg-sales-slate-800 hover:bg-emerald-600/90 text-emerald-500 hover:text-white p-2.5 rounded-full border border-emerald-500/30 hover:border-emerald-500 transition-all duration-300 flex items-center justify-center shadow-sm hover:scale-110 active:scale-95"
                         title="Finalizar Conversación"
                       >
@@ -150,6 +148,19 @@ export default function ChatView() {
         )}
       </div>
     </div>
+    
+    <ConfirmModal
+      open={confirmClose}
+      title="Finalizar Conversación"
+      message="¿Estás seguro de finalizar esta conversación? Esto detendrá los medidores de SLA."
+      confirmText="Finalizar"
+      confirmVariant="primary"
+      onConfirm={() => {
+        resolveConversation(currentConversationId);
+        setConfirmClose(false);
+      }}
+      onCancel={() => setConfirmClose(false)}
+    />
     </>
   );
 }

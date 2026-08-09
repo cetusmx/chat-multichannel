@@ -100,7 +100,7 @@ describe('AssignmentService', () => {
       expect(result).toEqual(vendor2);
       expect(prisma.conversation.updateMany).toHaveBeenCalledWith({
         where: { id: 'conv-1', tenantId: 'tenant-1', status: 'PENDING_ASSIGNMENT' },
-        data: { vendorId: 'v2', status: 'ACTIVE' }
+        data: { vendorId: 'v2', status: 'ACTIVE', assignedAt: expect.any(Date) }
       });
       
       expect(mockOf).toHaveBeenCalledWith('/chat');

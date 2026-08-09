@@ -67,14 +67,14 @@ export default function CoordinatorDashboard() {
   
   const metrics = {
     total: conversations.filter(c => new Date(c.createdAt).toDateString() === todayStr || new Date(c.lastMessageAt).toDateString() === todayStr).length,
-    pending: conversations.filter(c => c.status === 'PENDING_ASSIGNMENT').length,
+    pending: conversations.filter(c => c.status === 'PENDING_ASSIGNMENT' || c.status === 'ESCALATED').length,
     slaRisk: conversations.filter(c => c.isSlaBreached && c.status !== 'CLOSED').length,
     closed: conversations.filter(c => c.status === 'CLOSED').length,
   };
 
   const filteredConversations = conversations.filter(c => {
     if (filter === 'ALL') return true;
-    if (filter === 'PENDING') return c.status === 'PENDING_ASSIGNMENT';
+    if (filter === 'PENDING') return c.status === 'PENDING_ASSIGNMENT' || c.status === 'ESCALATED';
     if (filter === 'SLA') return c.isSlaBreached && c.status !== 'CLOSED';
     if (filter === 'CLOSED') return c.status === 'CLOSED';
     return true;

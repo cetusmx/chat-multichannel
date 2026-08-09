@@ -98,7 +98,7 @@ const useChatStore = create((set, get) => ({
         let isSlaBreached = false;
         let breachType = null;
         
-        if (c.status === 'PENDING_ASSIGNMENT' && slaConfig.firstResponseMins) {
+        if ((c.status === 'PENDING_ASSIGNMENT' || c.status === 'ESCALATED') && slaConfig.firstResponseMins) {
           const start = c.lastMessageAt || c.createdAt;
           const elapsedMins = (now - new Date(start).getTime()) / 60000;
           if (elapsedMins > slaConfig.firstResponseMins) {

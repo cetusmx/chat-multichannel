@@ -136,7 +136,7 @@ class SlaService extends EventEmitter {
       const conversations = await prisma.conversation.findMany({
         where: {
           status: {
-            in: ['PENDING_ASSIGNMENT', 'ACTIVE']
+            in: ['PENDING_ASSIGNMENT', 'ACTIVE', 'ESCALATED']
           },
           ...(cursor ? { id: { gt: cursor } } : {})
         },
@@ -180,7 +180,7 @@ class SlaService extends EventEmitter {
           let thresholdMins = 0;
           let startTime = null;
 
-          if (conv.status === 'PENDING_ASSIGNMENT') {
+          if (conv.status === 'PENDING_ASSIGNMENT' || conv.status === 'ESCALATED') {
             metric = 'firstResponse';
             thresholdMins = config.firstResponseMins;
             startTime = conv.lastMessageAt || conv.createdAt;
