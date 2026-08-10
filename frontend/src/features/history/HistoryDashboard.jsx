@@ -26,7 +26,9 @@ export default function HistoryDashboard() {
     const fetchVendors = async () => {
       try {
         const res = await get('/users?limit=1000');
-        const data = res.data?.users || res.data?.data || res.data || res;
+        if (!res.ok) throw new Error('Error fetching users');
+        const json = await res.json();
+        const data = json.data?.users || json.data || json.items || json;
         if (Array.isArray(data)) {
           setVendors(data);
         } else if (data && Array.isArray(data.items)) {
@@ -54,9 +56,11 @@ export default function HistoryDashboard() {
         ...(vendor && { vendorId: vendor }),
       });
       const res = await get(`/chat/history?${params.toString()}`);
+      if (!res.ok) throw new Error('Error fetching history');
+      const json = await res.json();
       
-      const data = res.data?.conversations || res.data?.data || res.data || res;
-      const totalCount = res.data?.total || res.data?.totalItems || data?.length || 0;
+      const data = json.data?.conversations || json.data || json.items || json;
+      const totalCount = json.meta?.total || json.total || json.totalItems || data?.length || 0;
       
       if (Array.isArray(data)) {
         setHistoryData(data);
@@ -89,15 +93,15 @@ export default function HistoryDashboard() {
     setIsPanelOpen(true);
     setLocalSearch('');
     
-    if (!chat.messages) {
-      try {
-        const res = await get(`/chat/${chat.id || chat._id}/messages`);
-        const messages = res.data?.messages || res.data?.data || res.data || res;
-        setSelectedChat(prev => ({ ...prev, messages: Array.isArray(messages) ? messages : [] }));
-      } catch (err) {
-        console.error('Error fetching messages', err);
-        setSelectedChat(prev => ({ ...prev, messages: [] }));
-      }
+    try {
+      const res = await get(`/chat/${chat.id || chat._id}/messages`);
+      if (!res.ok) throw new Error('Error fetching messages');
+      const json = await res.json();
+      const messages = json.data?.messages || json.data || json.items || json;
+      setSelectedChat(prev => ({ ...prev, messages: Array.isArray(messages) ? messages : [] }));
+    } catch (err) {
+      console.error('Error fetching messages', err);
+      setSelectedChat(prev => ({ ...prev, messages: chat.messages || [] }));
     }
   };
 
