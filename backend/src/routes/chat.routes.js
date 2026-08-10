@@ -296,7 +296,8 @@ router.get('/history', authenticate, authorize('ADMIN', 'COORDINATOR', 'VENDOR')
       whereClause.messages = {
         some: {
           content: {
-            search: query
+            contains: query,
+            mode: 'insensitive'
           }
         }
       };
@@ -309,7 +310,12 @@ router.get('/history', authenticate, authorize('ADMIN', 'COORDINATOR', 'VENDOR')
         client: true,
         vendor: { select: { id: true, name: true, email: true } },
         messages: query ? {
-          where: { content: { search: query } },
+          where: {
+            content: {
+              contains: query,
+              mode: 'insensitive'
+            }
+          },
           orderBy: { createdAt: 'desc' },
           take: 1
         } : { orderBy: { createdAt: 'desc' }, take: 1 }
