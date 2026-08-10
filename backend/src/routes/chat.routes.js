@@ -292,12 +292,14 @@ router.get('/history', authenticate, authorize('ADMIN', 'COORDINATOR', 'VENDOR')
       if (endDate) whereClause.updatedAt.lte = new Date(endDate);
     }
 
-    if (query) {
+    // Format query for Postgres to_tsquery (e.g. "hola mundo" -> "hola | mundo")
+    const formattedQuery = query ? query.trim().split(/\s+/).filter(Boolean).join(' | ') : undefined;
+
+    if (formattedQuery) {
       whereClause.messages = {
         some: {
           content: {
-            contains: query,
-            mode: 'insensitive'
+            search: formattedQuery
           }
         }
       };
@@ -309,11 +311,10 @@ router.get('/history', authenticate, authorize('ADMIN', 'COORDINATOR', 'VENDOR')
       include: {
         client: true,
         vendor: { select: { id: true, name: true, email: true } },
-        messages: query ? {
+        messages: formattedQuery ? {
           where: {
             content: {
-              contains: query,
-              mode: 'insensitive'
+              search: formattedQuery
             }
           },
           orderBy: { createdAt: 'desc' },
