@@ -8,6 +8,7 @@ import ChatView from './pages/ChatView.jsx';
 import Clients from './pages/Clients.jsx';
 import Metrics from './pages/Metrics.jsx';
 import Settings from './pages/Settings.jsx';
+import History from './pages/History.jsx';
 import UserListPage from './features/users/UserListPage.jsx';
 import CreateUserForm from './features/users/CreateUserForm.jsx';
 import LoginPage from './features/auth/LoginPage.jsx';
@@ -40,6 +41,7 @@ function AppLayout() {
             <Route path="/users" element={<UserListPage />} />
             <Route path="/users/new" element={<CreateUserForm onSuccess={() => window.location.href = '/users'} />} />
             <Route path="/metrics" element={<Metrics />} />
+            <Route path="/history" element={<History />} />
             <Route path="/settings" element={<Settings />} />
           </Routes>
         </main>

@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom';
-import { MessageSquare, LayoutDashboard, Users, UserCog, BarChart3, Settings } from 'lucide-react';
+import { MessageSquare, LayoutDashboard, Users, UserCog, BarChart3, Settings, History } from 'lucide-react';
 import useAuthStore from '../../stores/useAuthStore.js';
 import useChatStore from '../../stores/useChatStore.js';
 import { Logo } from '../Logo.jsx';
@@ -10,6 +10,7 @@ const navItems = [
   { to: '/users', icon: UserCog, label: 'Usuarios', roles: ['ADMIN', 'COORDINATOR'] },
   { to: '/clients', icon: Users, label: 'Clientes', roles: ['ADMIN', 'COORDINATOR', 'VENDOR'] },
   { to: '/metrics', icon: BarChart3, label: 'Métricas', roles: ['ADMIN', 'COORDINATOR'] },
+  { to: '/history', icon: History, label: 'Historial', roles: ['ADMIN', 'COORDINATOR'] },
   { to: '/settings', icon: Settings, label: 'Configuración', roles: ['ADMIN', 'COORDINATOR'] },
 ];
 
