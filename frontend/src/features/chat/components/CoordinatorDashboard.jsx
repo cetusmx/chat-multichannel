@@ -43,7 +43,7 @@ export default function CoordinatorDashboard() {
     fetchConversations();
     
     // Fetch users (vendors directory)
-    api.get('/users').then(res => res.json()).then(json => {
+    api.get('/users?limit=1000').then(res => res.json()).then(json => {
       const map = {};
       if (json.data) {
         json.data.forEach(u => {
