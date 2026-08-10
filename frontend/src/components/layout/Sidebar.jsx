@@ -7,10 +7,10 @@ import { Logo } from '../Logo.jsx';
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard', roles: ['ADMIN', 'COORDINATOR', 'VENDOR'] },
   { to: '/chat', icon: MessageSquare, label: 'Conversaciones', roles: ['ADMIN', 'COORDINATOR', 'VENDOR'], badge: true },
+  { to: '/history', icon: History, label: 'Historial', roles: ['ADMIN', 'COORDINATOR'] },
   { to: '/users', icon: UserCog, label: 'Usuarios', roles: ['ADMIN', 'COORDINATOR'] },
   { to: '/clients', icon: Users, label: 'Clientes', roles: ['ADMIN', 'COORDINATOR', 'VENDOR'] },
   { to: '/metrics', icon: BarChart3, label: 'Métricas', roles: ['ADMIN', 'COORDINATOR'] },
-  { to: '/history', icon: History, label: 'Historial', roles: ['ADMIN', 'COORDINATOR'] },
   { to: '/settings', icon: Settings, label: 'Configuración', roles: ['ADMIN', 'COORDINATOR'] },
 ];
 
