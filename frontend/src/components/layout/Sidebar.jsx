@@ -39,7 +39,7 @@ export default function Sidebar() {
             className={({ isActive }) =>
               `flex h-12 w-full items-center gap-3 rounded-md px-3 transition-all relative ${
                 isActive
-                  ? 'bg-slate-800 text-white font-medium before:absolute before:-left-[5px] before:top-[15%] before:bottom-[15%] before:w-1 before:bg-[#2f81f7] before:rounded-full'
+                  ? 'bg-slate-800 text-white font-medium before:absolute before:-left-[12px] before:top-[15%] before:bottom-[15%] before:w-1 before:bg-[#2f81f7] before:rounded-full'
                   : 'text-sales-slate-400 hover:bg-slate-800/50 hover:text-sales-slate-300'
               }`
             }
