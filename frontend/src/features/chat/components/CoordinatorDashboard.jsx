@@ -80,7 +80,7 @@ export default function CoordinatorDashboard() {
     return true;
   });
 
-  const shouldGroup = filter !== 'ALL' && filter !== 'PENDING';
+  const shouldGroup = true;
 
   return (
     <div className="flex flex-col relative w-full h-full bg-sales-slate-900 text-sales-slate-100 rounded-lg border border-sales-slate-800 shadow-xl overflow-hidden">
@@ -103,7 +103,7 @@ export default function CoordinatorDashboard() {
           >
             <div className="flex items-center justify-between mb-4 px-4">
               <h2 className="text-xl font-bold bg-gradient-to-r from-sales-slate-100 to-sales-slate-300 bg-clip-text text-transparent flex items-center gap-2">
-                {filter === 'ALL' ? 'Vista Global' : 
+                {filter === 'ALL' ? 'Vista Global (Agrupada por Asesor)' : 
                  filter === 'PENDING' ? 'Bolsa de Trabajo (En Espera)' :
                  filter === 'SLA' ? 'Tickets Críticos (Agrupados por Asesor)' : 'Tickets Archivados (Agrupados por Asesor)'}
               </h2>
