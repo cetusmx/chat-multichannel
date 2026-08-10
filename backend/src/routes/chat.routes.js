@@ -272,7 +272,7 @@ router.get('/conversations', authenticate, authorize('ADMIN', 'COORDINATOR', 'VE
 
 router.get('/history', authenticate, authorize('ADMIN', 'COORDINATOR', 'VENDOR'), async (req, res, next) => {
   try {
-    const { query, vendorId, startDate, endDate, page = 1, limit = 20 } = req.query;
+    const { search, vendorId, startDate, endDate, page = 1, limit = 20 } = req.query;
     const tenantId = req.user.tenantId;
 
     const whereClause = {
@@ -293,7 +293,7 @@ router.get('/history', authenticate, authorize('ADMIN', 'COORDINATOR', 'VENDOR')
     }
 
     // Format query for Postgres to_tsquery (e.g. "hola mundo" -> "hola | mundo")
-    const formattedQuery = query ? query.trim().split(/\s+/).filter(Boolean).join(' | ') : undefined;
+    const formattedQuery = search ? search.trim().split(/\s+/).filter(Boolean).join(' | ') : undefined;
 
     if (formattedQuery) {
       whereClause.messages = {
