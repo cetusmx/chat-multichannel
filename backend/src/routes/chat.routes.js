@@ -255,12 +255,79 @@ router.get('/conversations', authenticate, authorize('ADMIN', 'COORDINATOR', 'VE
     if (req.user.role === 'VENDOR') {
       whereClause.vendorId = req.user.id;
     }
+    // Exclude CLOSED by default for operational dashboard unless requested
+    if (req.query.includeClosed !== 'true') {
+      whereClause.status = { not: 'CLOSED' };
+    }
     const conversations = await prisma.conversation.findMany({
       where: whereClause,
       include: { client: true, messages: { orderBy: { createdAt: 'desc' }, take: 1 } },
       orderBy: { lastMessageAt: 'desc' }
     });
     res.json({ data: conversations });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/history', authenticate, authorize('ADMIN', 'COORDINATOR', 'VENDOR'), async (req, res, next) => {
+  try {
+    const { query, vendorId, startDate, endDate, page = 1, limit = 20 } = req.query;
+    const tenantId = req.user.tenantId;
+
+    const whereClause = {
+      tenantId,
+      status: 'CLOSED'
+    };
+
+    if (req.user.role === 'VENDOR') {
+      whereClause.vendorId = req.user.id;
+    } else if (vendorId) {
+      whereClause.vendorId = vendorId;
+    }
+
+    if (startDate || endDate) {
+      whereClause.updatedAt = {};
+      if (startDate) whereClause.updatedAt.gte = new Date(startDate);
+      if (endDate) whereClause.updatedAt.lte = new Date(endDate);
+    }
+
+    if (query) {
+      whereClause.messages = {
+        some: {
+          content: {
+            search: query
+          }
+        }
+      };
+    }
+
+    const total = await prisma.conversation.count({ where: whereClause });
+    const conversations = await prisma.conversation.findMany({
+      where: whereClause,
+      include: {
+        client: true,
+        vendor: { select: { id: true, name: true, email: true } },
+        messages: query ? {
+          where: { content: { search: query } },
+          orderBy: { createdAt: 'desc' },
+          take: 1
+        } : { orderBy: { createdAt: 'desc' }, take: 1 }
+      },
+      orderBy: { updatedAt: 'desc' },
+      skip: (parseInt(page) - 1) * parseInt(limit),
+      take: parseInt(limit)
+    });
+
+    res.json({
+      data: conversations,
+      meta: {
+        total,
+        page: parseInt(page),
+        limit: parseInt(limit),
+        totalPages: Math.ceil(total / parseInt(limit))
+      }
+    });
   } catch (error) {
     next(error);
   }
