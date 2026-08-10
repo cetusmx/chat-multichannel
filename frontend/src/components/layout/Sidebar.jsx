@@ -37,9 +37,9 @@ export default function Sidebar() {
             to={item.to}
             end={item.to === '/'}
             className={({ isActive }) =>
-              `flex h-12 w-full items-center gap-3 rounded-md px-3 transition-all relative ${
+              `flex h-12 w-full items-center gap-3 rounded-md px-3 transition-all relative overflow-hidden ${
                 isActive
-                  ? 'bg-slate-800/80 text-white font-medium before:absolute before:left-0 before:top-2 before:bottom-2 before:w-1 before:bg-sales-cyan-500 before:rounded-r-md'
+                  ? 'bg-slate-800 text-white font-medium before:absolute before:left-0 before:top-[25%] before:bottom-[25%] before:w-1 before:bg-[#2f81f7] before:rounded-full'
                   : 'text-sales-slate-400 hover:bg-slate-800/50 hover:text-sales-slate-300'
               }`
             }
