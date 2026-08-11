@@ -255,9 +255,19 @@ router.get('/conversations', authenticate, authorize('ADMIN', 'COORDINATOR', 'VE
     if (req.user.role === 'VENDOR') {
       whereClause.vendorId = req.user.id;
     }
-    // Exclude CLOSED by default for operational dashboard unless requested
+    // Exclude CLOSED by default for operational dashboard unless requested,
+    // but ALWAYS include CLOSED conversations from the current day so they don't vanish immediately.
     if (req.query.includeClosed !== 'true') {
-      whereClause.status = { not: 'CLOSED' };
+      const startOfToday = new Date();
+      startOfToday.setHours(0, 0, 0, 0);
+      
+      whereClause.OR = [
+        { status: { not: 'CLOSED' } },
+        { 
+          status: 'CLOSED',
+          updatedAt: { gte: startOfToday }
+        }
+      ];
     }
     const conversations = await prisma.conversation.findMany({
       where: whereClause,
