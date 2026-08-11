@@ -54,14 +54,16 @@ export default function CoordinatorDashboard() {
     }).catch(err => console.error("Error fetching users directory", err));
   }, [fetchConversations]);
 
+  const isCoordinator = user?.role === 'ADMIN' || user?.role === 'COORDINATOR';
+
   useEffect(() => {
-    if (socket && user?.tenantId) {
+    if (isCoordinator && socket && user?.tenantId) {
       socket.emit('join:tenant_coordinators', user.tenantId);
       return () => {
         socket.emit('leave:tenant_coordinators', user.tenantId);
       };
     }
-  }, [socket, user]);
+  }, [socket, user, isCoordinator]);
 
   const todayStr = new Date().toDateString();
   
@@ -80,7 +82,7 @@ export default function CoordinatorDashboard() {
     return true;
   });
 
-  const shouldGroup = true;
+  const shouldGroup = isCoordinator;
 
   return (
     <div className="flex flex-col relative w-full h-full bg-sales-slate-900 text-sales-slate-100 rounded-lg border border-sales-slate-800 shadow-xl overflow-hidden">
@@ -103,9 +105,10 @@ export default function CoordinatorDashboard() {
           >
             <div className="flex items-center justify-between mb-4 px-4">
               <h2 className="text-xl font-bold bg-gradient-to-r from-sales-slate-100 to-sales-slate-300 bg-clip-text text-transparent flex items-center gap-2">
-                {filter === 'ALL' ? 'Vista Global (Agrupada por Asesor)' : 
+                {filter === 'ALL' ? (isCoordinator ? 'Vista Global (Agrupada por Asesor)' : 'Mis Tickets Activos') : 
                  filter === 'PENDING' ? 'Bolsa de Trabajo (En Espera)' :
-                 filter === 'SLA' ? 'Tickets Críticos (Agrupados por Asesor)' : 'Tickets Archivados (Agrupados por Asesor)'}
+                 filter === 'SLA' ? (isCoordinator ? 'Tickets Críticos (Agrupados por Asesor)' : 'Mis Tickets Críticos') : 
+                 (isCoordinator ? 'Tickets Archivados (Agrupados por Asesor)' : 'Mis Tickets Cerrados')}
               </h2>
               <div className="text-sm font-medium text-sales-slate-400 bg-sales-slate-800/50 px-3 py-1 rounded-full border border-sales-slate-700/50">
                 {filteredConversations.length} {filteredConversations.length === 1 ? 'resultado' : 'resultados'}
