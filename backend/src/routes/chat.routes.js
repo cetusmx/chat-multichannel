@@ -846,4 +846,133 @@ router.post('/quote/send-email', authenticate, async (req, res, next) => {
   }
 });
 
+/**
+ * @swagger
+ * /chat/{conversationId}/status:
+ *   patch:
+ *     summary: Cambiar el estado de una conversación
+ *     tags: [Chat]
+ *     security:
+ *       - bearerAuth: []
+ */
+router.patch('/:conversationId/status', authenticate, authorize('ADMIN', 'COORDINATOR', 'VENDOR'), async (req, res, next) => {
+  try {
+    const { conversationId } = req.params;
+    const { status, reason, timebombHours, scheduledAt } = req.body;
+    
+    if (!status) {
+      return res.status(400).json({ error: 'El campo status es requerido.' });
+    }
+
+    if (status === 'CLOSED_INACTIVE') {
+      return res.status(403).json({ error: 'Transición a CLOSED_INACTIVE no permitida manualmente.' });
+    }
+
+    const conversation = await prisma.conversation.findUnique({
+      where: { id: conversationId },
+      include: { tenant: true }
+    });
+
+    if (!conversation) {
+      return res.status(404).json({ error: 'Conversación no encontrada.' });
+    }
+
+    // Ownership check for vendors
+    if (req.user.role === 'VENDOR' && conversation.vendorId !== req.user.id) {
+      return res.status(403).json({ error: 'No autorizado para modificar el estado de esta conversación.' });
+    }
+    
+    // Check SLA enabled flag before entering advanced states
+    const advancedStates = ['WAITING_CUSTOMER', 'SCHEDULED', 'ON_HOLD', 'DISCARDED'];
+    if (advancedStates.includes(status)) {
+      if (!conversation.tenant.isSlaEnabled) {
+        return res.status(400).json({ error: 'SLA is disabled for this tenant. Cannot transition to advanced paused states.' });
+      }
+    }
+
+    // Transaction logic
+    const dayjs = require('dayjs');
+    const utc = require('dayjs/plugin/utc');
+    dayjs.extend(utc);
+
+    await prisma.$transaction(async (tx) => {
+      // Bloqueo explícito de la fila para evitar Race Conditions (TOCTOU) con Webhooks
+      await tx.$queryRaw`SELECT id FROM "conversations" WHERE id = ${conversationId} FOR UPDATE`;
+
+      // Logic for WAITING_CUSTOMER or SCHEDULED
+      if (['WAITING_CUSTOMER', 'SCHEDULED'].includes(status)) {
+        const lastMsg = await tx.message.findFirst({
+          where: { conversationId },
+          orderBy: { createdAt: 'desc' }
+        });
+        
+        // Allowed senders for pause: VENDOR, IA (based on Prisma schema)
+        if (!lastMsg || !['VENDOR', 'IA'].includes(lastMsg.senderType)) {
+          throw new Error('400:El último mensaje debe ser del Vendedor o Bot para pausar el SLA.');
+        }
+
+        if (status === 'SCHEDULED') {
+          if (!scheduledAt) throw new Error('400:scheduledAt es requerido para el estado SCHEDULED.');
+          const sDate = dayjs.utc(scheduledAt);
+          if (!sDate.isValid() || sDate.isBefore(dayjs.utc())) {
+             throw new Error('400:scheduledAt debe ser una fecha futura válida.');
+          }
+          if (sDate.isAfter(dayjs.utc().add(30, 'day'))) {
+             throw new Error('400:scheduledAt no puede exceder 30 días en el futuro.');
+          }
+        }
+      }
+
+      // Logic for ON_HOLD
+      if (status === 'ON_HOLD') {
+        if (!reason || typeof reason !== 'string' || reason.trim() === '') {
+          throw new Error('400:reason es requerido y no puede estar vacío.');
+        }
+        if (reason.trim().length > 255) {
+          throw new Error('400:reason no puede exceder 255 caracteres.');
+        }
+        if (!timebombHours || !Number.isInteger(timebombHours) || timebombHours <= 0 || timebombHours > 168) {
+           throw new Error('400:timebombHours debe ser un entero entre 1 y 168.');
+        }
+      }
+
+      // Update state
+      let dataToUpdate = {
+        status,
+        statusUpdatedAt: new Date(),
+      };
+
+      if (status === 'SCHEDULED') {
+        dataToUpdate.scheduledAt = dayjs.utc(scheduledAt).toDate();
+      } else if (status === 'ON_HOLD') {
+        dataToUpdate.onHoldReason = reason.trim();
+        dataToUpdate.onHoldExpiration = dayjs.utc().add(timebombHours, 'hour').toDate();
+      }
+
+      await tx.conversation.update({
+        where: { id: conversationId },
+        data: dataToUpdate
+      });
+    });
+
+    const updated = await prisma.conversation.findUnique({ where: { id: conversationId } });
+
+    // Emit socket
+    try {
+      let ioEvent = socket.getIo().of('/chat').to(`conversation:${conversationId}`).to(`tenant_${req.user.tenantId}_coordinators`);
+      if (updated.vendorId) ioEvent = ioEvent.to(`vendor_${updated.vendorId}`);
+      ioEvent.emit('conversation_updated', updated);
+    } catch (err) {
+      console.error('[CHAT_ROUTE] Error emitting status socket:', err.message);
+    }
+
+    res.status(200).json({ data: updated });
+  } catch (error) {
+    if (error.message && error.message.startsWith('400:')) {
+       return res.status(400).json({ error: error.message.substring(4) });
+    }
+    next(error);
+  }
+});
+
 module.exports = router;

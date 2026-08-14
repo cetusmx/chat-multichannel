@@ -1,9 +1,9 @@
-export default function ConfirmModal({ open, title, message, onConfirm, onCancel, confirmText = "Eliminar", confirmVariant = "danger" }) {
+export default function ConfirmModal({ open, title, message, onConfirm, onCancel, confirmText = 'Eliminar', confirmVariant = 'danger' }) {
   if (!open) return null;
 
-  const btnClasses = confirmVariant === "danger"
-    ? "bg-red-500 hover:bg-red-600"
-    : "bg-sales-cyan-600 hover:bg-sales-cyan-700";
+  const btnClasses = confirmVariant === 'danger'
+    ? 'bg-red-500 hover:bg-red-600'
+    : 'bg-sales-cyan-600 hover:bg-sales-cyan-700';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">

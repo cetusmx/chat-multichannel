@@ -2,6 +2,7 @@ const EventEmitter = require('events');
 const prisma = require('../config/database');
 const ApiError = require('../utils/ApiError');
 const { getBusinessMinutesElapsed } = require('../utils/date');
+const socket = require('../socket');
 
 class SlaService extends EventEmitter {
   constructor() {
@@ -62,10 +63,16 @@ class SlaService extends EventEmitter {
       throw new ApiError(400, 'resolutionMins must be an integer between 1 and 10080', 'VALIDATION_ERROR');
     }
 
-    if (firstResponseMins !== undefined && resolutionMins !== undefined) {
-      if (firstResponseMins > resolutionMins) {
-        throw new ApiError(400, 'firstResponseMins cannot be greater than resolutionMins', 'VALIDATION_ERROR');
-      }
+    let currentConfig = await prisma.slaConfig.findUnique({ where: { tenantId } });
+    if (!currentConfig) {
+      currentConfig = { firstResponseMins: 15, resolutionMins: 60 };
+    }
+
+    const finalFirstResponse = firstResponseMins !== undefined ? firstResponseMins : currentConfig.firstResponseMins;
+    const finalResolution = resolutionMins !== undefined ? resolutionMins : currentConfig.resolutionMins;
+
+    if (finalFirstResponse > finalResolution) {
+      throw new ApiError(400, 'firstResponseMins cannot be greater than resolutionMins', 'VALIDATION_ERROR');
     }
 
     const config = await prisma.slaConfig.upsert({
@@ -85,6 +92,56 @@ class SlaService extends EventEmitter {
     return config;
   }
 
+  /**
+   * Transition a paused conversation back to ACTIVE and emit system message.
+   */
+  async transitionToActive(conversationId) {
+    const updated = await prisma.$transaction(async (tx) => {
+      const conversation = await tx.conversation.findUnique({ where: { id: conversationId } });
+      if (!conversation || !['ON_HOLD', 'SCHEDULED', 'WAITING_CUSTOMER'].includes(conversation.status)) return null;
+
+      await tx.message.create({
+        data: {
+          conversationId,
+          senderType: 'SYSTEM',
+          content: 'Sistema: Auto-reanudado por timeout',
+          status: 'SENT',
+          isInternal: true
+        }
+      });
+
+      await tx.conversation.update({
+        where: { id: conversationId },
+        data: {
+          status: 'ACTIVE',
+          statusUpdatedAt: new Date(),
+          onHoldReason: null,
+          onHoldExpiration: null,
+          scheduledAt: null,
+          lastMessageAt: new Date()
+        }
+      });
+
+      return await tx.conversation.findUnique({
+        where: { id: conversationId },
+        include: { client: true, messages: { orderBy: { createdAt: 'desc' }, take: 1 } }
+      });
+    });
+
+    if (!updated) return null;
+
+    try {
+      socket.getIo().of('/chat').to(`tenant_${updated.tenantId}_coordinators`).emit('conversation_updated', updated);
+      if (updated.vendorId) {
+         socket.getIo().of('/chat').to(`vendor_${updated.vendorId}`).emit('conversation_updated', updated);
+      }
+    } catch (e) {
+      console.error('[SLA-SERVICE] WebSocket Error:', e.message);
+    }
+    
+    return updated;
+  }
+
   startMonitor(intervalMs = 60000) {
     this.isStopping = false;
     if (this.monitorTimeout || this.isChecking) return;
@@ -97,10 +154,15 @@ class SlaService extends EventEmitter {
       }
       this.isChecking = true;
       try {
+        let timeoutId;
+        const timeoutPromise = new Promise((_, reject) => {
+          timeoutId = setTimeout(() => reject(new Error('SLA check timed out')), 30000);
+        });
         await Promise.race([
           this.checkSlaBreaches(),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('SLA check timed out')), 30000))
+          timeoutPromise
         ]);
+        clearTimeout(timeoutId);
       } catch (error) {
         console.error('[SLA Monitor] Error checking SLA breaches:', error);
       } finally {
@@ -153,6 +215,7 @@ class SlaService extends EventEmitter {
       const tenantIds = [...new Set(conversations.map(c => c.tenantId))];
       const configs = {};
       const businessHoursMap = {};
+      const isSlaEnabledMap = {};
       
       await Promise.all(tenantIds.map(tId => 
         this.getSlaConfig(tId)
@@ -163,15 +226,22 @@ class SlaService extends EventEmitter {
       try {
         const tenants = await prisma.tenant.findMany({
           where: { id: { in: tenantIds } },
-          select: { id: true, businessHours: true }
+          select: { id: true, businessHours: true, isSlaEnabled: true }
         });
-        tenants.forEach(t => { businessHoursMap[t.id] = t.businessHours; });
+        tenants.forEach(t => { 
+          businessHoursMap[t.id] = t.businessHours; 
+          isSlaEnabledMap[t.id] = t.isSlaEnabled;
+        });
       } catch (e) {
         console.error('Error prefetching tenant business hours', e);
       }
 
       for (const conv of conversations) {
         try {
+          if (isSlaEnabledMap[conv.tenantId] === false) {
+             // Subtask 3.2: Bypass SLA calculations and timers if isSlaEnabled is false
+             continue;
+          }
           const config = configs[conv.tenantId];
           const businessHours = businessHoursMap[conv.tenantId];
           if (!config) continue;

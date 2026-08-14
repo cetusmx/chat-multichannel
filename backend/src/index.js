@@ -18,9 +18,11 @@ const server = http.createServer(app);
 const { setupSocket } = require('./socket');
 const io = setupSocket(server);
 const slaService = require('./services/sla.service');
+const { startSlaCron, waitForShutdown } = require('./workers/sla-cron');
 const prisma = require('./config/database');
 
 slaService.startMonitor();
+startSlaCron();
 
 server.listen(env.port, () => {
   logger.info(`SalesFlow API running on port ${env.port} [${env.nodeEnv}]`);
@@ -56,6 +58,7 @@ const gracefulShutdown = () => {
   server.close(async () => {
     logger.info('HTTP server closed');
     try {
+      await waitForShutdown();
       await prisma.$disconnect();
       logger.info('Database connection closed');
     } catch (err) {

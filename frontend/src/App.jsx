@@ -17,11 +17,11 @@ import useTabNotification from './hooks/useTabNotification.js';
 
 function AppLayout() {
   useTabNotification();
-  
+
   useEffect(() => {
     useChatStore.getState().initializeSocket();
     useChatStore.getState().fetchConversations();
-    
+
     return () => {
       useChatStore.getState().disconnectSocket();
     };
@@ -58,15 +58,15 @@ function ProtectedRoute({ children }) {
 
 function UpgradePlanModal() {
   const [isOpen, setIsOpen] = useState(false);
-  
+
   useEffect(() => {
     const handler = () => setIsOpen(true);
     window.addEventListener('QUOTA_EXCEEDED_MODAL', handler);
     return () => window.removeEventListener('QUOTA_EXCEEDED_MODAL', handler);
   }, []);
-  
+
   if (!isOpen) return null;
-  
+
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50">
       <div className="w-full max-w-md rounded-xl border border-slate-700 bg-slate-900 p-6 shadow-2xl">

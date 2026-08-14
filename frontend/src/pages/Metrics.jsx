@@ -28,7 +28,7 @@ export default function Metrics() {
     const today = new Date();
     const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
     const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-    
+
     const formatDate = (date) => {
       const year = date.getFullYear();
       const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -40,7 +40,7 @@ export default function Metrics() {
     const end = formatDate(lastDay);
     setStartDate(start);
     setEndDate(end);
-    
+
     if (!initialFetchDone.current) {
       initialFetchDone.current = true;
       fetchMetrics(start, end);
@@ -52,7 +52,7 @@ export default function Metrics() {
       setError('Por favor, selecciona una fecha de inicio y una fecha de fin.');
       return;
     }
-    
+
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
@@ -63,13 +63,13 @@ export default function Metrics() {
     setError(null);
     try {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end)) {
-        throw new Error("Formato de fecha inválido");
+        throw new Error('Formato de fecha inválido');
       }
       const [startYear, startMonth, startDay] = start.split('-');
       const startDateTimeObj = new Date();
       startDateTimeObj.setFullYear(parseInt(startYear, 10), parseInt(startMonth, 10) - 1, parseInt(startDay, 10));
       startDateTimeObj.setHours(0, 0, 0, 0);
-      
+
       const [endYear, endMonth, endDay] = end.split('-');
       const endDateTimeObj = new Date();
       endDateTimeObj.setFullYear(parseInt(endYear, 10), parseInt(endMonth, 10) - 1, parseInt(endDay, 10));
@@ -79,11 +79,11 @@ export default function Metrics() {
       const endIso = endDateTimeObj.toISOString();
 
       const data = await getVendorProductivityMetrics(
-        startIso, 
+        startIso,
         endIso,
-        { signal: abortController.signal }
+        { signal: abortController.signal },
       );
-      
+
       if (isMounted.current && !abortController.signal.aborted) {
         setMetrics(data.data || []);
       }
@@ -108,13 +108,13 @@ export default function Metrics() {
           <h1 className="metrics-title">Métricas y Productividad</h1>
           <p className="metrics-subtitle">Evalúa el rendimiento de tus asesores en tiempo real.</p>
         </div>
-        
+
         {/* Date Range Picker */}
         <div className="date-picker-container">
           <div className="date-field">
             <label className="date-label">Desde</label>
-            <input 
-              type="date" 
+            <input
+              type="date"
               value={startDate}
               onChange={(e) => setStartDate(e.target.value)}
               className="date-input"
@@ -122,14 +122,14 @@ export default function Metrics() {
           </div>
           <div className="date-field">
             <label className="date-label">Hasta</label>
-            <input 
-              type="date" 
+            <input
+              type="date"
               value={endDate}
               onChange={(e) => setEndDate(e.target.value)}
               className="date-input"
             />
           </div>
-          <button 
+          <button
             onClick={() => fetchMetrics(startDate, endDate)}
             className="apply-button"
           >
@@ -149,7 +149,7 @@ export default function Metrics() {
       ) : (
         <VendorMetricsTable metrics={metrics} />
       )}
-      
+
       <div className="mt-8">
         <UsageReport />
       </div>

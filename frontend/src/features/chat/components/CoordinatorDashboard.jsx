@@ -11,7 +11,7 @@ import * as api from '../../../services/api';
 const StatCard = ({ title, value, icon: Icon, iconColor, filterType, activeFilter, setFilter }) => {
   const isActive = activeFilter === filterType;
   return (
-    <div 
+    <div
       onClick={() => setFilter(isActive ? 'ALL' : filterType)}
       className={`p-4 rounded-xl border cursor-pointer transition-all ${isActive ? 'bg-sales-slate-800 ring-1 ring-sales-cyan-500 shadow-md shadow-sales-cyan-500/10 border-sales-cyan-500' : 'bg-sales-slate-800/40 border-sales-slate-700/50 hover:bg-sales-slate-800/80'} flex items-center gap-4 relative overflow-hidden group`}
     >
@@ -26,7 +26,7 @@ const StatCard = ({ title, value, icon: Icon, iconColor, filterType, activeFilte
         <div className="absolute top-0 right-0 w-1.5 h-full bg-red-500 animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.8)]" />
       )}
     </div>
-  )
+  );
 };
 
 export default function CoordinatorDashboard() {
@@ -41,7 +41,7 @@ export default function CoordinatorDashboard() {
 
   useEffect(() => {
     fetchConversations();
-    
+
     // Fetch users (vendors directory)
     api.get('/users?limit=1000').then(res => res.json()).then(json => {
       const map = {};
@@ -51,7 +51,7 @@ export default function CoordinatorDashboard() {
         });
       }
       setVendorsMap(map);
-    }).catch(err => console.error("Error fetching users directory", err));
+    }).catch(err => console.error('Error fetching users directory', err));
   }, [fetchConversations]);
 
   const isCoordinator = user?.role === 'ADMIN' || user?.role === 'COORDINATOR';
@@ -66,7 +66,7 @@ export default function CoordinatorDashboard() {
   }, [socket, user, isCoordinator]);
 
   const todayStr = new Date().toDateString();
-  
+
   const metrics = {
     total: conversations.filter(c => new Date(c.createdAt).toDateString() === todayStr || new Date(c.lastMessageAt).toDateString() === todayStr).length,
     pending: conversations.filter(c => c.status === 'PENDING_ASSIGNMENT' || c.status === 'ESCALATED').length,
@@ -86,7 +86,7 @@ export default function CoordinatorDashboard() {
 
   return (
     <div className="flex flex-col relative w-full h-full bg-sales-slate-900 text-sales-slate-100 rounded-lg border border-sales-slate-800 shadow-xl overflow-hidden">
-      
+
       {/* KPI Command Center Ribbon */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 p-4 border-b border-sales-slate-800 bg-sales-slate-900/95 shrink-0 z-20 shadow-sm relative">
         <div className="absolute inset-0 bg-gradient-to-r from-sales-cyan-900/10 to-sales-blue-900/10 pointer-events-none" />
@@ -99,32 +99,32 @@ export default function CoordinatorDashboard() {
       {/* Main Work Area */}
       <div className="flex-1 flex overflow-hidden relative z-10">
         {coordinatorViewMode === 'preview' ? (
-          <motion.div 
+          <motion.div
             layout
             className="w-full h-full overflow-y-auto p-4 custom-scrollbar"
           >
             <div className="flex items-center justify-between mb-4 px-4">
               <h2 className="text-xl font-bold bg-gradient-to-r from-sales-slate-100 to-sales-slate-300 bg-clip-text text-transparent flex items-center gap-2">
-                {filter === 'ALL' ? (isCoordinator ? 'Vista Global (Agrupada por Asesor)' : 'Mis Tickets Activos') : 
+                {filter === 'ALL' ? (isCoordinator ? 'Vista Global (Agrupada por Asesor)' : 'Mis Tickets Activos') :
                  filter === 'PENDING' ? 'Bolsa de Trabajo (En Espera)' :
-                 filter === 'SLA' ? (isCoordinator ? 'Tickets Críticos (Agrupados por Asesor)' : 'Mis Tickets Críticos') : 
+                 filter === 'SLA' ? (isCoordinator ? 'Tickets Críticos (Agrupados por Asesor)' : 'Mis Tickets Críticos') :
                  (isCoordinator ? 'Tickets Archivados (Agrupados por Asesor)' : 'Mis Tickets Cerrados')}
               </h2>
               <div className="text-sm font-medium text-sales-slate-400 bg-sales-slate-800/50 px-3 py-1 rounded-full border border-sales-slate-700/50">
                 {filteredConversations.length} {filteredConversations.length === 1 ? 'resultado' : 'resultados'}
               </div>
             </div>
-            <ChatList 
-              conversations={filteredConversations} 
-              currentConversationIds={focusedChatIds} 
+            <ChatList
+              conversations={filteredConversations}
+              currentConversationIds={focusedChatIds}
               onSelect={toggleFocusedChat}
-              layout="grid" 
+              layout="grid"
               groupByVendor={shouldGroup}
               vendorMap={vendorsMap}
             />
           </motion.div>
         ) : (
-          <motion.div 
+          <motion.div
             layout
             className="flex w-full h-full"
           >
@@ -134,7 +134,7 @@ export default function CoordinatorDashboard() {
                 <h2 className="text-sm font-bold text-sales-slate-200 uppercase tracking-wider">
                   {filter === 'ALL' ? 'Todos los Chats' : filter}
                 </h2>
-                <button 
+                <button
                   onClick={() => useUIStore.getState().setCoordinatorViewMode('preview')}
                   className="text-xs px-2.5 py-1.5 bg-sales-slate-800 text-sales-slate-300 rounded hover:text-white hover:bg-sales-slate-700 transition-colors shadow-sm border border-sales-slate-700/50"
                 >
@@ -142,11 +142,11 @@ export default function CoordinatorDashboard() {
                 </button>
               </div>
               <div className="flex-1 overflow-y-auto custom-scrollbar">
-                <ChatList 
-                  conversations={filteredConversations} 
-                  currentConversationIds={focusedChatIds} 
+                <ChatList
+                  conversations={filteredConversations}
+                  currentConversationIds={focusedChatIds}
                   onSelect={toggleFocusedChat}
-                  layout="list" 
+                  layout="list"
                   groupByVendor={shouldGroup}
                   vendorMap={vendorsMap}
                 />

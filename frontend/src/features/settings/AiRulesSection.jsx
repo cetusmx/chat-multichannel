@@ -6,14 +6,14 @@ const AiRulesSection = () => {
   const [rules, setRules] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  
+
   const [isEditing, setIsEditing] = useState(false);
   const [currentRule, setCurrentRule] = useState(null);
-  
+
   const [formData, setFormData] = useState({
     term: '',
     definition: '',
-    isActive: true
+    isActive: true,
   });
   const [formError, setFormError] = useState('');
 
@@ -64,7 +64,7 @@ const AiRulesSection = () => {
     try {
       await put(`/tenant/ai-rules/${rule.id}`, {
         ...rule,
-        isActive: !rule.isActive
+        isActive: !rule.isActive,
       });
       fetchRules();
     } catch (err) {
@@ -78,7 +78,7 @@ const AiRulesSection = () => {
       setFormError('Término y definición son requeridos');
       return;
     }
-    
+
     try {
       let res;
       if (currentRule) {
@@ -86,12 +86,12 @@ const AiRulesSection = () => {
       } else {
         res = await post('/tenant/ai-rules', formData);
       }
-      
+
       if (!res.ok) {
         const errData = await res.json();
         throw new Error(errData.error || 'Error al guardar la regla');
       }
-      
+
       setIsEditing(false);
       fetchRules();
     } catch (err) {
@@ -99,9 +99,9 @@ const AiRulesSection = () => {
     }
   };
 
-  const filteredRules = rules.filter(r => 
-    r.term.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    r.definition.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredRules = rules.filter(r =>
+    r.term.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    r.definition.toLowerCase().includes(searchTerm.toLowerCase()),
   );
 
   return (
@@ -232,8 +232,8 @@ const AiRulesSection = () => {
                         <button
                           onClick={() => handleToggle(rule)}
                           className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                            rule.isActive 
-                              ? 'bg-green-500/10 text-green-400 hover:bg-green-500/20' 
+                            rule.isActive
+                              ? 'bg-green-500/10 text-green-400 hover:bg-green-500/20'
                               : 'bg-sales-slate-700 text-sales-slate-400 hover:bg-sales-slate-600'
                           }`}
                         >
@@ -241,13 +241,13 @@ const AiRulesSection = () => {
                         </button>
                       </td>
                       <td className="py-3 px-4 text-right whitespace-nowrap">
-                        <button 
+                        <button
                           onClick={() => handleEdit(rule)}
                           className="p-2 text-sales-slate-400 hover:text-sales-cyan-400 transition-colors inline-block"
                         >
                           <Edit2 className="w-4 h-4" />
                         </button>
-                        <button 
+                        <button
                           onClick={() => handleDelete(rule.id)}
                           className="p-2 text-sales-slate-400 hover:text-red-400 transition-colors inline-block"
                         >

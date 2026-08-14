@@ -5,7 +5,7 @@ import { getAssignmentConfig, updateAssignmentConfig, getUsers } from '../../ser
  * AssignmentRulesSection component allows administrators to configure
  * the client assignment strategy (MANUAL vs ROUND_ROBIN) and select
  * the eligible vendors for automatic assignment.
- * 
+ *
  * @component
  * @returns {JSX.Element} The rendered component
  */
@@ -13,7 +13,7 @@ export default function AssignmentRulesSection() {
   const [strategy, setStrategy] = useState('MANUAL');
   const [activeVendorIds, setActiveVendorIds] = useState([]);
   const [vendors, setVendors] = useState([]);
-  
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -25,16 +25,16 @@ export default function AssignmentRulesSection() {
       try {
         const [configRes, usersRes] = await Promise.all([
           getAssignmentConfig(),
-          getUsers('role=VENDOR&limit=100')
+          getUsers('role=VENDOR&limit=100'),
         ]);
-        
+
         if (!configRes.ok || !usersRes.ok) {
           throw new Error('No se pudo cargar la configuración o los usuarios.');
         }
-        
+
         const configData = await configRes.json();
         const usersData = await usersRes.json();
-        
+
         if (configData.data) {
           setStrategy(configData.data.strategy);
           setActiveVendorIds((configData.data.activeVendors || []).map(v => v.id));
@@ -71,7 +71,7 @@ export default function AssignmentRulesSection() {
       } catch (err) {
         throw new Error('Error al procesar la respuesta del servidor');
       }
-      
+
       if (!res.ok) {
         throw new Error(data?.error?.message || 'Error saving assignment configuration');
       }
@@ -87,8 +87,8 @@ export default function AssignmentRulesSection() {
   };
 
   const handleVendorToggle = (id) => {
-    setActiveVendorIds((prev) => 
-      prev.includes(id) ? prev.filter((vId) => vId !== id) : [...prev, id]
+    setActiveVendorIds((prev) =>
+      prev.includes(id) ? prev.filter((vId) => vId !== id) : [...prev, id],
     );
     setSuccess('');
   };
@@ -114,7 +114,7 @@ export default function AssignmentRulesSection() {
   return (
     <div className="rounded-xl border border-slate-800 bg-slate-900/50 backdrop-blur-sm p-6">
       <h2 className="mb-4 text-lg font-medium text-sales-slate-100">Reglas de Asignación de Clientes</h2>
-      
+
       <form onSubmit={handleSubmit} className="space-y-6 max-w-xl">
         {error && (
           <div className="rounded-lg bg-red-900/50 p-3 text-sm text-red-400 border border-red-900/50">

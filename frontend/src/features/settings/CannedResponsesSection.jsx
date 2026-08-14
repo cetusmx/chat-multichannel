@@ -5,7 +5,7 @@ export default function CannedResponsesSection() {
   const [responses, setResponses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  
+
   const [isEditing, setIsEditing] = useState(false);
   const [currentId, setCurrentId] = useState(null);
   const [title, setTitle] = useState('');
@@ -95,7 +95,7 @@ export default function CannedResponsesSection() {
       {isEditing ? (
         <form onSubmit={handleSave} className="bg-sales-slate-800 p-4 rounded-xl border border-sales-slate-700 space-y-4">
           <h3 className="text-white font-medium">{currentId ? 'Editar Respuesta' : 'Nueva Respuesta'}</h3>
-          
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-medium text-sales-slate-400 mb-1">Título / Nombre *</label>
@@ -171,7 +171,7 @@ export default function CannedResponsesSection() {
               </div>
               <p className="text-sm text-sales-slate-400 line-clamp-3 whitespace-pre-wrap">{r.content}</p>
             </div>
-            
+
             <div className="flex justify-end gap-2 mt-4 pt-4 border-t border-sales-slate-700/50">
               <button onClick={() => handleEdit(r)} className="text-sales-slate-400 hover:text-white text-sm">Editar</button>
               <button onClick={() => handleDelete(r.id)} className="text-red-400 hover:text-red-300 text-sm">Eliminar</button>

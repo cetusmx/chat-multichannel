@@ -4,28 +4,28 @@ import useAuthStore from '../../stores/useAuthStore.js';
 
 /**
  * WhatsAppSettingsSection - Componente para administrar las credenciales de la API de WhatsApp Business
- * 
+ *
  * @component
  * @returns {JSX.Element}
- * 
+ *
  * @example
  * <WhatsAppSettingsSection />
  */
 export default function WhatsAppSettingsSection() {
   const user = useAuthStore((s) => s.user);
-  
+
   const [form, setForm] = useState({
     phoneNumberId: '',
     businessAccountId: '',
     accessToken: '',
     verifyToken: '',
   });
-  
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [saved, setSaved] = useState(false);
-  
+
   // URL base, en producción será api.chat.sealmarket.net o equivalente
   const webhookUrl = `${window.location.origin}/api/whatsapp/webhook/${user?.tenantId}`;
 
@@ -132,7 +132,7 @@ export default function WhatsAppSettingsSection() {
                   placeholder="Un token secreto inventado por ti"
                 />
               </div>
-              
+
               <div className="rounded-lg border border-slate-700 bg-slate-800/50 p-4">
                 <label className="mb-1 block text-xs text-sales-slate-500 uppercase tracking-wider">Callback URL (Copiar a Meta)</label>
                 <code className="text-sm text-sales-coral block break-all select-all">

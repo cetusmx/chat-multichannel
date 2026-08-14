@@ -1,6 +1,6 @@
 import React from 'react';
 
-export function Logo({ className = "w-10 h-10" }) {
+export function Logo({ className = 'w-10 h-10' }) {
   return (
     <svg viewBox="0 0 100 100" className={className} fill="none" strokeLinejoin="miter" xmlns="http://www.w3.org/2000/svg">
       <defs>
@@ -12,7 +12,7 @@ export function Logo({ className = "w-10 h-10" }) {
           <stop offset="0%" stopColor="#F97316" />
           <stop offset="100%" stopColor="#FB923C" />
         </linearGradient>
-        
+
         <filter id="rounded3dSoftV17" x="-20%" y="-20%" width="140%" height="140%">
           <feGaussianBlur in="SourceAlpha" stdDeviation="3.5" result="blur" />
           <feDiffuseLighting in="blur" surfaceScale="6" diffuseConstant="1.2" lightingColor="white" result="diffuse">

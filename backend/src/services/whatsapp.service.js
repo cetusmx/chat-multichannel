@@ -172,10 +172,17 @@ const whatsappService = {
           if (value && value.messages && value.messages.length > 0) {
             const message = value.messages[0];
             const contact = value.contacts && value.contacts[0];
+            const metadata = value.metadata || {};
             
             const clientPhone = message.from;
             const clientName = contact?.profile?.name || null;
             const waMessageId = message.id;
+
+            // BSP Echo check: ignore messages sent from the business's own number
+            if (metadata.display_phone_number && clientPhone === metadata.display_phone_number.replace(/\D/g, '')) {
+               logger.info(`[WHATSAPP_SERVICE] Ignoring echo message from business number ${clientPhone}`);
+               continue;
+            }
 
             let text = '';
             let mediaData = null;
@@ -244,12 +251,12 @@ const whatsappService = {
                   data: { tenantId, phoneNumber: clientPhone, name: clientName || 'Usuario WhatsApp' }
                 });
             
-            // 2. Encontrar Conversación Abierta o PENDIENTE
+            // 2. Encontrar Conversación Abierta o PENDIENTE o PAUSADA
             let conversation = await prisma.conversation.findFirst({
               where: { 
                 tenantId, 
                 clientId: finalClient.id, 
-                status: { in: ['ACTIVE', 'PENDING_ASSIGNMENT', 'ESCALATED'] } 
+                status: { in: ['ACTIVE', 'PENDING_ASSIGNMENT', 'ESCALATED', 'WAITING_CUSTOMER', 'SCHEDULED', 'ON_HOLD'] } 
               }
             });
             
@@ -270,11 +277,38 @@ const whatsappService = {
                   logger.error(`[WHATSAPP_SERVICE] Error auto-assigning chat for tenant ${tenantId}, conversation ${conversation.id}:`, autoAssignErr);
                 }
               }
-              // Actualizar fecha del último mensaje
-              await prisma.conversation.update({
-                where: { id: conversation.id },
-                data: { lastMessageAt: new Date() }
+
+              // Auto-resume atomic update for paused SLA states
+              const resumeResult = await prisma.conversation.updateMany({
+                where: {
+                  id: conversation.id,
+                  status: { in: ['WAITING_CUSTOMER', 'SCHEDULED', 'ON_HOLD'] }
+                },
+                data: {
+                  status: 'ACTIVE',
+                  statusUpdatedAt: new Date()
+                }
               });
+
+              if (resumeResult.count > 0) {
+                 // Fetch updated conversation to have correct status for sockets
+                 conversation = await prisma.conversation.findUnique({ where: { id: conversation.id } });
+                 try {
+                   // Subtask 2.3 Webhook WebSocket Ordering: Emit 'conversation_updated'
+                   const socket = require('../socket');
+                   let ioEvent = socket.getIo().of('/chat').to(`conversation:${conversation.id}`).to(`tenant_${tenantId}_coordinators`);
+                   if (conversation.vendorId) ioEvent = ioEvent.to(`vendor_${conversation.vendorId}`);
+                   ioEvent.emit('conversation_updated', conversation);
+                 } catch (err) {
+                   logger.error('[WHATSAPP_SERVICE] No se pudo emitir conversation_updated por socket:', err.message);
+                 }
+              } else {
+                 // Si no estaba pausada, solo actualizamos lastMessageAt
+                 await prisma.conversation.update({
+                   where: { id: conversation.id },
+                   data: { lastMessageAt: new Date() }
+                 });
+              }
             }
             
             // 3. Guardar el Mensaje

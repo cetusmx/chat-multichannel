@@ -13,7 +13,7 @@ const months = [
   { value: 9, label: 'Septiembre' },
   { value: 10, label: 'Octubre' },
   { value: 11, label: 'Noviembre' },
-  { value: 12, label: 'Diciembre' }
+  { value: 12, label: 'Diciembre' },
 ];
 
 const UsageReport = () => {
@@ -37,14 +37,14 @@ const UsageReport = () => {
     setError(null);
     try {
       const blob = await downloadUsageReport(year, month);
-      
+
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
       a.download = `usage-report-${year}-${month.toString().padStart(2, '0')}.csv`;
       document.body.appendChild(a);
       a.click();
-      
+
       // Cleanup
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
@@ -71,7 +71,7 @@ const UsageReport = () => {
       <div className="flex flex-col sm:flex-row gap-4 items-end">
         <div className="w-full sm:w-1/3">
           <label htmlFor={yearInputId} className="block text-sm font-medium text-slate-700 mb-1">Año</label>
-          <select 
+          <select
             id={yearInputId}
             value={year}
             onChange={(e) => {
@@ -89,10 +89,10 @@ const UsageReport = () => {
             ))}
           </select>
         </div>
-        
+
         <div className="w-full sm:w-1/3">
           <label htmlFor={monthInputId} className="block text-sm font-medium text-slate-700 mb-1">Mes</label>
-          <select 
+          <select
             id={monthInputId}
             value={month}
             onChange={(e) => setMonth(Number(e.target.value))}
@@ -100,8 +100,8 @@ const UsageReport = () => {
             className="w-full rounded-md border border-slate-300 p-2 text-sm focus:border-coral-500 focus:outline-none focus:ring-1 focus:ring-coral-500"
           >
             {months.map(m => (
-              <option 
-                key={m.value} 
+              <option
+                key={m.value}
                 value={m.value}
                 disabled={year === currentYear && m.value > currentMonth}
               >

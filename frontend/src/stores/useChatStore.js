@@ -8,13 +8,13 @@ const config = {
   api: defaultApi,
   SOCKET_URL: typeof window !== 'undefined' && window.location
     ? (window.location.origin.includes('localhost') ? 'http://localhost:4000/chat' : '/chat')
-    : null
+    : null,
 };
 
 export const configureChatStore = (customApi, customSocketUrl) => {
   if (customApi) config.api = customApi;
   if (customSocketUrl) config.SOCKET_URL = customSocketUrl;
-  
+
   // Re-initialize socket if already connected to apply new URL
   const { socket, initializeSocket } = useChatStore.getState();
   if (socket) {
@@ -38,9 +38,10 @@ const useChatStore = create((set, get) => ({
   searchError: null,
   highlightedMessageId: null,
   unreadCounts: {},
-  
+
   clearUnreadCount: (id) => set((state) => ({ unreadCounts: { ...state.unreadCounts, [id]: 0 } })),
   clearError: () => set({ errorMsg: null }),
+  isPatching: false,
   setHighlightedMessageId: (id) => set({ highlightedMessageId: id }),
   clearSearchResults: () => set({ searchResults: [], searchError: null, isSearching: false }),
 
@@ -73,9 +74,9 @@ const useChatStore = create((set, get) => ({
     try {
       const [res, slaRes] = await Promise.all([
         config.api.get('/chat/conversations'),
-        config.api.get('/metrics/sla').catch(() => null)
+        config.api.get('/metrics/sla').catch(() => null),
       ]);
-      
+
       let slaConfig = { firstResponseMins: 15, resolutionMins: 60 };
       if (slaRes && slaRes.ok) {
         try {
@@ -97,7 +98,7 @@ const useChatStore = create((set, get) => ({
       convs = convs.map(c => {
         let isSlaBreached = false;
         let breachType = null;
-        
+
         if ((c.status === 'PENDING_ASSIGNMENT' || c.status === 'ESCALATED') && slaConfig.firstResponseMins) {
           const start = c.lastMessageAt || c.createdAt;
           const elapsedMins = (now - new Date(start).getTime()) / 60000;
@@ -125,14 +126,14 @@ const useChatStore = create((set, get) => ({
 
   selectConversation: async (id, aroundMessageId = null) => {
     if (!id) return;
-    set((state) => ({ 
-      currentConversationId: id, 
-      messages: [], 
+    set((state) => ({
+      currentConversationId: id,
+      messages: [],
       errorMsg: null,
-      unreadCounts: { ...state.unreadCounts, [id]: 0 }
+      unreadCounts: { ...state.unreadCounts, [id]: 0 },
     }));
     const { socket } = get();
-    
+
     // Join room
     if (socket) {
       socket.emit('join:conversation', id);
@@ -146,23 +147,23 @@ const useChatStore = create((set, get) => ({
       let url = `/chat/${conversationId}/messages?limit=50`;
       if (aroundMessageId) url += `&aroundMessageId=${aroundMessageId}`;
       else if (cursor) url += `&cursor=${cursor}`;
-      
+
       const res = await config.api.get(url);
       if (!res.ok) {
         const errText = await res.text();
         throw new Error(`HTTP Error ${res.status}: ${errText}`);
       }
       const data = await res.json();
-      
+
       set((state) => {
         const fetchedMessages = data?.data || [];
         const newHasMore = { ...state.hasMore, [conversationId]: data?.meta?.hasMore || false };
         const newNextCursor = { ...state.nextCursor, [conversationId]: data?.meta?.nextCursor || null };
-        
+
         // Prevent race conditions: only update messages array if still on same conversation
         if (state.currentConversationId === conversationId) {
           if (aroundMessageId) {
-            return { 
+            return {
               messages: fetchedMessages,
               hasMore: newHasMore,
               nextCursor: newNextCursor,
@@ -170,7 +171,7 @@ const useChatStore = create((set, get) => ({
           } else if (cursor) {
             const existingIds = new Set(state.messages.map(m => m.id));
             const uniqueFetched = fetchedMessages.filter(m => !existingIds.has(m.id));
-            return { 
+            return {
               messages: [...uniqueFetched, ...state.messages],
               hasMore: newHasMore,
               nextCursor: newNextCursor,
@@ -178,10 +179,10 @@ const useChatStore = create((set, get) => ({
           } else {
             const existingIds = new Set(fetchedMessages.map(m => m.id));
             const newSocketMessages = state.messages.filter(m => !existingIds.has(m.id));
-            return { 
+            return {
               messages: [...fetchedMessages, ...newSocketMessages],
               hasMore: newHasMore,
-              nextCursor: newNextCursor
+              nextCursor: newNextCursor,
             };
           }
         }
@@ -224,7 +225,7 @@ const useChatStore = create((set, get) => ({
         throw new Error(`HTTP Error ${res.status}: ${errText}`);
       }
       const newMsg = await res.json();
-      
+
       // Replace optimistic temp message with actual response
       set((state) => {
         // Prevent race condition if we already navigated away
@@ -234,10 +235,10 @@ const useChatStore = create((set, get) => ({
       });
     } catch (error) {
       console.error('Error enviando mensaje:', error);
-      set((state) => ({ 
+      set((state) => ({
         errorMsg: 'Failed to send message',
         // Revert the optimistic message on failure
-        messages: state.messages.filter(m => m.id !== tempId)
+        messages: state.messages.filter(m => m.id !== tempId),
       }));
     }
   },
@@ -255,9 +256,9 @@ const useChatStore = create((set, get) => ({
       formData.append('file', file);
       if (text) formData.append('caption', text);
       if (isInternal) formData.append('isInternal', 'true');
-      
+
       const res = await config.api.postFormData(`/chat/${currentConversationId}/media`, formData, signal);
-      
+
       if (!res.ok) {
         let errorMessage = 'Fallo inesperado del servidor';
         try {
@@ -268,9 +269,9 @@ const useChatStore = create((set, get) => ({
         }
         throw new Error(errorMessage);
       }
-      
+
       const newMsg = await res.json();
-      
+
       if (newMsg?.data) {
         set((state) => {
           if (state.currentConversationId === currentConversationId) {
@@ -299,12 +300,12 @@ const useChatStore = create((set, get) => ({
   forwardMedia: async (messageId) => {
     const { currentConversationId, uploadingIds } = get();
     if (!currentConversationId || !messageId) return;
-    
+
     if (uploadingIds[messageId]) return;
 
-    set((state) => ({ 
-      uploadingIds: { ...state.uploadingIds, [messageId]: true, [currentConversationId]: true }, 
-      errorMsg: null 
+    set((state) => ({
+      uploadingIds: { ...state.uploadingIds, [messageId]: true, [currentConversationId]: true },
+      errorMsg: null,
     }));
 
     try {
@@ -319,7 +320,7 @@ const useChatStore = create((set, get) => ({
         }
         throw new Error(errorMessage);
       }
-      
+
       const newMsg = await res.json();
       if (newMsg?.data) {
         set((state) => {
@@ -347,17 +348,49 @@ const useChatStore = create((set, get) => ({
   },
 
   resolveConversation: async (conversationId) => {
-    if (!conversationId) return;
     try {
       const res = await config.api.patch(`/chat/${conversationId}/resolve`);
-      if (!res.ok) {
-        throw new Error('No se pudo cerrar la conversación');
-      }
+      if (!res.ok) throw new Error('Failed');
       // Note: socket listener 'chat:resolved' will update the status automatically
-    } catch (error) {
-      console.error('Error closing conversation:', error);
-      set({ errorMsg: 'Failed to close conversation' });
+    } catch (e) {
+      throw new Error('No se pudo cerrar la conversación');
     }
+  },
+
+  updateChatStatus: async (conversationId, payload) => {
+    set({ isPatching: true, errorMsg: null });
+    try {
+      const res = await config.api.patch(`/chat/${conversationId}/status`, payload);
+      if (!res.ok) {
+        let errText = 'Error al actualizar estado';
+        try {
+          const body = await res.json();
+          errText = body.error || errText;
+        } catch (e) {
+          // Ignorar error si no es JSON
+        }
+        throw new Error(errText);
+      }
+      const data = await res.json();
+      set(state => ({
+        conversations: state.conversations.map(c =>
+          c.id === conversationId ? { ...c, ...data.data } : c,
+        ),
+      }));
+    } catch (e) {
+      set({ errorMsg: e.message });
+      throw e;
+    } finally {
+      set({ isPatching: false });
+    }
+  },
+
+  updateChat: (conversationId, updatedData) => {
+    set(state => ({
+      conversations: state.conversations.map(c =>
+        c.id === conversationId ? { ...c, ...updatedData } : c,
+      ),
+    }));
   },
 
   addTag: async (messageId, tag) => {
@@ -390,7 +423,7 @@ const useChatStore = create((set, get) => ({
         throw new Error(`HTTP Error ${res.status}: ${errText}`);
       }
       const data = await res.json();
-      
+
       set((state) => {
         if (state.currentConversationId !== currentConversationId) return state;
         const nextMessages = state.messages.map(m => m.id === messageId ? (data?.data || m) : m);
@@ -433,7 +466,7 @@ const useChatStore = create((set, get) => ({
         throw new Error(`HTTP Error ${res.status}: ${errText}`);
       }
       const data = await res.json();
-      
+
       set((state) => {
         if (state.currentConversationId !== currentConversationId) return state;
         const nextMessages = state.messages.map(m => m.id === messageId ? (data?.data || m) : m);
@@ -484,11 +517,11 @@ const useChatStore = create((set, get) => ({
         set((state) => {
           const conv = state.conversations.find(c => c.id === conversationId);
           if (!conv || (conv.isSlaBreached === true && conv.breachType === metric)) return state;
-          
+
           return {
-            conversations: state.conversations.map(c => 
-              c.id === conversationId ? { ...c, isSlaBreached: true, breachType: metric } : c
-            )
+            conversations: state.conversations.map(c =>
+              c.id === conversationId ? { ...c, isSlaBreached: true, breachType: metric } : c,
+            ),
           };
         });
       }
@@ -503,7 +536,7 @@ const useChatStore = create((set, get) => ({
       if (user?.role === 'COORDINATOR' || user?.role === 'ADMIN') {
         newSocket.emit('join:tenant_coordinators', user.tenantId);
       }
-      
+
       const { currentConversationId } = get();
       if (currentConversationId) {
         newSocket.emit('join:conversation', currentConversationId);
@@ -522,7 +555,7 @@ const useChatStore = create((set, get) => ({
       set((state) => {
         let nextMessages = state.messages;
         let requiresFetch = false;
-        
+
         let nextUnreadCounts = { ...state.unreadCounts };
         const uiState = useUIStore.getState();
         const isActiveMain = state.currentConversationId === msg.conversationId;
@@ -537,10 +570,10 @@ const useChatStore = create((set, get) => ({
         if (isActiveMain) {
           // Evitar duplicados (por si entra por WS y por HTTP simultáneo o update optimista)
           // Look for an optimistic message with the same content sent very recently
-          const isOptimisticDuplicate = state.messages.find(m => 
-            m.status === 'SENDING' && m.content === msg.content && m.isInternal === msg.isInternal
+          const isOptimisticDuplicate = state.messages.find(m =>
+            m.status === 'SENDING' && m.content === msg.content && m.isInternal === msg.isInternal,
           );
-          
+
           if (isOptimisticDuplicate) {
             // Replace optimistic with real
             nextMessages = state.messages.map(m => m.id === isOptimisticDuplicate.id ? msg : m);
@@ -551,7 +584,7 @@ const useChatStore = create((set, get) => ({
             }
           }
         }
-        
+
         // Actualizar la lista de conversaciones (in-memory, sin DDoS)
         let found = false;
         const nextConversations = state.conversations.map(c => {
@@ -560,12 +593,12 @@ const useChatStore = create((set, get) => ({
             return {
               ...c,
               lastMessageAt: msg.createdAt || new Date().toISOString(),
-              messages: [msg]
+              messages: [msg],
             };
           }
           return c;
         });
-        
+
         if (!found) {
           requiresFetch = true;
         }
@@ -593,7 +626,7 @@ const useChatStore = create((set, get) => ({
 
     newSocket.on('conversation_updated', (conversation) => {
       set((state) => ({
-        conversations: state.conversations.map(c => c.id === conversation.id ? { ...c, ...conversation } : c)
+        conversations: state.conversations.map(c => c.id === conversation.id ? { ...c, ...conversation } : c),
       }));
     });
 
@@ -605,7 +638,7 @@ const useChatStore = create((set, get) => ({
           return {
             conversations: state.conversations.filter(c => c.id !== conversationId),
             currentConversationId: state.currentConversationId === conversationId ? null : state.currentConversationId,
-            messages: state.currentConversationId === conversationId ? [] : state.messages
+            messages: state.currentConversationId === conversationId ? [] : state.messages,
           };
         } else if (action === 'added' && conversation) {
           const exists = state.conversations.find(c => c.id === conversation.id);
@@ -617,7 +650,7 @@ const useChatStore = create((set, get) => ({
           }
           // Sort by lastMessageAt desc
           nextConversations.sort((a, b) => new Date(b.lastMessageAt || 0) - new Date(a.lastMessageAt || 0));
-          
+
           // Increment unread count to trigger sound/tab notification
           const nextUnreadCounts = { ...state.unreadCounts };
           nextUnreadCounts[conversation.id] = (nextUnreadCounts[conversation.id] || 0) + 1;
@@ -629,15 +662,25 @@ const useChatStore = create((set, get) => ({
     });
 
     newSocket.on('chat:escalated', (event) => {
-      set((state) => {
-        const conversationId = event?.payload?.conversationId;
-        if (!conversationId) return state;
-        return {
-          conversations: state.conversations.map(c => 
-            c.id === conversationId ? { ...c, status: 'ESCALATED' } : c
-          )
-        };
-      });
+      const { conversationId } = event.payload || event;
+      if (conversationId) {
+        set(state => ({
+          conversations: state.conversations.map(c =>
+            c.id === conversationId ? { ...c, status: 'ESCALATED' } : c,
+          ),
+        }));
+      }
+    });
+
+    newSocket.on('chat:status_updated', (event) => {
+      const { conversationId, chat } = event.payload || event;
+      if (conversationId && chat) {
+        set(state => ({
+          conversations: state.conversations.map(c =>
+            c.id === conversationId ? { ...c, ...chat } : c,
+          ),
+        }));
+      }
     });
 
     const handleStatusChange = (defaultFallback) => (event) => {
@@ -646,9 +689,9 @@ const useChatStore = create((set, get) => ({
         if (!conversationId) return state;
         const newStatus = event?.payload?.status || event?.status || defaultFallback;
         return {
-          conversations: state.conversations.map(c => 
-            c.id === conversationId ? { ...c, status: newStatus } : c
-          )
+          conversations: state.conversations.map(c =>
+            c.id === conversationId ? { ...c, status: newStatus } : c,
+          ),
         };
       });
     };
@@ -665,8 +708,8 @@ const useChatStore = create((set, get) => ({
               ...c,
               client: {
                 ...c.client,
-                cartData: cartData
-              }
+                cartData: cartData,
+              },
             };
           }
           return c;
@@ -691,7 +734,7 @@ const useChatStore = create((set, get) => ({
            const focusedChatsToClose = state.conversations
              .filter(c => c.client?.id === updatedClient.id)
              .map(c => c.id);
-             
+
            focusedChatsToClose.forEach(id => {
              if (uiState.focusedChatIds.includes(id)) {
                uiState.toggleFocusedChat(id);
@@ -711,14 +754,14 @@ const useChatStore = create((set, get) => ({
         return {
           conversations: nextConversations,
           currentConversationId: nextCurrentConversationId,
-          messages: nextMessages
+          messages: nextMessages,
         };
       });
     });
 
     set({ socket: newSocket, alertsSocket: newAlertsSocket });
   },
-  
+
   disconnectSocket: () => {
     const currentSocket = get().socket;
     if (currentSocket) {
@@ -729,7 +772,7 @@ const useChatStore = create((set, get) => ({
       alertsSocket.disconnect();
     }
     set({ socket: null, alertsSocket: null });
-  }
+  },
 }));
 
 export default useChatStore;

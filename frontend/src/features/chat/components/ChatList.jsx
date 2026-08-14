@@ -3,7 +3,7 @@ import useChatStore from '../../../stores/useChatStore';
 
 /**
  * ChatList - Muestra las conversaciones en el panel izquierdo o en un grid de vista previa
- * 
+ *
  * @component
  */
 export default function ChatList({ conversations, currentConversationId, currentConversationIds = [], onSelect, layout = 'list', groupByVendor = false, vendorMap = {} }) {
@@ -23,10 +23,10 @@ export default function ChatList({ conversations, currentConversationId, current
     const isFirstResponse = breachType === 'firstResponse';
     const unreadCount = unreadCounts[conv.id] || 0;
 
-    let gridStyles = isSelected 
-      ? 'border-sales-coral-400 bg-sales-slate-800/80 shadow-md shadow-sales-coral-500/10' 
+    let gridStyles = isSelected
+      ? 'border-sales-coral-400 bg-sales-slate-800/80 shadow-md shadow-sales-coral-500/10'
       : 'border-sales-slate-700 bg-sales-slate-800/40';
-    
+
     let listStyles = isSelected ? 'bg-sales-slate-800 border-l-4 border-sales-coral-400' : '';
 
     if (isSlaBreached) {
@@ -46,14 +46,14 @@ export default function ChatList({ conversations, currentConversationId, current
     }
 
     return (
-      <div 
-        key={conv.id} 
+      <div
+        key={conv.id}
         onClick={() => {
           useChatStore.getState().clearUnreadCount(conv.id);
           onSelect(conv.id);
         }}
         className={`cursor-pointer transition-all ${
-          isGrid 
+          isGrid
             ? `p-4 rounded-xl border backdrop-blur-md hover:bg-sales-slate-800/70 ${gridStyles}`
             : `p-4 hover:bg-sales-slate-800 ${listStyles}`
         }`}
@@ -62,7 +62,7 @@ export default function ChatList({ conversations, currentConversationId, current
           <span className="font-semibold text-sales-slate-100 pr-2 flex flex-wrap items-center gap-2 min-w-0">
             <span className="truncate">{conv.client?.name || conv.client?.phoneNumber}</span>
             {conv.status === 'PENDING_ASSIGNMENT' && (
-              <span 
+              <span
                 className="flex-shrink-0 px-1.5 py-0.5 rounded bg-sales-cyan-500/20 text-sales-cyan-400 border border-sales-cyan-500/30 text-[10px] font-bold uppercase tracking-wider"
                 title="Nuevo chat sin asesor asignado"
               >
@@ -70,7 +70,7 @@ export default function ChatList({ conversations, currentConversationId, current
               </span>
             )}
             {conv.status === 'CLOSED' && (
-              <span 
+              <span
                 className="flex-shrink-0 px-1.5 py-0.5 rounded bg-sales-slate-700/50 text-sales-slate-400 border border-sales-slate-600 text-[10px] font-bold uppercase tracking-wider"
                 title="Chat finalizado"
               >
@@ -78,7 +78,7 @@ export default function ChatList({ conversations, currentConversationId, current
               </span>
             )}
             {conv.status === 'ESCALATED' && (
-              <span 
+              <span
                 className="flex-shrink-0 px-1.5 py-0.5 rounded bg-red-500 text-white shadow-sm shadow-red-500/20 text-[10px] font-bold uppercase tracking-wider"
                 title="Este chat requiere atención de un coordinador"
                 aria-label="Chat escalado"
@@ -124,7 +124,7 @@ export default function ChatList({ conversations, currentConversationId, current
               <h3 className="text-[11px] font-bold text-sales-slate-300 uppercase tracking-wider">{vendorName}</h3>
               <span className="bg-sales-slate-800 text-sales-slate-400 px-2 py-0.5 rounded-full text-[10px] font-bold shadow-inner border border-sales-slate-700/50">{chats.length}</span>
             </div>
-            <div className={isGrid ? "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4" : "divide-y divide-sales-slate-800"}>
+            <div className={isGrid ? 'grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4' : 'divide-y divide-sales-slate-800'}>
               {chats.map(renderConvItem)}
             </div>
           </div>
@@ -134,7 +134,7 @@ export default function ChatList({ conversations, currentConversationId, current
   }
 
   return (
-    <div className={isGrid ? "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4 p-2" : "divide-y divide-sales-slate-800"}>
+    <div className={isGrid ? 'grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4 p-2' : 'divide-y divide-sales-slate-800'}>
       {conversations.map(renderConvItem)}
     </div>
   );

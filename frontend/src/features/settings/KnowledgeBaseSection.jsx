@@ -9,10 +9,10 @@ export default function KnowledgeBaseSection() {
   const [error, setError] = useState('');
   const [file, setFile] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
-  
+
   useEffect(() => {
     fetchDocuments();
-    
+
     // Poll every 3 seconds if there are processing documents
     const intervalId = setInterval(() => {
       setDocuments(currentDocs => {
@@ -25,7 +25,7 @@ export default function KnowledgeBaseSection() {
 
     return () => clearInterval(intervalId);
   }, []);
-  
+
   const fetchDocuments = async (silent = false) => {
     try {
       if (!silent) setLoading(true);
@@ -37,11 +37,11 @@ export default function KnowledgeBaseSection() {
       if (!silent) setLoading(false);
     }
   };
-  
+
   const handleFileChange = (e) => {
     const selected = e.target.files[0];
     if (!selected) return; // User cancelled dialog
-    
+
     if (selected.type === 'application/pdf' || selected.type === 'text/csv' || selected.name.endsWith('.csv')) {
       setFile(selected);
       setError('');
@@ -50,32 +50,32 @@ export default function KnowledgeBaseSection() {
       setError('Por favor, selecciona un archivo PDF o CSV.');
     }
   };
-  
+
   const handleUpload = async (e) => {
     e.preventDefault();
     if (!file) return;
-    
+
     try {
       setUploading(true);
       setError('');
-      
+
       await uploadKnowledgeBaseDocument(file);
-      
+
       setFile(null);
       // Reset input
       const fileInput = document.getElementById('kb-file-upload');
       if (fileInput) fileInput.value = '';
-      
+
       // Fetch documents again to show the new one
       await fetchDocuments();
-      
+
     } catch (err) {
       setError(err.message);
     } finally {
       setUploading(false);
     }
   };
-  
+
   const executeDelete = async (id) => {
     try {
       setLoading(true);
@@ -89,7 +89,7 @@ export default function KnowledgeBaseSection() {
       setConfirmDelete(null);
     }
   };
-  
+
   const formatSize = (bytes) => {
     if (bytes === 0) return '0 Bytes';
     const k = 1024;
@@ -109,7 +109,7 @@ export default function KnowledgeBaseSection() {
         return <span className="px-2 py-1 text-xs rounded-full bg-yellow-500/20 text-yellow-400">Procesando</span>;
     }
   };
-  
+
   return (
     <div className="space-y-6">
       <div className="rounded-lg border border-slate-800 bg-sales-slate-900 p-6">
@@ -201,7 +201,7 @@ export default function KnowledgeBaseSection() {
           </table>
         </div>
       </div>
-      
+
       <ConfirmModal
         open={!!confirmDelete}
         title="Eliminar Documento"

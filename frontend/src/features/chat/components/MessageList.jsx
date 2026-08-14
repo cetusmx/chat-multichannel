@@ -16,11 +16,11 @@ const formatBytes = (bytes, decimals = 1) => {
 const formatDateLabel = (dateString) => {
   const date = new Date(dateString);
   if (isNaN(date.getTime())) return '';
-  
+
   const today = new Date();
   const yesterday = new Date(today);
   yesterday.setDate(yesterday.getDate() - 1);
-  
+
   if (date.toDateString() === today.toDateString()) {
     return 'Hoy';
   } else if (date.toDateString() === yesterday.toDateString()) {
@@ -41,7 +41,7 @@ const SecureMedia = ({ url, className, type = 'IMAGE', alt, fallbackText }) => {
   useEffect(() => {
     let objectUrl = null;
     let isMounted = true;
-    
+
     let fetchUrl = url;
     if (import.meta.env.VITE_API_URL) {
       const baseUrl = import.meta.env.VITE_API_URL.replace(/\/api$/, '');
@@ -49,7 +49,7 @@ const SecureMedia = ({ url, className, type = 'IMAGE', alt, fallbackText }) => {
     }
 
     fetch(fetchUrl, {
-      headers: { Authorization: `Bearer ${token}` }
+      headers: { Authorization: `Bearer ${token}` },
     })
     .then(r => {
       if (!r.ok) {
@@ -73,7 +73,7 @@ const SecureMedia = ({ url, className, type = 'IMAGE', alt, fallbackText }) => {
       console.error(err);
       if (isMounted) setHasError(true);
     });
-    
+
     return () => {
       isMounted = false;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
@@ -103,10 +103,10 @@ const SecureMedia = ({ url, className, type = 'IMAGE', alt, fallbackText }) => {
   }
   if (type === 'DOCUMENT') {
     return (
-      <a 
-        href={src} 
-        target="_blank" 
-        rel="noopener noreferrer" 
+      <a
+        href={src}
+        target="_blank"
+        rel="noopener noreferrer"
         className={`flex items-center gap-2 px-3 py-2 bg-black/20 hover:bg-black/40 rounded-lg transition-colors ${className}`}
       >
         <svg className="w-5 h-5 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -121,7 +121,7 @@ const SecureMedia = ({ url, className, type = 'IMAGE', alt, fallbackText }) => {
 
 /**
  * MessageList - Muestra y envía mensajes de una conversación seleccionada
- * 
+ *
  * @component
  */
 export default function MessageList({ conversationId, messages, onSendMessage, onSendMedia, isUploading, errorMsg, clearError, clientName, hasMore, loadMoreMessages, isLoadingMore, headerActions }) {
@@ -141,13 +141,13 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
   const token = useAuthStore(state => state.token);
   const user = useAuthStore(state => state.user);
   const abortControllerRef = useRef(null);
-  
+
   const scrollContainerRef = useRef(null);
   const observerTargetRef = useRef(null);
   const highlightedRef = useRef(null);
   const aiPopoverRef = useRef(null);
   const aiTriggerRef = useRef(null);
-  
+
   const previousScrollHeight = useRef(null);
   const scrollPositionRestored = useRef(true);
   const chatInputRef = useRef(null);
@@ -217,20 +217,20 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
     if (messages.length > 0) {
       const isNewMessageAtEnd = messages.length > prevMessagesLength.current && messages[0].id === prevFirstMessageId.current;
       const isFirstLoad = prevMessagesLength.current === 0;
-      
+
       let isNearBottom = true;
       if (scrollContainerRef.current) {
         const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef.current;
         isNearBottom = scrollHeight - scrollTop - clientHeight < 150;
       }
-      
+
       const lastMessage = messages[messages.length - 1];
       const isMyMessage = lastMessage && (lastMessage.senderType === 'VENDOR' || lastMessage.senderType === 'SYSTEM');
-      
+
       if ((isFirstLoad || (isNewMessageAtEnd && (isNearBottom || isMyMessage))) && scrollPositionRestored.current && !highlightedMessageId) {
         bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
       }
-      
+
       prevMessagesLength.current = messages.length;
       prevFirstMessageId.current = messages[0].id;
     }
@@ -254,7 +254,7 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
   useEffect(() => {
     if (highlightedMessageId && highlightedRef.current) {
       highlightedRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      
+
       // Clear highlight after 3 seconds
       const timer = setTimeout(() => {
         setHighlightedMessageId(null);
@@ -275,9 +275,9 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
           if (loadMoreMessages) loadMoreMessages();
         }
       },
-      { threshold: 0.1 }
+      { threshold: 0.1 },
     );
-    
+
     if (observerTargetRef.current) observer.observe(observerTargetRef.current);
     return () => observer.disconnect();
   }, [hasMore, isLoadingMore, loadMoreMessages, messages]);
@@ -328,7 +328,7 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
   const handleGenerateAi = async (e) => {
     e?.preventDefault();
     if (!aiPrompt.trim() || !conversationId) return;
-    
+
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
@@ -416,7 +416,7 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
         'image/jpeg', 'image/png', 'image/webp',
         'application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
         'video/mp4', 'video/3gpp', 'video/quicktime',
-        'audio/aac', 'audio/mp4', 'audio/mpeg', 'audio/amr', 'audio/ogg'
+        'audio/aac', 'audio/mp4', 'audio/mpeg', 'audio/amr', 'audio/ogg',
       ];
       // Fallback allowed checks (some OS/Browsers map extensions without standard mime types properly, so we don't strict block empty types, but we block known mismatched types)
       if (file.type && !allowedMimeTypes.includes(file.type)) {
@@ -424,13 +424,13 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
         if (fileInputRef.current) fileInputRef.current.value = null;
         return;
       }
-      
+
       if (file.size > 15 * 1024 * 1024) {
         setLocalError('El archivo supera el límite de 15MB.');
         if (fileInputRef.current) fileInputRef.current.value = null;
         return;
       }
-      
+
       setLocalError(null);
       setSelectedFile(file);
       if (e.target && e.target.value !== undefined) {
@@ -452,7 +452,7 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
   const handleDrop = (e) => {
     e.preventDefault();
     setIsDragging(false);
-    
+
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       if (e.dataTransfer.files.length > 1) {
         setLocalError('Solo puedes enviar un archivo a la vez.');
@@ -466,7 +466,7 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
   };
 
   return (
-    <div 
+    <div
       className={`flex flex-col h-full w-full min-w-0 bg-sales-slate-900 border-l border-sales-slate-800 relative ${isDragging ? 'ring-2 ring-sales-cyan-500' : ''}`}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
@@ -477,7 +477,7 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
           <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-sales-cyan-400"></div>
         </div>
       )}
-      
+
       {isDragging && !isUploading && (
         <div className="absolute inset-0 bg-sales-slate-900/80 z-50 flex items-center justify-center backdrop-blur-sm pointer-events-none">
           <div className="text-sales-cyan-400 flex flex-col items-center">
@@ -486,7 +486,7 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
           </div>
         </div>
       )}
-      
+
       {/* Chat Header */}
       <div className="p-4 border-b border-sales-slate-800 bg-sales-slate-900 flex items-center justify-between">
         <h2 className="text-lg font-semibold text-sales-slate-100">{clientName || 'Conversación Activa'}</h2>
@@ -498,8 +498,8 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
       </div>
 
       {/* Messages */}
-      <div 
-        ref={scrollContainerRef} 
+      <div
+        ref={scrollContainerRef}
         className="flex-1 overflow-y-auto overflow-x-hidden w-full p-4 space-y-4 custom-scrollbar"
       >
         <div ref={observerTargetRef} className="h-4 w-full"></div>
@@ -514,15 +514,15 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
             <button onClick={() => { if(clearError) clearError(); setLocalError(null); }} className="text-red-400 hover:text-red-300 font-bold px-2">&times;</button>
           </div>
         )}
-        
+
         {messages.length === 0 && (
           <div className="text-center text-sales-slate-500 mt-10">Envía un mensaje para comenzar a chatear.</div>
         )}
-        
+
         {useMemo(() => messages.map((msg, index) => {
           const isMyTeam = ['VENDOR', 'SYSTEM', 'COORDINATOR', 'ADMIN', 'IA'].includes(msg.senderType);
           const isHighlighted = msg.id === highlightedMessageId;
-          
+
           let showDateLabel = false;
           if (index === 0) {
             showDateLabel = true;
@@ -544,18 +544,18 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
                   </span>
                 </div>
               )}
-              <div 
+              <div
                 className={`flex w-full ${isMyTeam ? 'justify-end' : 'justify-start'} transition-all duration-1000 ${isHighlighted ? 'ring-4 ring-sales-cyan-500 rounded-lg bg-sales-cyan-500/20 p-2' : ''}`}
                 ref={isHighlighted ? highlightedRef : null}
               >
-              <div 
+              <div
                 className={`group max-w-[70%] min-w-0 rounded-lg p-3 shadow-sm ${
-                  isMyTeam 
+                  isMyTeam
                     ? msg.isInternal
                       ? 'bg-sales-orange-500/20 text-sales-orange-100 rounded-br-none border-l-4 border-sales-orange-500 backdrop-blur-md'
                       : ['COORDINATOR', 'ADMIN'].includes(msg.senderType)
                         ? 'bg-sales-coral-600/90 text-white rounded-br-none border-r-4 border-sales-coral-400 backdrop-blur-md shadow-md'
-                        : 'bg-sales-cyan-600 text-white rounded-br-none' 
+                        : 'bg-sales-cyan-600 text-white rounded-br-none'
                     : 'bg-sales-slate-800 text-sales-slate-200 rounded-bl-none'
                 }`}
               >
@@ -571,15 +571,15 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
                 )}
                 {msg.attachments && msg.attachments.length > 0 && (
                   <div className="mb-2 relative">
-                    <SecureMedia 
-                      url={msg.attachments[0].url} 
-                      type={msg.attachments[0].type} 
-                      alt="Attachment" 
-                      className="max-w-full rounded-md" 
+                    <SecureMedia
+                      url={msg.attachments[0].url}
+                      type={msg.attachments[0].type}
+                      alt="Attachment"
+                      className="max-w-full rounded-md"
                       fallbackText={msg.attachments[0].name}
                     />
                     {['ADMIN', 'COORDINATOR', 'VENDOR'].includes(user?.role) && (
-                      <button 
+                      <button
                         onClick={() => forwardMedia(msg.id)}
                         disabled={uploadingIds[msg.id]}
                         className={`absolute -top-3 -right-3 z-10 bg-black/60 hover:bg-sales-cyan-600 text-white text-[10px] font-semibold px-2 py-1 rounded-full shadow-lg backdrop-blur-md border border-white/30 transition-all duration-300 flex items-center gap-1 transform hover:scale-105 ${uploadingIds[msg.id] ? 'opacity-100 cursor-wait bg-sales-cyan-600' : 'opacity-0 group-hover:opacity-100 cursor-pointer'}`}
@@ -598,7 +598,7 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
                     return isNaN(d.getTime()) ? '' : d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
                   })()}
                 </span>
-                
+
                 {/* Tags Section */}
                 <div className="mt-2 flex flex-wrap gap-1 items-center">
                   {(msg.tags || []).map(t => (
@@ -607,11 +607,11 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
                       <button onClick={() => removeTag(msg.id, t)} className="text-sales-slate-400 hover:text-red-400 focus:outline-none" title="Remove tag">&times;</button>
                     </span>
                   ))}
-                  
+
                   {addingTagTo === msg.id ? (
                     <form onSubmit={(e) => handleAddTag(e, msg.id)} className="inline-flex items-center">
-                      <input 
-                        type="text" 
+                      <input
+                        type="text"
                         autoFocus
                         value={tagInput}
                         onChange={e => setTagInput(e.target.value)}
@@ -621,7 +621,7 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
                       />
                     </form>
                   ) : (
-                    <button 
+                    <button
                       onClick={() => { setAddingTagTo(msg.id); setTagInput(''); }}
                       className="opacity-0 group-hover:opacity-100 transition-opacity inline-flex items-center justify-center w-5 h-5 rounded-full bg-sales-slate-700/50 hover:bg-sales-cyan-500/50 text-sales-slate-300 text-xs"
                       title="Add tag"
@@ -646,8 +646,8 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
             <span className="truncate max-w-[200px]">{selectedFile.name}</span>
             <span className="text-sales-slate-500 text-xs">({formatBytes(selectedFile.size)})</span>
           </div>
-          <button 
-            onClick={() => setSelectedFile(null)} 
+          <button
+            onClick={() => setSelectedFile(null)}
             className="text-sales-slate-400 hover:text-red-400 text-lg font-bold"
             disabled={isUploading}
             type="button"
@@ -669,9 +669,9 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
           </div>
           <div className="p-3">
             {aiError ? (
-              <div 
+              <div
                 className="flex flex-col gap-2"
-                tabIndex={0} 
+                tabIndex={0}
                 onKeyDown={e => {
                   if (e.key === 'Escape') {
                     closeAiPopover();
@@ -687,7 +687,7 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
               </div>
             ) : !aiDraft ? (
               <form onSubmit={handleGenerateAi} className="flex gap-2">
-                <input 
+                <input
                   type="text"
                   autoFocus
                   className="flex-1 bg-sales-slate-900 border border-sales-cyan-500 rounded px-3 py-1.5 text-sm text-sales-slate-200 focus:outline-none"
@@ -708,7 +708,7 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
               </form>
             ) : (
               <div className="flex flex-col gap-3">
-                <textarea 
+                <textarea
                   className="w-full bg-sales-slate-900 border border-sales-cyan-500 rounded p-2 text-sm text-sales-slate-200 focus:outline-none"
                   rows="5"
                   value={aiDraft}
@@ -761,10 +761,10 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
           >
             {isUploading ? '⏳' : '📎'}
           </button>
-          <input 
-            type="file" 
-            ref={fileInputRef} 
-            className="hidden" 
+          <input
+            type="file"
+            ref={fileInputRef}
+            className="hidden"
             onChange={handleFileUpload}
             disabled={isUploading || isDrafting}
             accept="image/*,video/*,audio/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
@@ -775,11 +775,11 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
               disabled={isUploading}
               onClick={() => setIsInternal(!isInternal)}
               className={`flex items-center justify-center p-2 rounded-lg transition-colors font-bold text-xs ${
-                isInternal 
-                  ? 'bg-sales-orange-500 text-white hover:bg-sales-orange-600' 
+                isInternal
+                  ? 'bg-sales-orange-500 text-white hover:bg-sales-orange-600'
                   : 'bg-sales-slate-800 text-sales-slate-400 hover:text-sales-slate-200 border border-sales-slate-700'
               }`}
-              title={isInternal ? "Comentario Interno" : "Respuesta al Cliente"}
+              title={isInternal ? 'Comentario Interno' : 'Respuesta al Cliente'}
             >
               {isInternal ? '🔒 Interno' : '💬 Cliente'}
             </button>
@@ -795,19 +795,19 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
             <textarea
               rows="1"
               ref={chatInputRef}
-              className={`w-full bg-sales-slate-800 border border-sales-slate-700 rounded-lg px-4 py-2 text-sales-slate-200 focus:outline-none focus:border-sales-cyan-400 transition-all resize-y`}
+              className={'w-full bg-sales-slate-800 border border-sales-slate-700 rounded-lg px-4 py-2 text-sales-slate-200 focus:outline-none focus:border-sales-cyan-400 transition-all resize-y'}
               style={{ minHeight: '42px', maxHeight: '150px' }}
-              placeholder={isUploading ? "Enviando..." : (selectedFile ? "Añadir un comentario..." : (isInternal ? "Escribe un comentario interno..." : "Escribe un mensaje al cliente... (Usa / para respuestas rápidas)"))}
+              placeholder={isUploading ? 'Enviando...' : (selectedFile ? 'Añadir un comentario...' : (isInternal ? 'Escribe un comentario interno...' : 'Escribe un mensaje al cliente... (Usa / para respuestas rápidas)'))}
               value={text}
               onChange={handleTextChange}
               onKeyDown={handleKeyDown}
               disabled={isUploading || isDrafting}
             />
           </div>
-          <button 
-            type="submit" 
+          <button
+            type="submit"
             disabled={(!text.trim() && !selectedFile) || isUploading || isDrafting}
-            className={`bg-sales-cyan-500 hover:bg-sales-cyan-600 disabled:opacity-50 text-white px-6 py-2 rounded-lg font-medium transition-colors min-w-[100px]`}
+            className={'bg-sales-cyan-500 hover:bg-sales-cyan-600 disabled:opacity-50 text-white px-6 py-2 rounded-lg font-medium transition-colors min-w-[100px]'}
           >
             Enviar
           </button>

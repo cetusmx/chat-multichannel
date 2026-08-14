@@ -4,8 +4,8 @@ export default function SlaBadge({ isSlaBreached, breachType, className = '' }) 
   if (!isSlaBreached) return null;
 
   const isFirstResponse = breachType === 'firstResponse';
-  const badgeColors = isFirstResponse 
-    ? 'bg-orange-500/10 text-orange-500 border border-orange-500/20' 
+  const badgeColors = isFirstResponse
+    ? 'bg-orange-500/10 text-orange-500 border border-orange-500/20'
     : 'bg-red-500/10 text-red-500 border border-red-500/20';
 
   const label = isFirstResponse ? 'SLA: 1ra Resp.' : 'SLA: Resolución';

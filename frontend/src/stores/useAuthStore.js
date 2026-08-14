@@ -27,10 +27,10 @@ const useAuthStore = create(
         set({ token });
       },
     }),
-    { 
+    {
       name: 'salesflow-auth',
-      storage: createJSONStorage(() => defaultStorage)
-    }
+      storage: createJSONStorage(() => defaultStorage),
+    },
   ),
 );
 
@@ -40,7 +40,7 @@ export const configureAuthStorage = async (storageEngine) => {
   try {
     await useAuthStore.persist.rehydrate();
   } catch (error) {
-    console.error("Auth storage rehydration failed:", error);
+    console.error('Auth storage rehydration failed:', error);
   }
 };
 

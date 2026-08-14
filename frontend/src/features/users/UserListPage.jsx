@@ -233,7 +233,7 @@ export default function UserListPage() {
     setError('');
     try {
       const usersRes = await get(`/users?${new URLSearchParams({ page, limit: 20, ...(role ? { role } : {}), ...(search ? { search } : {}) })}`);
-      
+
       const res = usersRes;
       const body = await res.json();
       if (!res.ok) {
@@ -272,7 +272,7 @@ export default function UserListPage() {
     <div>
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-semibold text-sales-slate-100">Usuarios</h1>
-        
+
         {user?.role !== 'VENDOR' && (
           <div className="flex items-center gap-4">
             {tenantProfile && tenantProfile.maxUsers !== -1 && (

@@ -10,10 +10,10 @@ export default function CartViewer({ cartData, client }) {
   const [isUpdating, setIsUpdating] = useState(false);
   const [confirmModal, setConfirmModal] = useState({ open: false, type: null, idx: null });
   const { sendMessage } = useChatStore();
-  
+
   const [isEditingAddress, setIsEditingAddress] = useState(false);
   const [tempAddress, setTempAddress] = useState('');
-  
+
   const [isEditingBilling, setIsEditingBilling] = useState(false);
   const [tempBilling, setTempBilling] = useState({ razonSocial: '', rfc: '', billingAddress: '' });
 
@@ -25,7 +25,7 @@ export default function CartViewer({ cartData, client }) {
     diam_int: '',
     diam_ext: '',
     altura: '',
-    seccion: ''
+    seccion: '',
   });
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState([]);
@@ -35,7 +35,7 @@ export default function CartViewer({ cartData, client }) {
     if (activeTab === 'catalog' && familias.length === 0) {
       getSealMarketFamilias()
         .then(data => setFamilias(data))
-        .catch(err => console.error("Error al cargar familias:", err));
+        .catch(err => console.error('Error al cargar familias:', err));
     }
   }, [activeTab, familias.length]);
 
@@ -65,7 +65,7 @@ export default function CartViewer({ cartData, client }) {
         shippingAddress,
         razonSocial,
         rfc,
-        billingAddress
+        billingAddress,
       };
       await updateClientCart(client.id, newCartData);
     } catch (err) {
@@ -85,11 +85,11 @@ export default function CartViewer({ cartData, client }) {
         shippingAddress: tempAddress,
         razonSocial,
         rfc,
-        billingAddress
+        billingAddress,
       };
       await updateClientCart(client.id, newCartData);
       setIsEditingAddress(false);
-      
+
       if (validate && tempAddress) {
         sendMessage(`Por favor valida tu dirección de envío:\n\n*${tempAddress}*\n\n¿Es correcta?`, false);
       }
@@ -110,11 +110,11 @@ export default function CartViewer({ cartData, client }) {
         shippingAddress,
         razonSocial: tempBilling.razonSocial,
         rfc: tempBilling.rfc,
-        billingAddress: tempBilling.billingAddress
+        billingAddress: tempBilling.billingAddress,
       };
       await updateClientCart(client.id, newCartData);
       setIsEditingBilling(false);
-      
+
       if (validate) {
         sendMessage(`Por favor valida tus datos de facturación:\n\nRazón Social: *${tempBilling.razonSocial || '-'}*\nRFC: *${tempBilling.rfc || '-'}*\nDomicilio: *${tempBilling.billingAddress || '-'}*\n\n¿Son correctos?`, false);
       }
@@ -159,7 +159,7 @@ export default function CartViewer({ cartData, client }) {
       setSearchError('Por favor selecciona una familia principal.');
       return;
     }
-    
+
     setIsSearching(true);
     setSearchError(null);
     try {
@@ -184,11 +184,11 @@ export default function CartViewer({ cartData, client }) {
         clave: product.CVE_ART,
         descripcion: desc,
         precio: (product.PRECIO || 0) * 1.16, // Guardamos el precio Neto
-        cantidad: 1
+        cantidad: 1,
       });
     }
     saveCart(newItems);
-    
+
     // Send auto-confirmation message to chat
     const priceNet = ((product.PRECIO || 0) * 1.16).toFixed(2);
     sendMessage(`✅ *Agregado al carrito:*\n1x ${product.CVE_ART} - ${desc}\nPrecio: $${priceNet} Neto (IVA Incluido)`, false);
@@ -206,10 +206,10 @@ export default function CartViewer({ cartData, client }) {
 
   const handleSendSummary = () => {
     if (cartItems.length === 0) return;
-    
+
     let text = '*🛒 RESUMEN DE CARRITO*\n';
     text += '----------------------------------------\n';
-    
+
     cartItems.forEach(item => {
       const lineTotal = (item.precio || 0) * (item.cantidad || 1);
       text += `${item.cantidad}x ${item.clave}\n`;
@@ -217,7 +217,7 @@ export default function CartViewer({ cartData, client }) {
       text += `$${(item.precio || 0).toFixed(2)} c/u  ->  $${lineTotal.toFixed(2)}\n`;
       text += '----------------------------------------\n';
     });
-    
+
     text += `*Subtotal:* $${subtotal.toFixed(2)}\n`;
     text += `*IVA (16%):* $${iva.toFixed(2)}\n`;
     text += `*Total Neto:* $${total.toFixed(2)}\n`;
@@ -237,7 +237,7 @@ export default function CartViewer({ cartData, client }) {
 
   return (
     <div className={`flex flex-col h-full bg-sales-slate-900/95 overflow-hidden rounded-l-2xl shadow-2xl border-l border-sales-slate-700/50 transition-opacity ${isUpdating ? 'opacity-70 pointer-events-none' : ''}`}>
-      
+
       {/* Header & Tabs */}
       <div className="p-0 border-b border-sales-slate-700/50 bg-sales-slate-800/80 shrink-0">
         <div className="flex items-center justify-between p-4 pb-2">
@@ -249,7 +249,7 @@ export default function CartViewer({ cartData, client }) {
             <span className="bg-sales-blue-600 text-white text-xs font-bold px-2.5 py-1 rounded-full shadow-sm">
               {cartItems.length} {cartItems.length === 1 ? 'art' : 'arts'}
             </span>
-            <button 
+            <button
               onClick={handleClearCart}
               title="Vaciar carrito"
               className="text-sales-slate-400 hover:text-red-400 transition-colors p-1"
@@ -258,16 +258,16 @@ export default function CartViewer({ cartData, client }) {
             </button>
           </div>
         </div>
-        
+
         {/* Tabs */}
         <div className="flex border-t border-sales-slate-700/30">
-          <button 
+          <button
             onClick={() => setActiveTab('current')}
             className={`flex-1 py-2 text-sm font-medium transition-colors ${activeTab === 'current' ? 'text-sales-blue-400 border-b-2 border-sales-blue-500 bg-sales-slate-800' : 'text-sales-slate-400 hover:text-sales-slate-300'}`}
           >
             Carrito Actual
           </button>
-          <button 
+          <button
             onClick={() => setActiveTab('catalog')}
             className={`flex-1 py-2 text-sm font-medium transition-colors ${activeTab === 'catalog' ? 'text-sales-blue-400 border-b-2 border-sales-blue-500 bg-sales-slate-800' : 'text-sales-slate-400 hover:text-sales-slate-300'}`}
           >
@@ -275,7 +275,7 @@ export default function CartViewer({ cartData, client }) {
           </button>
         </div>
       </div>
-      
+
       <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
         {activeTab === 'current' ? (
           /* ================= CURRENT CART TAB ================= */
@@ -287,15 +287,15 @@ export default function CartViewer({ cartData, client }) {
                 </h3>
                 <p className="text-sm text-sales-slate-100 font-medium truncate">{client.name}</p>
                 {client.phone && <p className="text-xs text-sales-slate-400 mt-1">{client.phone}</p>}
-                
+
                 <div className="mt-2 pt-2 border-t border-sales-slate-700/50">
                   <div className="flex justify-between items-center mb-1">
                     <p className="text-xs font-semibold text-sales-slate-400">Datos de Facturación:</p>
                     {!isEditingBilling && (
-                      <button 
-                        onClick={() => { 
-                          setTempBilling({ razonSocial: razonSocial || '', rfc: rfc || '', billingAddress: billingAddress || '' }); 
-                          setIsEditingBilling(true); 
+                      <button
+                        onClick={() => {
+                          setTempBilling({ razonSocial: razonSocial || '', rfc: rfc || '', billingAddress: billingAddress || '' });
+                          setIsEditingBilling(true);
                         }}
                         className="text-[10px] text-sales-blue-400 hover:underline"
                       >
@@ -303,35 +303,35 @@ export default function CartViewer({ cartData, client }) {
                       </button>
                     )}
                   </div>
-                  
+
                   {isEditingBilling ? (
                     <div className="mt-1 space-y-2">
-                      <input 
+                      <input
                         className="w-full bg-sales-slate-900 border border-sales-slate-700 text-sales-slate-200 text-xs rounded-lg p-2 focus:ring-sales-blue-500 min-h-[30px]"
                         value={tempBilling.razonSocial}
                         onChange={(e) => setTempBilling({...tempBilling, razonSocial: e.target.value})}
                         placeholder="Razón Social"
                       />
-                      <input 
+                      <input
                         className="w-full bg-sales-slate-900 border border-sales-slate-700 text-sales-slate-200 text-xs rounded-lg p-2 focus:ring-sales-blue-500 min-h-[30px]"
                         value={tempBilling.rfc}
                         onChange={(e) => setTempBilling({...tempBilling, rfc: e.target.value})}
                         placeholder="RFC"
                       />
-                      <textarea 
+                      <textarea
                         className="w-full bg-sales-slate-900 border border-sales-slate-700 text-sales-slate-200 text-xs rounded-lg p-2 focus:ring-sales-blue-500 min-h-[50px]"
                         value={tempBilling.billingAddress}
                         onChange={(e) => setTempBilling({...tempBilling, billingAddress: e.target.value})}
                         placeholder="Domicilio Fiscal"
                       />
                       <div className="flex gap-2 mt-2">
-                        <button 
+                        <button
                           onClick={() => handleSaveBilling(false)}
                           className="flex-1 bg-sales-slate-700 hover:bg-sales-slate-600 text-white text-[10px] py-1 rounded"
                         >
                           Guardar
                         </button>
-                        <button 
+                        <button
                           onClick={() => handleSaveBilling(true)}
                           className="flex-1 bg-sales-blue-600 hover:bg-sales-blue-500 text-white text-[10px] py-1 rounded flex items-center justify-center gap-1"
                           disabled={!tempBilling.razonSocial && !tempBilling.rfc}
@@ -354,12 +354,12 @@ export default function CartViewer({ cartData, client }) {
                     </div>
                   )}
                 </div>
-                
+
                 <div className="mt-2 pt-2 border-t border-sales-slate-700/50">
                   <div className="flex justify-between items-center mb-1">
                     <p className="text-xs font-semibold text-sales-slate-400">Dirección de Envío:</p>
                     {!isEditingAddress && (
-                      <button 
+                      <button
                         onClick={() => { setTempAddress(shippingAddress || ''); setIsEditingAddress(true); }}
                         className="text-[10px] text-sales-blue-400 hover:underline"
                       >
@@ -367,23 +367,23 @@ export default function CartViewer({ cartData, client }) {
                       </button>
                     )}
                   </div>
-                  
+
                   {isEditingAddress ? (
                     <div className="mt-1">
-                      <textarea 
+                      <textarea
                         className="w-full bg-sales-slate-900 border border-sales-slate-700 text-sales-slate-200 text-xs rounded-lg p-2 focus:ring-sales-blue-500 focus:border-sales-blue-500 min-h-[60px]"
                         value={tempAddress}
                         onChange={(e) => setTempAddress(e.target.value)}
                         placeholder="Escribe la dirección..."
                       />
                       <div className="flex gap-2 mt-2">
-                        <button 
+                        <button
                           onClick={() => handleSaveAddress(false)}
                           className="flex-1 bg-sales-slate-700 hover:bg-sales-slate-600 text-white text-[10px] py-1 rounded"
                         >
                           Guardar
                         </button>
-                        <button 
+                        <button
                           onClick={() => handleSaveAddress(true)}
                           className="flex-1 bg-sales-blue-600 hover:bg-sales-blue-500 text-white text-[10px] py-1 rounded flex items-center justify-center gap-1"
                           disabled={!tempAddress}
@@ -398,7 +398,7 @@ export default function CartViewer({ cartData, client }) {
                         {shippingAddress ? shippingAddress : <span className="italic opacity-50">No especificada</span>}
                       </p>
                       {shippingAddress && (
-                        <button 
+                        <button
                           onClick={() => sendMessage(`Por favor valida tu dirección de envío:\n\n*${shippingAddress}*\n\n¿Es correcta?`, false)}
                           className="flex-shrink-0 bg-sales-slate-700/50 hover:bg-sales-blue-600 hover:text-white text-sales-blue-400 text-[10px] py-1 px-2 rounded flex items-center justify-center gap-1 transition-colors border border-sales-slate-600/50 hover:border-sales-blue-500"
                           title="Pedir validación en el chat"
@@ -416,7 +416,7 @@ export default function CartViewer({ cartData, client }) {
               <div className="flex-1 flex flex-col items-center justify-center p-6 text-center text-sales-slate-500 h-64">
                 <ShoppingCart className="w-12 h-12 mb-3 text-sales-slate-600" />
                 <p>El carrito está vacío</p>
-                <button 
+                <button
                   onClick={() => setActiveTab('catalog')}
                   className="mt-4 text-sales-blue-400 text-sm hover:underline"
                 >
@@ -436,7 +436,7 @@ export default function CartViewer({ cartData, client }) {
                           {item.descripcion}
                         </p>
                       </div>
-                      <button 
+                      <button
                         onClick={() => handleRemoveItem(idx)}
                         className="text-sales-slate-500 hover:text-red-400 p-1 bg-sales-slate-800/50 rounded-md transition-colors shrink-0"
                         title="Eliminar artículo"
@@ -444,10 +444,10 @@ export default function CartViewer({ cartData, client }) {
                         <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
-                    
+
                     <div className="flex justify-between items-center mt-3 pt-3 border-t border-sales-slate-700/50">
                       <div className="flex items-center gap-1 bg-sales-slate-900/50 rounded-lg p-0.5 border border-sales-slate-700/50">
-                        <button 
+                        <button
                           onClick={() => handleUpdateQuantity(idx, -1)}
                           disabled={item.cantidad <= 1}
                           className="p-1 text-sales-slate-400 hover:text-white disabled:opacity-30 disabled:hover:text-sales-slate-400 transition-colors"
@@ -457,14 +457,14 @@ export default function CartViewer({ cartData, client }) {
                         <span className="text-xs font-medium text-sales-blue-400 w-6 text-center font-mono">
                           {item.cantidad}
                         </span>
-                        <button 
+                        <button
                           onClick={() => handleUpdateQuantity(idx, 1)}
                           className="p-1 text-sales-slate-400 hover:text-white transition-colors"
                         >
                           <Plus className="w-3.5 h-3.5" />
                         </button>
                       </div>
-                      
+
                       <span className="text-sm font-bold text-sales-slate-100">
                         ${(item.precio * item.cantidad).toFixed(2)}
                       </span>
@@ -480,7 +480,7 @@ export default function CartViewer({ cartData, client }) {
             <form onSubmit={handleSearch} className="mb-4 bg-sales-slate-800/50 p-3 rounded-lg border border-sales-slate-700/50 space-y-3">
               <div>
                 <label className="block text-xs font-semibold text-sales-slate-400 mb-1">Familia *</label>
-                <select 
+                <select
                   value={searchForm.familia}
                   onChange={(e) => setSearchForm({...searchForm, familia: e.target.value})}
                   className="w-full bg-sales-slate-900 border border-sales-slate-700 text-sales-slate-200 text-sm rounded-lg focus:ring-sales-blue-500 focus:border-sales-blue-500 block p-2"
@@ -491,11 +491,11 @@ export default function CartViewer({ cartData, client }) {
                   ))}
                 </select>
               </div>
-              
+
               <div className="flex gap-3">
                 <div className="flex-1">
                   <label className="block text-xs font-semibold text-sales-slate-400 mb-1">Sistema Medición</label>
-                  <select 
+                  <select
                     value={searchForm.sist_med}
                     onChange={(e) => setSearchForm({...searchForm, sist_med: e.target.value})}
                     className="w-full bg-sales-slate-900 border border-sales-slate-700 text-sales-slate-200 text-sm rounded-lg focus:ring-sales-blue-500 focus:border-sales-blue-500 block p-2"
@@ -506,8 +506,8 @@ export default function CartViewer({ cartData, client }) {
                 </div>
                 <div className="flex-1">
                   <label className="block text-xs font-semibold text-sales-slate-400 mb-1">Diam. Interior</label>
-                  <input 
-                    type="text" 
+                  <input
+                    type="text"
                     value={searchForm.diam_int}
                     onChange={(e) => setSearchForm({...searchForm, diam_int: e.target.value})}
                     placeholder="Ej. 1.25"
@@ -519,8 +519,8 @@ export default function CartViewer({ cartData, client }) {
               <div className="flex gap-3">
                 <div className="flex-1">
                   <label className="block text-xs font-semibold text-sales-slate-400 mb-1">Diam. Exterior</label>
-                  <input 
-                    type="text" 
+                  <input
+                    type="text"
                     value={searchForm.diam_ext}
                     onChange={(e) => setSearchForm({...searchForm, diam_ext: e.target.value})}
                     placeholder="Ej. 2.5"
@@ -529,8 +529,8 @@ export default function CartViewer({ cartData, client }) {
                 </div>
                 <div className="flex-1">
                   <label className="block text-xs font-semibold text-sales-slate-400 mb-1">Altura</label>
-                  <input 
-                    type="text" 
+                  <input
+                    type="text"
                     value={searchForm.altura}
                     onChange={(e) => setSearchForm({...searchForm, altura: e.target.value})}
                     placeholder="Ej. 0.25"
@@ -539,8 +539,8 @@ export default function CartViewer({ cartData, client }) {
                 </div>
                 <div className="flex-1">
                   <label className="block text-xs font-semibold text-sales-slate-400 mb-1">Sección</label>
-                  <input 
-                    type="text" 
+                  <input
+                    type="text"
                     value={searchForm.seccion}
                     onChange={(e) => setSearchForm({...searchForm, seccion: e.target.value})}
                     placeholder="Ej. 139"
@@ -549,8 +549,8 @@ export default function CartViewer({ cartData, client }) {
                 </div>
               </div>
 
-              <button 
-                type="submit" 
+              <button
+                type="submit"
                 disabled={isSearching || !searchForm.familia}
                 className="w-full bg-sales-blue-600 hover:bg-sales-blue-500 text-white font-medium rounded-lg text-sm px-4 py-2 mt-2 disabled:opacity-50 transition-colors flex justify-center items-center gap-2"
               >
@@ -572,7 +572,7 @@ export default function CartViewer({ cartData, client }) {
                   <p>Aplica filtros para ver resultados.</p>
                 </div>
               )}
-              
+
               {searchResults.map((product, idx) => {
                 const totalExt = Object.values(product.existencias || {}).reduce((a, b) => a + (b || 0), 0);
                 return (
@@ -587,7 +587,7 @@ export default function CartViewer({ cartData, client }) {
                         </p>
                       </div>
                     </div>
-                    
+
                     <div className="flex justify-between items-center mt-3 pt-3 border-t border-sales-slate-700/50">
                       <div className="flex flex-col">
                         <span className="text-sm font-bold text-sales-slate-100">
@@ -598,7 +598,7 @@ export default function CartViewer({ cartData, client }) {
                         </span>
                       </div>
                       <div className="flex flex-col gap-1.5 items-end">
-                        <button 
+                        <button
                           type="button"
                           onClick={(e) => {
                             e.preventDefault();
@@ -609,7 +609,7 @@ export default function CartViewer({ cartData, client }) {
                         >
                           <MessageSquare className="w-3 h-3" /> Sugerir
                         </button>
-                        <button 
+                        <button
                           type="button"
                           onClick={(e) => {
                             e.preventDefault();
@@ -647,7 +647,7 @@ export default function CartViewer({ cartData, client }) {
           </div>
           <div className="flex gap-2 flex-col">
             <div className="flex gap-2">
-              <button 
+              <button
                 className="flex-1 py-2.5 px-3 bg-sales-slate-800 hover:bg-sales-slate-700 border border-sales-slate-700 text-sales-blue-400 rounded-lg font-medium transition-colors shadow-lg flex justify-center items-center gap-2"
                 onClick={handleSendSummary}
                 disabled={cartItems.length === 0}
@@ -656,7 +656,7 @@ export default function CartViewer({ cartData, client }) {
                 <Send className="w-4 h-4" />
                 Resumen a Chat
               </button>
-              <button 
+              <button
                 className="flex-1 py-2.5 px-3 bg-sales-blue-600 hover:bg-sales-blue-500 text-white rounded-lg font-medium transition-colors shadow-lg shadow-sales-blue-900/20 flex justify-center items-center gap-2"
                 onClick={async () => {
                   try {
@@ -669,14 +669,14 @@ export default function CartViewer({ cartData, client }) {
                         rfc: rfc || '',
                         billingAddress: billingAddress || '',
                         address: shippingAddress || '',
-                        phone: client?.phoneNumber || client?.phone || ''
+                        phone: client?.phoneNumber || client?.phone || '',
                       },
-                      cartItems: cartItems
+                      cartItems: cartItems,
                     };
-                    const res = await fetch(`/api/chat/quote/generate`, {
+                    const res = await fetch('/api/chat/quote/generate', {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                      body: JSON.stringify(reqBody)
+                      body: JSON.stringify(reqBody),
                     });
                     if (!res.ok) throw new Error('Falló al generar PDF');
                     const blob = await res.blob();
@@ -697,12 +697,12 @@ export default function CartViewer({ cartData, client }) {
                 Cotización PDF
               </button>
             </div>
-            <button 
+            <button
               className="w-full py-2 px-3 bg-sales-slate-800 hover:bg-sales-slate-700 border border-sales-slate-700 text-sales-slate-300 rounded-lg font-medium transition-colors shadow-lg flex justify-center items-center gap-2 text-sm"
               onClick={async () => {
-                const email = window.prompt("Ingrese el correo electrónico al que desea enviar la cotización:");
+                const email = window.prompt('Ingrese el correo electrónico al que desea enviar la cotización:');
                 if (!email) return;
-                
+
                 try {
                   const token = useAuthStore.getState().token;
                   const reqBody = {
@@ -713,14 +713,14 @@ export default function CartViewer({ cartData, client }) {
                       rfc: rfc || '',
                       billingAddress: billingAddress || '',
                       address: shippingAddress || '',
-                      phone: client?.phoneNumber || client?.phone || ''
+                      phone: client?.phoneNumber || client?.phone || '',
                     },
-                    cartItems: cartItems
+                    cartItems: cartItems,
                   };
-                  const res = await fetch(`/api/chat/quote/send-email`, {
+                  const res = await fetch('/api/chat/quote/send-email', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                    body: JSON.stringify(reqBody)
+                    body: JSON.stringify(reqBody),
                   });
                   if (!res.ok) {
                     const data = await res.json();

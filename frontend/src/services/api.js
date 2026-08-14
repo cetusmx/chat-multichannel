@@ -23,7 +23,7 @@ async function handle403(res) {
 async function request(endpoint, options = {}, isFormData = false) {
   const { token } = useAuthStore.getState();
   const headers = { ...options.headers };
-  
+
   if (!isFormData) {
     headers['Content-Type'] = 'application/json';
   }
@@ -175,7 +175,7 @@ export async function updateAiConfig(data) {
 export async function uploadKnowledgeBaseDocument(file) {
   const formData = new FormData();
   formData.append('file', file);
-  
+
   const res = await postFormData('/tenant/knowledge-base/upload', formData);
   if (!res.ok) {
     const text = await res.text();
@@ -279,7 +279,7 @@ export async function getSlaConfig() {
 export async function updateSlaConfig(data) {
   const res = await request('/metrics/sla', {
     method: 'PUT',
-    body: JSON.stringify(data)
+    body: JSON.stringify(data),
   });
   return res.data;
 }
@@ -292,9 +292,9 @@ export async function updateClientCart(clientId, cartData) {
 export async function searchSealMarketCatalog(params) {
   // Remove empty parameters
   const filteredParams = Object.fromEntries(
-    Object.entries(params).filter(([_, v]) => v !== '' && v !== null && v !== undefined)
+    Object.entries(params).filter(([_, v]) => v !== '' && v !== null && v !== undefined),
   );
-  
+
   const query = new URLSearchParams(filteredParams).toString();
   const res = await get(`/sealmarket/catalog/search?${query}`);
   if (!res.ok) {
@@ -304,7 +304,7 @@ export async function searchSealMarketCatalog(params) {
 }
 
 export async function getSealMarketFamilias() {
-  const res = await get(`/sealmarket/catalog/familias`);
+  const res = await get('/sealmarket/catalog/familias');
   if (!res.ok) {
     throw new Error('Error cargando familias');
   }

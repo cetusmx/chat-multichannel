@@ -90,14 +90,14 @@ export default function CannedResponsesPopover({ isOpen, onClose, onSelect, filt
   if (!isOpen) return null;
 
   return (
-    <div 
+    <div
       ref={popoverRef}
       className="absolute bottom-full left-0 mb-2 w-80 max-h-64 overflow-y-auto bg-sales-slate-800 border border-sales-slate-700 rounded-lg shadow-xl z-50 flex flex-col"
     >
       <div className="p-2 border-b border-sales-slate-700 bg-sales-slate-900 sticky top-0">
         <span className="text-xs font-semibold text-sales-cyan-400">⚡ Respuestas Rápidas</span>
       </div>
-      
+
       {loading ? (
         <div className="p-4 text-center text-sales-slate-500 text-sm">Cargando...</div>
       ) : filteredResponses.length === 0 ? (
@@ -105,7 +105,7 @@ export default function CannedResponsesPopover({ isOpen, onClose, onSelect, filt
       ) : (
         <ul className="py-1">
           {filteredResponses.map((r, i) => (
-            <li 
+            <li
               key={r.id}
               onClick={() => handleSelect(r)}
               className={`px-3 py-2 cursor-pointer transition-colors ${

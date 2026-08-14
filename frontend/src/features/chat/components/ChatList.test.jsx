@@ -15,7 +15,7 @@ describe('ChatList', () => {
     ];
 
     render(<ChatList conversations={conversations} onSelect={mockOnSelect} />);
-    
+
     expect(screen.getByText('Client 1')).toBeDefined();
     expect(screen.getByText('1234567890')).toBeDefined();
     expect(screen.queryByText('Escalado')).toBeNull();
@@ -27,7 +27,7 @@ describe('ChatList', () => {
     ];
 
     render(<ChatList conversations={conversations} onSelect={mockOnSelect} />);
-    
+
     expect(screen.getByText('Escalated Client')).toBeDefined();
     const badge = screen.getByText('Escalado');
     expect(badge).toBeDefined();
@@ -40,7 +40,7 @@ describe('ChatList', () => {
     ];
 
     render(<ChatList conversations={conversations} onSelect={mockOnSelect} />);
-    
+
     fireEvent.click(screen.getByText('Client 1').closest('div'));
     expect(mockOnSelect).toHaveBeenCalledWith('1');
   });

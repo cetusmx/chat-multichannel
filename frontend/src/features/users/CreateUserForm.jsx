@@ -181,7 +181,7 @@ export default function CreateUserForm({ onSuccess }) {
           type="submit"
           disabled={loading || isQuotaExceeded}
           className="rounded-lg bg-sales-orange px-6 py-2 text-sm font-medium text-white hover:bg-sales-orange-light transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          title={isQuotaExceeded ? "Límite de asientos alcanzado" : undefined}
+          title={isQuotaExceeded ? 'Límite de asientos alcanzado' : undefined}
         >
           {loading ? 'Creando...' : 'Crear Usuario'}
         </button>

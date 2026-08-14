@@ -57,7 +57,7 @@ export default function SlaConfigSection() {
         Configuración de Tiempos de Respuesta (SLA)
       </h2>
       <p className="mb-6 text-sm text-sales-slate-400">
-        Define los límites de tiempo aceptables para responder a los clientes. 
+        Define los límites de tiempo aceptables para responder a los clientes.
         Estos valores se usarán para alertas de "vencimiento" y reportes.
       </p>
 

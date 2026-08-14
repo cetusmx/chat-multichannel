@@ -61,7 +61,7 @@ export default function AiConfigSection() {
   return (
     <div className="rounded-xl border border-slate-800 bg-slate-900 p-6">
       <h2 className="mb-4 text-lg font-medium text-sales-slate-100">Configuración de Inteligencia Artificial</h2>
-      
+
       <div className="mb-6 rounded-lg bg-slate-800/50 p-4">
         <p className="text-sm text-sales-slate-300">
           Estado: {isConfigured ? (
@@ -107,9 +107,9 @@ export default function AiConfigSection() {
             </p>
           </div>
           <label className="relative inline-flex items-center cursor-pointer">
-            <input 
-              type="checkbox" 
-              className="sr-only peer" 
+            <input
+              type="checkbox"
+              className="sr-only peer"
               checked={isActive}
               onChange={(e) => setIsActive(e.target.checked)}
             />

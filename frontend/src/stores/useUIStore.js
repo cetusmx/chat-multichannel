@@ -33,18 +33,18 @@ const useUIStore = create((set) => ({
     set((state) => {
       if (state.focusedChatIds.includes(chatId)) {
         const newIds = state.focusedChatIds.filter(id => id !== chatId);
-        return { 
+        return {
           focusedChatIds: newIds,
-          coordinatorViewMode: newIds.length === 0 ? 'preview' : state.coordinatorViewMode
+          coordinatorViewMode: newIds.length === 0 ? 'preview' : state.coordinatorViewMode,
         };
       } else {
         const newIds = [...state.focusedChatIds, chatId];
         if (newIds.length > 2) {
           newIds.shift();
         }
-        return { 
-          focusedChatIds: newIds, 
-          coordinatorViewMode: 'focus' 
+        return {
+          focusedChatIds: newIds,
+          coordinatorViewMode: 'focus',
         };
       }
     });

@@ -242,3 +242,17 @@
 ## Deferred from: code review of saas-2-1-esquema-cuotas-licencias-bd (2026-07-31)
 - [ ] Inefficient Compound Index for low-cardinality enum (`license_type` index in migration) - deferred, pre-existing
 
+## Deferred from: code review of story-1.4-interfaz-acciones-chat (2026-08-14)
+- Critical IDOR Vulnerability in Status Updates [backend/src/routes/chat.routes.js]
+- Dynamic Requires in Route Handlers [backend/src/routes/chat.routes.js]
+- Stringly-Typed Error Handling [backend/src/routes/chat.routes.js]
+- Loss of Paused Time for SLA Calculations [backend/src/routes/chat.routes.js]
+- Missing Concurrency Control in SLA Resumption [backend/src/services/sla.service.js]
+- Inefficient DB Queries in WhatsApp Auto-Resume [backend/src/services/whatsapp.service.js]
+- Inconsistent Lock Scoping in Chat Routes [backend/src/routes/chat.routes.js]
+- Dynamic Requires in WhatsApp Service [backend/src/services/whatsapp.service.js]
+- Unsafe Type Casting for Timebombs [backend/src/routes/chat.routes.js]
+- Magic Numbers and Hardcoded Limits [backend/src/routes/chat.routes.js]
+- Component bloat in ChatHeaderActions [frontend/src/pages/ChatView.jsx]
+- Lack of focus trapping in Modals [frontend/src/features/chat/components/ChatActionModals.jsx]
+- Missing Zustand Store Updates for API Sync and Action State Lock-In [frontend/src/stores/useChatStore.js]

@@ -50,8 +50,8 @@ const VendorAssignmentSelect = ({ conversation }) => {
 
   return (
     <>
-      <select 
-        value={conversation?.vendorId || ''} 
+      <select
+        value={conversation?.vendorId || ''}
         onChange={handleAssignClick}
         disabled={isAssigning}
         className="mr-8 px-2 py-1 bg-sales-slate-800 text-sales-slate-300 text-sm border border-sales-slate-700 rounded focus:outline-none focus:border-sales-cyan-500"
@@ -101,12 +101,12 @@ const ClientBlockToggle = ({ conversation }) => {
 
   return (
     <>
-      <button 
+      <button
         onClick={() => setShowConfirm(true)}
         disabled={isBlocking}
         className={`mr-2 px-3 py-1 border rounded transition-colors text-sm font-medium ${
-          isBlocked 
-            ? 'bg-sales-slate-800 border-sales-slate-700 hover:bg-sales-slate-700 text-sales-slate-300' 
+          isBlocked
+            ? 'bg-sales-slate-800 border-sales-slate-700 hover:bg-sales-slate-700 text-sales-slate-300'
             : 'bg-red-500/10 border-red-500/50 hover:bg-red-500/20 text-red-400'
         }`}
         title={isBlocked ? 'Desbloquear Cliente' : 'Bloquear Cliente'}
@@ -121,19 +121,19 @@ const ClientBlockToggle = ({ conversation }) => {
               {isBlocked ? '¿Desbloquear cliente?' : '¿Bloquear cliente?'}
             </h3>
             <p className="mb-6 text-sales-slate-400 text-sm">
-              {isBlocked 
+              {isBlocked
                 ? 'El cliente podrá volver a enviar mensajes y podrá ser atendido de nuevo.'
                 : 'El cliente no podrá enviar nuevos mensajes y las conversaciones activas serán cerradas. ¿Estás seguro?'
               }
             </p>
             <div className="flex justify-end gap-3">
-              <button 
+              <button
                 onClick={() => setShowConfirm(false)}
                 className="px-4 py-2 text-sales-slate-400 hover:text-sales-slate-200 text-sm font-medium"
               >
                 Cancelar
               </button>
-              <button 
+              <button
                 onClick={handleToggleBlock}
                 className={`px-4 py-2 rounded text-white text-sm font-medium ${
                   isBlocked ? 'bg-sales-cyan-600 hover:bg-sales-cyan-700' : 'bg-red-600 hover:bg-red-700'
@@ -169,7 +169,7 @@ const FocusedChat = memo(({ conversationId, clientName, conversation }) => {
       const res = await get(url, { signal });
       if (!res.ok) throw new Error('Error al cargar mensajes');
       const data = await res.json();
-      
+
       setMessages(prev => {
         if (!cursor) return data.data || [];
         const existingIds = new Set(prev.map(m => m.id));
@@ -193,7 +193,7 @@ const FocusedChat = memo(({ conversationId, clientName, conversation }) => {
 
   useEffect(() => {
     if (!socket) return;
-    
+
     const handleNewMessage = (msg) => {
       if (!msg || msg.conversationId !== conversationId) return;
       setMessages(prev => {
@@ -207,7 +207,7 @@ const FocusedChat = memo(({ conversationId, clientName, conversation }) => {
            return [...prev, msg];
         });
     };
-    
+
     const handleMessageUpdated = (msg) => {
       if (!msg || msg.conversationId !== conversationId) return;
       setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, ...msg } : m));
@@ -215,7 +215,7 @@ const FocusedChat = memo(({ conversationId, clientName, conversation }) => {
 
     socket.on('new_message', handleNewMessage);
     socket.on('message_updated', handleMessageUpdated);
-    
+
     return () => {
       socket.off('new_message', handleNewMessage);
       socket.off('message_updated', handleMessageUpdated);
@@ -225,13 +225,13 @@ const FocusedChat = memo(({ conversationId, clientName, conversation }) => {
   const handleSendMessage = async (text, isInternal = false) => {
      const tempId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Date.now().toString() + '-' + Math.random().toString(36).substring(2, 9);
      const userRole = useAuthStore.getState().user?.role || 'VENDOR';
-     const tempMsg = { 
-       id: tempId, 
-       content: text, 
-       senderType: userRole, 
-       status: 'SENDING', 
+     const tempMsg = {
+       id: tempId,
+       content: text,
+       senderType: userRole,
+       status: 'SENDING',
        isInternal,
-       createdAt: new Date().toISOString() 
+       createdAt: new Date().toISOString(),
      };
      setMessages(prev => [...prev, tempMsg]);
      try {
@@ -266,7 +266,7 @@ const FocusedChat = memo(({ conversationId, clientName, conversation }) => {
 
   return (
     <div className="flex flex-col relative flex-1 h-full min-w-[320px] max-w-full bg-sales-slate-900/50 border-r border-sales-slate-800 last:border-r-0">
-       <MessageList 
+       <MessageList
          conversationId={conversation?.id}
          messages={messages}
          onSendMessage={handleSendMessage}
@@ -287,7 +287,7 @@ const FocusedChat = memo(({ conversationId, clientName, conversation }) => {
        />
        {/* Focus Header overlay for close button */}
        <div className="absolute top-3 right-4 z-10">
-         <button 
+         <button
            onClick={() => useUIStore.getState().toggleFocusedChat(conversationId)}
            className="w-8 h-8 rounded-full bg-sales-slate-800/80 text-sales-slate-400 hover:text-white hover:bg-sales-slate-700 flex items-center justify-center transition-colors shadow-md backdrop-blur-sm border border-sales-slate-700"
            title="Cerrar foco"

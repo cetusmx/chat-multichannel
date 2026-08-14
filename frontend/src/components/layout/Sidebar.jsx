@@ -17,12 +17,12 @@ const navItems = [
 export default function Sidebar() {
   const user = useAuthStore((s) => s.user);
   const unreadCounts = useChatStore((s) => s.unreadCounts);
-  
+
   const totalUnread = Object.values(unreadCounts).reduce((acc, curr) => acc + curr, 0);
-  
+
   // Filtrar los items de navegación según el rol del usuario
-  const visibleNavItems = navItems.filter((item) => 
-    !item.roles || (user && item.roles.includes(user.role))
+  const visibleNavItems = navItems.filter((item) =>
+    !item.roles || (user && item.roles.includes(user.role)),
   );
 
   return (

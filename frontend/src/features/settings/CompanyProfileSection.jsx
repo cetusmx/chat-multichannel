@@ -8,7 +8,7 @@ const DAYS_MAP = [
   { id: 4, name: 'Jueves' },
   { id: 5, name: 'Viernes' },
   { id: 6, name: 'Sábado' },
-  { id: 0, name: 'Domingo' }
+  { id: 0, name: 'Domingo' },
 ];
 
 const DEFAULT_SCHEDULE = {
@@ -18,16 +18,16 @@ const DEFAULT_SCHEDULE = {
   4: { isOpen: true, start: '09:00', end: '18:00' },
   5: { isOpen: true, start: '09:00', end: '18:00' },
   6: { isOpen: false, start: '09:00', end: '14:00' },
-  0: { isOpen: false, start: '09:00', end: '14:00' }
+  0: { isOpen: false, start: '09:00', end: '14:00' },
 };
 
 export default function CompanyProfileSection() {
   const [profile, setProfile] = useState(null);
-  const [form, setForm] = useState({ 
+  const [form, setForm] = useState({
     name: '', domain: '', phone: '', email: '', address: '',
     rfc: '', bank: '', account: '', clabe: '',
     bhTimezone: 'America/Mexico_City',
-    schedule: { ...DEFAULT_SCHEDULE }
+    schedule: { ...DEFAULT_SCHEDULE },
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -39,15 +39,15 @@ export default function CompanyProfileSection() {
       const body = await res.json();
       if (res.ok) {
         setProfile(body.data);
-        
+
         let initialSchedule = { ...DEFAULT_SCHEDULE };
         let timezone = 'America/Mexico_City';
-        
+
         // Convert old legacy format to new format if needed
         if (body.data.businessHours) {
           const bh = body.data.businessHours;
           timezone = bh.timezone || timezone;
-          
+
           if (bh.schedule) {
             initialSchedule = { ...DEFAULT_SCHEDULE, ...bh.schedule };
           } else if (bh.start && bh.end && bh.days) {
@@ -72,7 +72,7 @@ export default function CompanyProfileSection() {
           account: body.data.bankDetails?.account || '',
           clabe: body.data.bankDetails?.clabe || '',
           bhTimezone: timezone,
-          schedule: initialSchedule
+          schedule: initialSchedule,
         });
       } else {
         setError(body.error?.message || 'Error al cargar perfil');
@@ -88,9 +88,9 @@ export default function CompanyProfileSection() {
         ...prev.schedule,
         [dayId]: {
           ...prev.schedule[dayId],
-          [field]: value
-        }
-      }
+          [field]: value,
+        },
+      },
     }));
   };
 
@@ -110,12 +110,12 @@ export default function CompanyProfileSection() {
         bankDetails: {
           bank: form.bank,
           account: form.account,
-          clabe: form.clabe
+          clabe: form.clabe,
         },
         businessHours: {
           timezone: form.bhTimezone,
-          schedule: form.schedule
-        }
+          schedule: form.schedule,
+        },
       };
       const res = await put('/tenant/profile', payload);
       if (!res.ok) {
@@ -198,7 +198,7 @@ export default function CompanyProfileSection() {
             />
           </div>
         </div>
-        
+
         <div className="mt-8">
           <div className="flex flex-col border-t border-slate-700 pt-6">
             <h4 className="mb-1 text-lg font-semibold text-sales-slate-100">Horarios de Operación (Business Hours)</h4>
@@ -229,9 +229,9 @@ export default function CompanyProfileSection() {
                   <div key={day.id} className={`flex items-center gap-4 p-3 rounded-lg border transition-colors ${dayConfig.isOpen ? 'bg-sales-slate-800/80 border-sales-slate-700' : 'bg-sales-slate-900/50 border-sales-slate-800'}`}>
                     <div className="w-32 flex items-center gap-3">
                       <label className="relative inline-flex items-center cursor-pointer">
-                        <input 
-                          type="checkbox" 
-                          className="sr-only peer" 
+                        <input
+                          type="checkbox"
+                          className="sr-only peer"
                           checked={dayConfig.isOpen}
                           onChange={(e) => handleDayChange(day.id, 'isOpen', e.target.checked)}
                         />

@@ -1,0 +1,199 @@
+diff --git a/backend/prisma/schema.prisma b/backend/prisma/schema.prisma
+index e3339f6..865724e 100644
+--- a/backend/prisma/schema.prisma
++++ b/backend/prisma/schema.prisma
+@@ -25,6 +25,11 @@ enum ConversationStatus {
+   ACTIVE
+   CLOSED
+   ESCALATED
++  WAITING_CUSTOMER
++  SCHEDULED
++  ON_HOLD
++  DISCARDED
++  CLOSED_INACTIVE
+ }
+ 
+ enum RoutingStrategy {
+@@ -69,8 +74,11 @@ model Tenant {
+   phone                String?
+   email                String?
+   address              String?
+-  status               String      @default("active")
+-  businessHours        Json?       @map("business_hours")
++  status                 String      @default("active")
++  /// Expected JSON shape: { monday: { start: string, end: string } }
++  businessHours          Json?       @map("business_hours")
++  isSlaEnabled           Boolean     @default(true) @map("is_sla_enabled")
++  autoCloseInactiveHours Int         @default(48)   @map("auto_close_inactive_hours")
+   rfc                  String?
+   bankDetails          Json?       @map("bank_details")
+   maxUsers             Int         @default(-1) @map("max_users")
+@@ -255,6 +263,10 @@ model Conversation {
+   status              ConversationStatus @default(PENDING_ASSIGNMENT)
+   aiPendingEscalation Boolean            @default(false) @map("ai_pending_escalation")
+   lastMessageAt       DateTime           @default(now()) @map("last_message_at")
++  statusUpdatedAt     DateTime           @default(now()) @map("status_updated_at")
++  scheduledAt         DateTime?          @map("scheduled_at")
++  onHoldReason        String?            @map("on_hold_reason")
++  onHoldExpiration    DateTime?          @map("on_hold_expiration")
+   assignedAt          DateTime?          @map("assigned_at")
+   createdAt           DateTime           @default(now()) @map("created_at")
+   updatedAt           DateTime           @updatedAt @map("updated_at")
+@@ -267,6 +279,9 @@ model Conversation {
+   @@index([tenantId, createdAt])
+   @@index([clientId])
+   @@index([vendorId])
++  @@index([status, onHoldExpiration])
++  @@index([status, scheduledAt])
++  @@index([status, statusUpdatedAt])
+   @@map("conversations")
+ }
+ 
+diff --git a/scratch/test-migration.js b/scratch/test-migration.js
+new file mode 100644
+index 0000000..337f082
+--- /dev/null
++++ b/scratch/test-migration.js
+@@ -0,0 +1,75 @@
++const { PrismaClient } = require('../backend/node_modules/@prisma/client');
++
++const prisma = new PrismaClient();
++
++async function main() {
++  console.log('Testing DB Migration for Advanced Lifecycle States...');
++
++  try {
++    // 1. Test Tenant creation with new SLA fields
++    console.log('Creating Test Tenant...');
++    const tenant = await prisma.tenant.create({
++      data: {
++        name: 'SLA Test Tenant',
++        domain: 'sla-test-' + Date.now() + '.com',
++        isSlaEnabled: false, // Testing new field
++        autoCloseInactiveHours: 24, // Testing new field
++      },
++    });
++    console.log('Tenant created:', tenant.id);
++
++    // 2. Create Client
++    const client = await prisma.client.create({
++      data: {
++        tenantId: tenant.id,
++        phoneNumber: '5551234567',
++        name: 'Test Client',
++      },
++    });
++
++    // 3. Test Conversation creation with new metadata fields and Enum states
++    console.log('Creating Conversation in ON_HOLD state...');
++    let conversation = await prisma.conversation.create({
++      data: {
++        tenantId: tenant.id,
++        clientId: client.id,
++        status: 'ON_HOLD',
++        onHoldReason: 'Awaiting third-party response',
++        onHoldExpiration: new Date(Date.now() + 1000 * 60 * 60 * 24), // 24 hours from now
++      },
++    });
++    console.log('Conversation created successfully with ID:', conversation.id);
++    console.log('Status:', conversation.status);
++    console.log('Reason:', conversation.onHoldReason);
++
++    // 4. Test Transition back to ACTIVE (nullifying fields)
++    console.log('Transitioning Conversation to ACTIVE...');
++    conversation = await prisma.conversation.update({
++      where: { id: conversation.id },
++      data: {
++        status: 'ACTIVE',
++        onHoldReason: null,
++        onHoldExpiration: null,
++        scheduledAt: null,
++      },
++    });
++    console.log('Conversation transitioned successfully.');
++    console.log('New Status:', conversation.status);
++    console.log('Status Updated At (from trigger):', conversation.statusUpdatedAt);
++    console.log('Reason is now:', conversation.onHoldReason);
++
++    // Cleanup mock records
++    console.log('Cleaning up mock records...');
++    await prisma.tenant.delete({
++      where: { id: tenant.id },
++    });
++    console.log('Cleanup complete.');
++
++  } catch (error) {
++    console.error('Test failed:', error);
++  } finally {
++    await prisma.$disconnect();
++  }
++}
++
++main();
+diff --git a/backend/prisma/migrations/20260811063321_advanced_lifecycle_states/migration.sql b/backend/prisma/migrations/20260811063321_advanced_lifecycle_states/migration.sql
+new file mode 100644
+index 0000000..08a235e
+--- /dev/null
++++ b/backend/prisma/migrations/20260811063321_advanced_lifecycle_states/migration.sql
+@@ -0,0 +1,61 @@
++/*
++  Warnings:
++
++  - You are about to drop the `superadmins` table. If the table is not empty, all the data it contains will be lost.
++
++*/
++-- AlterEnum
++-- This migration adds more than one value to an enum.
++-- With PostgreSQL versions 11 and earlier, this is not possible
++-- in a single migration. This can be worked around by creating
++-- multiple migrations, each migration adding only one value to
++-- the enum.
++
++
++ALTER TYPE "ConversationStatus" ADD VALUE 'WAITING_CUSTOMER';
++ALTER TYPE "ConversationStatus" ADD VALUE 'SCHEDULED';
++ALTER TYPE "ConversationStatus" ADD VALUE 'ON_HOLD';
++ALTER TYPE "ConversationStatus" ADD VALUE 'DISCARDED';
++ALTER TYPE "ConversationStatus" ADD VALUE 'CLOSED_INACTIVE';
++
++-- AlterTable
++ALTER TABLE "conversations" ADD COLUMN     "on_hold_expiration" TIMESTAMP(3),
++ADD COLUMN     "on_hold_reason" TEXT,
++ADD COLUMN     "scheduled_at" TIMESTAMP(3),
++ADD COLUMN     "status_updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP;
++
++-- AlterTable
++ALTER TABLE "tenants" ADD COLUMN     "auto_close_inactive_hours" INTEGER NOT NULL DEFAULT 48,
++ADD COLUMN     "is_sla_enabled" BOOLEAN NOT NULL DEFAULT true;
++
++-- Add Check Constraints
++ALTER TABLE "tenants" ADD CONSTRAINT "chk_auto_close_inactive_hours" CHECK ("auto_close_inactive_hours" > 0);
++ALTER TABLE "conversations" ADD CONSTRAINT "chk_status_scheduled" CHECK ("status"::text != 'SCHEDULED' OR "scheduled_at" IS NOT NULL);
++ALTER TABLE "conversations" ADD CONSTRAINT "chk_status_on_hold" CHECK ("status"::text != 'ON_HOLD' OR "on_hold_expiration" IS NOT NULL);
++ALTER TABLE "conversations" ADD CONSTRAINT "chk_on_hold_future" CHECK ("on_hold_expiration" IS NULL OR "on_hold_expiration" > CURRENT_TIMESTAMP);
++ALTER TABLE "conversations" ADD CONSTRAINT "chk_scheduled_future" CHECK ("scheduled_at" IS NULL OR "scheduled_at" > CURRENT_TIMESTAMP);
++
++-- Create Trigger for statusUpdatedAt
++CREATE OR REPLACE FUNCTION update_conversation_status_updated_at()
++RETURNS TRIGGER AS $$
++BEGIN
++  IF NEW.status IS DISTINCT FROM OLD.status THEN
++    NEW.status_updated_at = CURRENT_TIMESTAMP;
++  END IF;
++  RETURN NEW;
++END;
++$$ language 'plpgsql';
++
++CREATE TRIGGER trg_update_conversation_status
++BEFORE UPDATE ON "conversations"
++FOR EACH ROW
++EXECUTE FUNCTION update_conversation_status_updated_at();
++
++-- CreateIndex
++CREATE INDEX "conversations_status_on_hold_expiration_idx" ON "conversations"("status", "on_hold_expiration");
++
++-- CreateIndex
++CREATE INDEX "conversations_status_scheduled_at_idx" ON "conversations"("status", "scheduled_at");
++
++-- CreateIndex
++CREATE INDEX "conversations_status_status_updated_at_idx" ON "conversations"("status", "status_updated_at");

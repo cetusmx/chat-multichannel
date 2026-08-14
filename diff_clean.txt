@@ -1,0 +1,699 @@
+diff --git a/frontend/src/pages/ChatView.jsx b/frontend/src/pages/ChatView.jsx
+index 1d374a4..8df565d 100644
+--- a/frontend/src/pages/ChatView.jsx
++++ b/frontend/src/pages/ChatView.jsx
+@@ -1,5 +1,5 @@
+-import { useEffect, useState } from 'react';
+-import { ShoppingCart, X, CheckCircle } from 'lucide-react';
++import { useEffect, useState, useRef } from 'react';
++import { ShoppingCart, X, CheckCircle, ShieldAlert, EllipsisVertical, Clock, PauseCircle, Calendar, Ban } from 'lucide-react';
+ import ChatList from '../features/chat/components/ChatList';
+ import MessageList from '../features/chat/components/MessageList';
+ import ConfirmModal from '../components/ConfirmModal';
+@@ -7,21 +7,330 @@ import useChatStore from '../stores/useChatStore';
+ 
+ import CommandPalette from '../features/chat/components/CommandPalette';
+ import CartViewer from '../features/chat/components/CartViewer';
++import ChatActionModals from '../features/chat/components/ChatActionModals';
++import useAuthStore from '../stores/useAuthStore';
++
++const ChatHeaderActions = ({ activeConv, setConfirmClose, setIsCartOpen }) => {
++  const { updateChatStatus, isPatching } = useChatStore();
++  const user = useAuthStore(s => s.user);
++
++  const [activeModal, setActiveModal] = useState(null);
++  const [modalError, setModalError] = useState(null);
++  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
++  const dropdownRef = useRef(null);
++
++  // Track previous state for auto-close logic
++  const prevStatusRef = useRef(activeConv?.status);
++  const prevLastMsgIdRef = useRef(activeConv?.messages?.at(-1)?.id);
++
++  const socket = useChatStore(s => s.socket);
++
++  // Clear modal on conversation switch
++  useEffect(() => {
++    setActiveModal(null);
++    setModalError(null);
++  }, [activeConv?.id]);
++
++  useEffect(() => {
++    const currentStatus = activeConv?.status;
++    const currentLastMsg = activeConv?.messages?.at(-1);
++
++    // If status changed via WebSocket (or other means)
++    if (prevStatusRef.current && prevStatusRef.current !== currentStatus) {
++      if (activeModal && !isPatching) {
++        window.alert("El estado del chat ha cambiado. La acción ha sido cancelada.");
++        setActiveModal(null);
++      }
++    }
++
++    // If a new message arrived from the customer while SCHEDULED modal is open
++    if (
++      currentLastMsg &&
++      prevLastMsgIdRef.current !== currentLastMsg.id &&
++      currentLastMsg.senderType === 'CUSTOMER' &&
++      activeModal === 'SCHEDULED' &&
++      !isPatching
++    ) {
++      window.alert("El cliente ha enviado un nuevo mensaje. La acción programada ha sido cancelada.");
++      setActiveModal(null);
++    }
++
++    prevStatusRef.current = currentStatus;
++    prevLastMsgIdRef.current = currentLastMsg?.id;
++  }, [activeConv?.status, activeConv?.messages, activeModal]);
++
++  useEffect(() => {
++    if (!socket || !activeConv?.id) return;
++    const handleStatusUpdate = (event) => {
++      const payload = event.payload || event;
++      if (payload.conversationId === activeConv.id && activeModal && !isPatching) {
++        window.alert("El estado del chat ha cambiado. La acción ha sido cancelada.");
++        setActiveModal(null);
++      }
++    };
++    socket.on('chat:status_updated', handleStatusUpdate);
++    return () => socket.off('chat:status_updated', handleStatusUpdate);
++  }, [socket, activeConv?.id, activeModal, isPatching]);
++
++  useEffect(() => {
++    const handleClickOutside = (e) => {
++      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
++        setIsDropdownOpen(false);
++      }
++    };
++    if (isDropdownOpen) {
++      document.addEventListener('pointerdown', handleClickOutside);
++    }
++    return () => document.removeEventListener('pointerdown', handleClickOutside);
++  }, [isDropdownOpen]);
++
++  useEffect(() => {
++    const handleEsc = (e) => {
++      if (e.key === 'Escape') setIsDropdownOpen(false);
++    };
++    if (isDropdownOpen) document.addEventListener('keydown', handleEsc);
++    return () => document.removeEventListener('keydown', handleEsc);
++  }, [isDropdownOpen]);
++
++  if (!activeConv) return null;
++
++  const isSlaEnabled = user?.tenant?.isSlaEnabled ?? true;
++  const isAssignedToMe = user?.id === activeConv.assignedVendorId;
++  const status = activeConv.status;
++  const showVendorActions = user?.id === activeConv.assignedVendorId;
++  const showAdvanced = isSlaEnabled && showVendorActions;
++  const isEmpty = !activeConv?.messages || activeConv.messages.length === 0;
++  const disabledTooltip = isEmpty ? 'Aún no hay mensajes' : 'El último mensaje debe ser tuyo';
++
++  if (status === 'PENDING_ASSIGNMENT') return null;
++
++  if (status === 'ESCALATED') {
++    return (
++      <div className="flex items-center gap-2">
++        <div className="bg-sales-coral-500/20 border border-sales-coral-500 text-sales-coral-400 px-4 py-2 rounded-lg font-bold text-sm shadow-sm flex items-center gap-2">
++          <span className="w-2 h-2 rounded-full bg-sales-coral-400 animate-pulse"></span>
++          Escalado - Esperando al Coordinador
++        </div>
++        {renderCartButton()}
++      </div>
++    );
++  }
++
++  if (status === 'CLOSED' || status === 'CLOSED_INACTIVE' || status === 'DISCARDED') {
++    return (
++      <div className="flex items-center gap-2">
++        {renderCartButton()}
++      </div>
++    );
++  }
++
++  const isVendorLast = activeConv?.messages?.at(-1)?.senderType === 'VENDOR';
++
++  const modalConvIdRef = useRef(null);
++
++  const handleAction = async (payload) => {
++    setActiveModal(null);
++    setModalError(null);
++    try {
++      await updateChatStatus(activeConv.id, payload);
++    } catch (e) {
++      window.alert("Error de API: " + e.message);
++    }
++  };
++
++  const handleModalSubmit = async (payload) => {
++    setModalError(null);
++    try {
++      await updateChatStatus(modalConvIdRef.current || activeConv.id, payload);
++      setActiveModal(null);
++    } catch (e) {
++       setModalError("Error de API: " + e.message);
++    }
++  };
++
++  const openModal = (modalName) => {
++    modalConvIdRef.current = activeConv.id;
++    setActiveModal(modalName);
++    setModalError(null);
++  };
++
++  const renderCartButton = () => (
++    <button
++      onClick={() => setIsCartOpen(true)}
++      disabled={isPatching}
++      className="relative z-40 cursor-pointer bg-gradient-to-r from-sales-cyan-600 to-sales-blue-600 hover:from-sales-cyan-500 hover:to-sales-blue-500 text-white p-2 rounded-full shadow-[0_0_12px_rgba(6,182,212,0.6)] border border-sales-cyan-400/50 transition-all duration-300 hover:scale-110 active:scale-95 flex items-center justify-center disabled:opacity-50"
++      title="Ver Carrito"
++    >
++      <ShoppingCart className="w-4 h-4" />
++      {(() => {
++        const cData = activeConv?.client?.cartData;
++        const items = Array.isArray(cData) ? cData : (cData?.items || []);
++        if (items.length > 0) {
++          return (
++            <span className="absolute -top-1 -right-1 bg-sales-coral-500 text-[9px] font-bold min-w-[14px] h-[14px] px-1 flex items-center justify-center rounded-full shadow-sm">
++              {items.length}
++            </span>
++          );
++        }
++        return null;
++      })()}
++    </button>
++  );
++
++  if (['ON_HOLD', 'WAITING_CUSTOMER', 'SCHEDULED'].includes(status)) {
++    return (
++      <div className="flex items-center gap-2">
++        {showVendorActions && (
++          <button
++            onClick={() => handleAction({ status: 'ACTIVE' })}
++            disabled={isPatching || isEmpty}
++            aria-disabled={isPatching || isEmpty ? "true" : "false"}
++            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded font-medium disabled:opacity-50 flex items-center gap-2 text-sm"
++            title={isEmpty ? disabledTooltip : 'Reanudar'}
++          >
++            {isPatching && <span className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full" />}
++            Reanudar
++          </button>
++        )}
++        {renderCartButton()}
++      </div>
++    );
++  }
++
++
++
++  return (
++    <>
++      <div className="flex items-center gap-2">
++        {showVendorActions && (
++          <>
++            <button
++              onClick={() => setConfirmClose(true)}
++              disabled={isPatching || isEmpty}
++              aria-disabled={isPatching || isEmpty ? "true" : "false"}
++              className="px-3 py-1.5 bg-sales-slate-800 hover:bg-emerald-600/90 text-emerald-500 hover:text-white rounded border border-emerald-500/30 hover:border-emerald-500 transition-colors flex items-center gap-1.5 disabled:opacity-50 text-sm"
++              title={isEmpty ? disabledTooltip : "Resolver"}
++            >
++              {isPatching ? (
++                <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-emerald-500"></span>
++              ) : (
++                <CheckCircle className="w-4 h-4" />
++              )}
++              Resolver
++            </button>
++
++            <button
++              onClick={() => handleAction({ status: 'ESCALATED' })}
++              disabled={isPatching || isEmpty}
++              aria-disabled={isPatching || isEmpty ? "true" : "false"}
++              className="px-3 py-1.5 bg-sales-slate-800 hover:bg-sales-coral-600/90 text-sales-coral-500 hover:text-white rounded border border-sales-coral-500/30 hover:border-sales-coral-500 transition-colors flex items-center gap-1.5 disabled:opacity-50 text-sm"
++              title={isEmpty ? disabledTooltip : "Escalar"}
++            >
++              {isPatching ? (
++                <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-sales-coral-500"></span>
++              ) : (
++                <ShieldAlert className="w-4 h-4" />
++              )}
++              Escalar
++            </button>
++          </>
++        )}
++
++        {showAdvanced && (
++          <div className="relative" ref={dropdownRef}>
++            <button
++              onClick={() => setIsDropdownOpen(!isDropdownOpen)}
++              disabled={isPatching}
++              aria-expanded={isDropdownOpen}
++              aria-haspopup="menu"
++              className="px-3 py-1.5 bg-sales-slate-800 hover:bg-sales-slate-700 text-sales-slate-300 rounded border border-sales-slate-700 transition-colors disabled:opacity-50 flex items-center gap-1.5 text-sm"
++            >
++              Más acciones
++              {isPatching ? (
++                <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-sales-slate-300"></span>
++              ) : (
++                <EllipsisVertical className="w-4 h-4" />
++              )}
++            </button>
++            {isDropdownOpen && (
++              <div role="menu" className="absolute right-0 mt-2 w-56 bg-sales-slate-800 border border-sales-slate-700 rounded shadow-xl z-[60] overflow-hidden">
++                <button
++                  role="menuitem"
++                  disabled={!isVendorLast || isPatching || isEmpty}
++                  aria-disabled={!isVendorLast || isPatching || isEmpty ? "true" : "false"}
++                  onClick={() => { setIsDropdownOpen(false); handleAction({ status: 'WAITING_CUSTOMER' }); }}
++                  className="w-full text-left px-4 py-2 hover:bg-sales-slate-700 text-sm text-sales-slate-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
++                  title={!isVendorLast || isEmpty ? disabledTooltip : ''}
++                >
++                  <Clock className="w-4 h-4" />
++                  Esperando al Cliente
++                </button>
++                <button
++                  role="menuitem"
++                  disabled={isPatching || isEmpty}
++                  aria-disabled={isPatching || isEmpty ? "true" : "false"}
++                  onClick={() => { setIsDropdownOpen(false); openModal('ON_HOLD'); }}
++                  className="w-full text-left px-4 py-2 hover:bg-sales-slate-700 text-sm text-sales-slate-200 disabled:opacity-50 flex items-center gap-2"
++                  title={isEmpty ? disabledTooltip : ''}
++                >
++                  <PauseCircle className="w-4 h-4" />
++                  Poner en Espera
++                </button>
++                <button
++                  role="menuitem"
++                  disabled={!isVendorLast || isPatching || isEmpty}
++                  aria-disabled={!isVendorLast || isPatching || isEmpty ? "true" : "false"}
++                  onClick={() => { setIsDropdownOpen(false); openModal('SCHEDULED'); }}
++                  className="w-full text-left px-4 py-2 hover:bg-sales-slate-700 text-sm text-sales-slate-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
++                  title={!isVendorLast || isEmpty ? disabledTooltip : ''}
++                >
++                  <Calendar className="w-4 h-4" />
++                  Programado
++                </button>
++                <div className="border-t border-sales-slate-700 my-1"></div>
++                <button
++                  role="menuitem"
++                  disabled={isPatching || isEmpty}
++                  aria-disabled={isPatching || isEmpty ? "true" : "false"}
++                  onClick={() => { setIsDropdownOpen(false); openModal('DISCARDED'); }}
++                  className="w-full text-left px-4 py-2 hover:bg-red-900/50 text-sm text-red-500 disabled:opacity-50 flex items-center gap-2"
++                  title={isEmpty ? disabledTooltip : ''}
++                >
++                  <Ban className="w-4 h-4" />
++                  Descartar / Spam
++                </button>
++              </div>
++            )}
++          </div>
++        )}
++
++        {renderCartButton()}
++      </div>
++      <ChatActionModals
++        activeModal={activeModal}
++        onClose={() => { setActiveModal(null); setModalError(null); }}
++        onSubmit={handleModalSubmit}
++        isPatching={isPatching}
++        apiError={modalError}
++      />
++    </>
++  );
++};
+ 
+ /**
+  * ChatView - Vista principal para la gestión de mensajería (WhatsApp MVP)
+- * 
++ *
+  * @component
+  */
+ export default function ChatView() {
+   const [isCartOpen, setIsCartOpen] = useState(false);
+   const [confirmClose, setConfirmClose] = useState(false);
+-  const { 
+-    conversations, 
+-    currentConversationId, 
+-    messages, 
+-    fetchConversations, 
+-    selectConversation, 
++  const {
++    conversations,
++    currentConversationId,
++    messages,
++    fetchConversations,
++    selectConversation,
+     sendMessage,
+     sendMedia,
+     uploadingIds,
+@@ -32,7 +341,7 @@ export default function ChatView() {
+     hasMore,
+     loadMoreMessages,
+     isLoadingMore,
+-    resolveConversation
++    resolveConversation,
+   } = useChatStore();
+ 
+   useEffect(() => {
+@@ -52,9 +361,9 @@ export default function ChatView() {
+           <h2 className="text-xl font-bold text-sales-slate-100">Bandeja de Entrada</h2>
+         </div>
+         <div className="flex-1 overflow-y-auto custom-scrollbar">
+-          <ChatList 
+-            conversations={conversations} 
+-            currentConversationId={currentConversationId} 
++          <ChatList
++            conversations={conversations}
++            currentConversationId={currentConversationId}
+             onSelect={selectConversation}
+           />
+         </div>
+@@ -65,8 +374,8 @@ export default function ChatView() {
+         {currentConversationId ? (
+           <div className="relative flex h-full w-full min-w-0 overflow-x-auto">
+             <div className="flex flex-col relative flex-1 h-full max-w-full bg-sales-slate-900/50">
+-              <MessageList 
+-                messages={messages} 
++              <MessageList
++                messages={messages}
+                 onSendMessage={sendMessage}
+                 onSendMedia={sendMedia}
+                 isUploading={!!uploadingIds[currentConversationId]}
+@@ -78,34 +387,11 @@ export default function ChatView() {
+                 isLoadingMore={isLoadingMore}
+                 headerActions={
+                   <div className="flex items-center gap-3">
+-                    {activeConv?.status !== 'CLOSED' && (
+-                      <button
+-                        onClick={() => setConfirmClose(true)}
+-                        className="relative z-40 cursor-pointer bg-sales-slate-800 hover:bg-emerald-600/90 text-emerald-500 hover:text-white p-2.5 rounded-full border border-emerald-500/30 hover:border-emerald-500 transition-all duration-300 flex items-center justify-center shadow-sm hover:scale-110 active:scale-95"
+-                        title="Finalizar Conversación"
+-                      >
+-                        <CheckCircle className="w-5 h-5" />
+-                      </button>
+-                    )}
+-                    <button
+-                      onClick={() => setIsCartOpen(true)}
+-                      className="relative z-40 cursor-pointer bg-gradient-to-r from-sales-cyan-600 to-sales-blue-600 hover:from-sales-cyan-500 hover:to-sales-blue-500 text-white p-2.5 rounded-full shadow-[0_0_12px_rgba(6,182,212,0.6)] border border-sales-cyan-400/50 transition-all duration-300 hover:scale-110 active:scale-95 flex items-center justify-center"
+-                      title="Ver Carrito"
+-                    >
+-                      <ShoppingCart className="w-5 h-5" />
+-                      {(() => {
+-                        const cData = activeConv?.client?.cartData;
+-                        const items = Array.isArray(cData) ? cData : (cData?.items || []);
+-                        if (items.length > 0) {
+-                          return (
+-                            <span className="absolute top-1.5 right-1.5 bg-sales-coral-500 text-[9px] font-bold min-w-[14px] h-[14px] px-1 flex items-center justify-center rounded-full shadow-sm">
+-                              {items.length}
+-                            </span>
+-                          );
+-                        }
+-                        return null;
+-                      })()}
+-                    </button>
++                    <ChatHeaderActions
++                      activeConv={activeConv}
++                      setConfirmClose={setConfirmClose}
++                      setIsCartOpen={setIsCartOpen}
++                    />
+                   </div>
+                 }
+               />
+@@ -114,26 +400,26 @@ export default function ChatView() {
+             {/* Overlay Drawer para el Carrito */}
+             <>
+               {/* Backdrop oscuro */}
+-              <div 
++              <div
+                 className={`fixed inset-0 bg-black/50 backdrop-blur-sm z-40 transition-opacity duration-300 ${isCartOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
+                 onClick={() => setIsCartOpen(false)}
+               />
+-              
++
+               {/* Panel lateral */}
+-              <div 
++              <div
+                 className={`fixed top-0 right-0 h-full z-50 transform transition-transform duration-300 ease-in-out shadow-2xl flex flex-col ${isCartOpen ? 'translate-x-0' : 'translate-x-full'}`}
+                 style={{ width: 'min(90vw, 420px)' }}
+               >
+                 <div className="flex-1 bg-sales-slate-800 flex flex-col overflow-hidden relative">
+-                  <button 
++                  <button
+                     onClick={() => setIsCartOpen(false)}
+                     className="absolute top-4 left-4 z-10 p-2 bg-sales-slate-700/50 hover:bg-sales-slate-700 text-sales-slate-300 hover:text-white rounded-full transition-colors"
+                   >
+                     <X className="w-5 h-5" />
+                   </button>
+                   {activeConv?.client && (
+-                    <CartViewer 
+-                      cartData={activeConv.client.cartData} 
++                    <CartViewer
++                      cartData={activeConv.client.cartData}
+                       client={activeConv.client}
+                     />
+                   )}
+@@ -148,7 +434,7 @@ export default function ChatView() {
+         )}
+       </div>
+     </div>
+-    
++
+     <ConfirmModal
+       open={confirmClose}
+       title="Finalizar Conversación"
+diff --git a/frontend/src/features/chat/components/ChatActionModals.jsx b/frontend/src/features/chat/components/ChatActionModals.jsx
+new file mode 100644
+index 0000000..d06f6a2
+--- /dev/null
++++ b/frontend/src/features/chat/components/ChatActionModals.jsx
+@@ -0,0 +1,228 @@
++import React, { useState, useEffect } from 'react';
++import { createPortal } from 'react-dom';
++import ConfirmModal from '../../../components/ConfirmModal';
++
++export default function ChatActionModals({
++  activeModal,
++  onClose,
++  onSubmit,
++  isPatching,
++  apiError,
++}) {
++  const [reason, setReason] = useState('');
++  const [note, setNote] = useState('');
++  const [timebombHours, setTimebombHours] = useState(24);
++
++  const [scheduledAt, setScheduledAt] = useState('');
++  const modalRef = React.useRef(null);
++
++  // Clean form state when modal closes
++  useEffect(() => {
++    if (!activeModal) {
++      setReason('');
++      setNote('');
++      setTimebombHours(24);
++      setScheduledAt('');
++    }
++  }, [activeModal]);
++
++  // Set smart default for scheduledAt when modal opens
++  useEffect(() => {
++    if (activeModal === 'SCHEDULED') {
++      const date = new Date(Date.now() + 24 * 60 * 60 * 1000);
++      setScheduledAt(new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16));
++    }
++  }, [activeModal]);
++
++  // Accessibility: Escape key and click-outside
++  useEffect(() => {
++    if (!activeModal) return;
++
++    const handleKeyDown = (e) => {
++      if (e.key === 'Escape' && !isPatching) onClose();
++    };
++
++    const handleClickOutside = (e) => {
++      if (modalRef.current && !modalRef.current.contains(e.target)) {
++        // Prevent closing if we are patching to avoid interrupting requests
++        if (!isPatching) onClose();
++      }
++    };
++
++    document.addEventListener('keydown', handleKeyDown);
++    document.addEventListener('mousedown', handleClickOutside);
++
++    return () => {
++      document.removeEventListener('keydown', handleKeyDown);
++      document.removeEventListener('mousedown', handleClickOutside);
++    };
++  }, [activeModal, onClose, isPatching]);
++
++  if (!activeModal) return null;
++
++  if (activeModal === 'DISCARDED') {
++    return (
++      <ConfirmModal
++        open={true}
++        title="Descartar Conversación"
++        message={
++          <div>
++            {apiError && <div className="text-red-500 mb-2 font-medium">{apiError}</div>}
++            ¿Estás seguro de marcar este chat como spam? Esto no afectará tus métricas.
++          </div>
++        }
++        confirmText="Descartar"
++        confirmVariant="danger"
++        onConfirm={() => onSubmit({ status: 'DISCARDED' })}
++        onCancel={onClose}
++        disabled={isPatching}
++      />
++    );
++  }
++
++  const handleHoldSubmit = (e) => {
++    e.preventDefault();
++    if (Number(timebombHours) % 1 !== 0) {
++      alert("Las horas límite deben ser un número entero.");
++      return;
++    }
++    const hours = parseInt(timebombHours, 10);
++    if (!reason || !note.trim() || isNaN(hours) || hours <= 0 || hours > 168) return;
++
++    onSubmit({
++      status: 'ON_HOLD',
++      reason: `[${reason}] ${note.trim()}`,
++      timebombHours: hours,
++    });
++  };
++
++  const handleScheduledSubmit = (e) => {
++    e.preventDefault();
++    if (!scheduledAt) return;
++    const selectedDate = new Date(scheduledAt);
++    if (isNaN(selectedDate.getTime())) {
++      alert('Fecha inválida.');
++      return;
++    }
++    if (selectedDate.getTime() < Date.now() + 15 * 60000) {
++      alert('La fecha programada debe ser al menos 15 minutos en el futuro.');
++      return;
++    }
++    if (selectedDate.getTime() > Date.now() + 30 * 24 * 60 * 60000) {
++      alert('La fecha programada no puede exceder los 30 días.');
++      return;
++    }
++
++    onSubmit({
++      status: 'SCHEDULED',
++      scheduledAt: new Date(scheduledAt).toISOString(),
++    });
++  };
++
++  const modalContent = (
++    <div className="fixed inset-0 bg-sales-slate-950/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
++      <div ref={modalRef} className="bg-sales-slate-900 border border-sales-slate-800 rounded-lg shadow-2xl w-full max-w-md overflow-hidden">
++
++        {activeModal === 'ON_HOLD' && (
++          <form onSubmit={handleHoldSubmit} className="flex flex-col">
++            <div className="p-4 border-b border-sales-slate-800">
++              <h3 className="text-lg font-bold text-white">Poner en Espera</h3>
++            </div>
++            {apiError && (
++              <div className="mx-4 mt-4 p-3 bg-red-900/50 border border-red-500/50 rounded text-red-200 text-sm">
++                {apiError}
++              </div>
++            )}
++            <div className="p-4 space-y-4">
++              <div>
++                <label className="block text-sm font-medium text-sales-slate-300 mb-1">Razón</label>
++                <select
++                  required
++                  value={reason}
++                  onChange={(e) => setReason(e.target.value)}
++                  className="w-full bg-sales-slate-800 border border-sales-slate-700 rounded p-2 text-white focus:border-sales-cyan-500 focus:outline-none"
++                  disabled={isPatching}
++                >
++                  <option value="" disabled>Seleccione una razón...</option>
++                  <option value="Esperando proveedor logístico">Esperando proveedor logístico</option>
++                  <option value="Falla técnica / Soporte">Falla técnica / Soporte</option>
++                  <option value="Validación de pago">Validación de pago</option>
++                  <option value="Esperando aprobación interna">Esperando aprobación interna</option>
++                </select>
++              </div>
++              <div>
++                <label className="block text-sm font-medium text-sales-slate-300 mb-1">Nota Explicativa</label>
++                <textarea
++                  required
++                  value={note}
++                  onChange={(e) => setNote(e.target.value)}
++                  className="w-full bg-sales-slate-800 border border-sales-slate-700 rounded p-2 text-white focus:border-sales-cyan-500 focus:outline-none"
++                  rows={3}
++                  disabled={isPatching}
++                />
++              </div>
++              <div>
++                <label className="block text-sm font-medium text-sales-slate-300 mb-1">Horas límite (Max 168)</label>
++                <input
++                  type="number"
++                  step="1"
++                  min="1"
++                  max="168"
++                  required
++                  value={timebombHours}
++                  onChange={(e) => setTimebombHours(e.target.value)}
++                  className="w-full bg-sales-slate-800 border border-sales-slate-700 rounded p-2 text-white focus:border-sales-cyan-500 focus:outline-none"
++                  disabled={isPatching}
++                />
++              </div>
++            </div>
++            <div className="p-4 border-t border-sales-slate-800 flex justify-end gap-3 bg-sales-slate-800/50">
++              <button type="button" onClick={onClose} disabled={isPatching} className="px-4 py-2 rounded text-sales-slate-300 hover:text-white font-medium">Cancelar</button>
++              <button type="submit" disabled={isPatching} className="px-4 py-2 rounded bg-sales-cyan-600 hover:bg-sales-cyan-500 text-white font-medium flex items-center gap-2">
++                {isPatching && <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></span>}
++                Confirmar Espera
++              </button>
++            </div>
++          </form>
++        )}
++
++        {activeModal === 'SCHEDULED' && (
++          <form onSubmit={handleScheduledSubmit} className="flex flex-col">
++            <div className="p-4 border-b border-sales-slate-800">
++              <h3 className="text-lg font-bold text-white">Programar Seguimiento</h3>
++            </div>
++            {apiError && (
++              <div className="mx-4 mt-4 p-3 bg-red-900/50 border border-red-500/50 rounded text-red-200 text-sm">
++                {apiError}
++              </div>
++            )}
++            <div className="p-4 space-y-4">
++              <div>
++                <label className="block text-sm font-medium text-sales-slate-300 mb-1">Fecha y Hora</label>
++                <input
++                  type="datetime-local"
++                  required
++                  min={new Date(Date.now() - new Date().getTimezoneOffset() * 60000 + 15 * 60000).toISOString().slice(0, 16)}
++                  max={new Date(Date.now() - new Date().getTimezoneOffset() * 60000 + 30 * 24 * 60 * 60000).toISOString().slice(0, 16)}
++                  value={scheduledAt}
++                  onChange={(e) => setScheduledAt(e.target.value)}
++                  className="w-full bg-sales-slate-800 border border-sales-slate-700 rounded p-2 text-white focus:border-sales-cyan-500 focus:outline-none [color-scheme:dark]"
++                  disabled={isPatching}
++                />
++              </div>
++            </div>
++            <div className="p-4 border-t border-sales-slate-800 flex justify-end gap-3 bg-sales-slate-800/50">
++              <button type="button" onClick={onClose} disabled={isPatching} className="px-4 py-2 rounded text-sales-slate-300 hover:text-white font-medium">Cancelar</button>
++              <button type="submit" disabled={isPatching} className="px-4 py-2 rounded bg-sales-cyan-600 hover:bg-sales-cyan-500 text-white font-medium flex items-center gap-2">
++                {isPatching && <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></span>}
++                Programar
++              </button>
++            </div>
++          </form>
++        )}
++      </div>
++    </div>
++  );
++
++  return createPortal(modalContent, document.body);
++}

@@ -23,7 +23,7 @@ const CommandPalette = () => {
         setIsOpen((prev) => !prev);
         return;
       }
-      
+
       if (!isOpen) return;
 
       if (e.key === 'Escape') {
@@ -62,12 +62,12 @@ const CommandPalette = () => {
 
   useEffect(() => {
     if (!isOpen) return;
-    
+
     // Abort previous request
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
-    
+
     if (query.trim().length === 0) {
       clearSearchResults();
       return;
@@ -93,7 +93,7 @@ const CommandPalette = () => {
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-[20vh] bg-black/50 backdrop-blur-sm" onClick={() => setIsOpen(false)}>
-      <div 
+      <div
         className="w-full max-w-2xl bg-white rounded-xl shadow-2xl overflow-hidden flex flex-col"
         onClick={e => e.stopPropagation()}
       >
@@ -118,7 +118,7 @@ const CommandPalette = () => {
                 Searching...
               </div>
             )}
-            
+
             {searchError && (
               <div className="px-4 py-3 text-red-500 bg-red-50">
                 Error: {searchError}

@@ -7,26 +7,26 @@ const VendorMetricsTable = ({ metrics }) => {
   const formatResponseTime = (seconds) => {
     if (seconds === null || seconds === undefined) return 'N/D';
     if (seconds < 60) return `${Math.round(seconds)}s`;
-    
+
     let mins = Math.floor(seconds / 60);
     let secs = Math.round(seconds % 60);
-    
+
     if (secs === 60) {
       mins += 1;
       secs = 0;
     }
-    
+
     if (mins < 60) {
       return `${mins}m ${secs}s`;
     }
-    
+
     let hours = Math.floor(mins / 60);
     mins = mins % 60;
-    
+
     if (hours < 24) {
       return `${hours}h ${mins}m`;
     }
-    
+
     let days = Math.floor(hours / 24);
     hours = hours % 24;
     return `${days}d ${hours}h`;
@@ -79,8 +79,8 @@ const VendorMetricsTable = ({ metrics }) => {
                 <td>{formatResponseTime(m.averageResponseTime)}</td>
                 <td style={{ width: '12rem' }}>
                   <div className="progress-bar-bg">
-                    <div 
-                      className="progress-bar-fill" 
+                    <div
+                      className="progress-bar-fill"
                       style={{ width: `${Math.round(m.resolutionRate * 100)}%` }}
                     ></div>
                   </div>

@@ -22,14 +22,14 @@ describe('Sidebar Component', () => {
     render(
       <MemoryRouter>
         <Sidebar />
-      </MemoryRouter>
+      </MemoryRouter>,
     );
-    
+
     // Debería tener el texto del branding y de los links (UX-DR2)
     expect(screen.getByText('SalesFlow')).toBeDefined();
     expect(screen.getByText('Conversaciones')).toBeDefined();
     expect(screen.getByText('Métricas')).toBeDefined();
-    
+
     // Verificar que Sidebar tiene la clase w-64 para asegurar que es non-collapsible y fijo
     const aside = screen.getByRole('complementary'); // <aside> role
     expect(aside.className).toContain('w-64');
