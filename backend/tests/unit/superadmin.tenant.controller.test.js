@@ -1,6 +1,6 @@
 const superadminTenantController = require('../../src/controllers/superadmin.tenant.controller');
 const superadminTenantService = require('../../src/services/superadmin.tenant.service');
-const { success } = require('../../src/utils/response');
+const { success, list } = require('../../src/utils/response');
 
 jest.mock('../../src/services/superadmin.tenant.service');
 jest.mock('../../src/utils/response');
@@ -32,7 +32,7 @@ describe('Superadmin Tenant Controller', () => {
         sortBy: 'name',
         sortOrder: 'asc',
       });
-      expect(success).toHaveBeenCalledWith(res, mockResult);
+      expect(list).toHaveBeenCalledWith(res, mockResult.data, mockResult.meta);
       expect(next).not.toHaveBeenCalled();
     });
 
@@ -55,7 +55,7 @@ describe('Superadmin Tenant Controller', () => {
         sortBy: undefined,
         sortOrder: undefined,
       });
-      expect(success).toHaveBeenCalledWith(res, mockResult);
+      expect(list).toHaveBeenCalledWith(res, mockResult.data, mockResult.meta);
       expect(next).not.toHaveBeenCalled();
     });
 
@@ -71,6 +71,7 @@ describe('Superadmin Tenant Controller', () => {
 
       expect(next).toHaveBeenCalledWith(error);
       expect(success).not.toHaveBeenCalled();
+      expect(list).not.toHaveBeenCalled();
     });
   });
 
