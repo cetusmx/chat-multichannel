@@ -15,7 +15,7 @@ jest.mock('../../src/config/database', () => ({
   tenant: {
     findUnique: jest.fn(),
     update: jest.fn(),
-    findMany: jest.fn(),
+    findMany: jest.fn().mockResolvedValue([]),
   }
 }));
 
@@ -24,6 +24,8 @@ describe('SlaService', () => {
     jest.clearAllMocks();
     slaService.configCache.clear();
     slaService.notifiedBreaches.clear();
+    prisma.tenant.findUnique.mockResolvedValue({ isSlaEnabled: true });
+    prisma.tenant.findMany.mockResolvedValue([]);
   });
 
   describe('getSlaConfig', () => {
@@ -35,7 +37,7 @@ describe('SlaService', () => {
     it('should return default config if none exists', async () => {
       prisma.slaConfig.findUnique.mockResolvedValue(null);
       const config = await slaService.getSlaConfig('tenant-1');
-      expect(config).toEqual({ firstResponseMins: 15, resolutionMins: 60, tenantId: 'tenant-1' });
+      expect(config).toEqual({ firstResponseMins: 15, resolutionMins: 60, tenantId: 'tenant-1', isSlaEnabled: true });
       expect(prisma.slaConfig.findUnique).toHaveBeenCalledWith({ where: { tenantId: 'tenant-1' } });
     });
 
