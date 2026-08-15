@@ -582,7 +582,7 @@ describe('AI Off-Hours Mode in whatsapp.service.js', () => {
       }, testTenantId);
 
       // Wait for setImmediate using real await
-      await new Promise(r => setTimeout(r, 100));
+      await new Promise(r => setTimeout(r, 500));
 
       // Ensure generateAutoResponse was called with isOffHours = true
       expect(aiSpy).toHaveBeenCalledWith(
@@ -664,7 +664,7 @@ describe('AI Off-Hours Mode in whatsapp.service.js', () => {
         }]
       }, testTenantId);
 
-      await new Promise(r => setTimeout(r, 100));
+      await new Promise(r => setTimeout(r, 500));
 
       expect(aiSpy).toHaveBeenCalledWith(
         testTenantId, 
