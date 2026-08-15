@@ -38,6 +38,8 @@ const allowedOrigins = [
   'http://localhost:5174',
   'https://salesflow.algor.mx',
   'https://admin.salesflow.app',
+  'http://salesflow-admin.algor.mx',
+  'https://salesflow-admin.algor.mx',
   process.env.FRONTEND_URL?.replace(/\/$/, '')
 ].filter(Boolean);
 
