@@ -1,5 +1,5 @@
 const superadminTenantService = require('../services/superadmin.tenant.service');
-const { success } = require('../utils/response');
+const { success, list } = require('../utils/response');
 const { z } = require('zod');
 
 const RESERVED_SLUGS = ['api', 'admin', 'system', 'www', 'app', 'root', 'static'];
@@ -40,7 +40,7 @@ async function getTenants(req, res, next) {
       sortOrder,
     });
     
-    success(res, result);
+    list(res, result.data, result.meta);
   } catch (err) {
     next(err);
   }
