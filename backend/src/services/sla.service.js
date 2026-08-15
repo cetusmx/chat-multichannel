@@ -29,11 +29,18 @@ class SlaService extends EventEmitter {
       where: { tenantId }
     });
 
+    const tenant = await prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { isSlaEnabled: true }
+    });
+
     const finalConfig = config || {
       tenantId,
       firstResponseMins: 15,
       resolutionMins: 60
     };
+    
+    finalConfig.isSlaEnabled = tenant ? tenant.isSlaEnabled : true;
 
     while (this.configCache.size > 1000) {
       this.configCache.delete(this.configCache.keys().next().value);
@@ -53,7 +60,7 @@ class SlaService extends EventEmitter {
       throw new ApiError(400, 'Payload is empty or invalid', 'VALIDATION_ERROR');
     }
 
-    const { firstResponseMins, resolutionMins } = data;
+    const { firstResponseMins, resolutionMins, isSlaEnabled } = data;
 
     if (firstResponseMins !== undefined && (!Number.isInteger(firstResponseMins) || firstResponseMins <= 0 || firstResponseMins > 10080)) {
       throw new ApiError(400, 'firstResponseMins must be an integer between 1 and 10080', 'VALIDATION_ERROR');
@@ -88,8 +95,15 @@ class SlaService extends EventEmitter {
       }
     });
 
+    if (isSlaEnabled !== undefined) {
+      await prisma.tenant.update({
+        where: { id: tenantId },
+        data: { isSlaEnabled: Boolean(isSlaEnabled) }
+      });
+    }
+
     this.configCache.set(tenantId, config);
-    return config;
+    return { ...config, isSlaEnabled: isSlaEnabled !== undefined ? Boolean(isSlaEnabled) : undefined };
   }
 
   /**

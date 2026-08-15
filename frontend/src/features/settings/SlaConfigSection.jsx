@@ -4,6 +4,7 @@ import { getSlaConfig, updateSlaConfig } from '../../services/api.js';
 export default function SlaConfigSection() {
   const [firstResponseMins, setFirstResponseMins] = useState(15);
   const [resolutionMins, setResolutionMins] = useState(60);
+  const [isSlaEnabled, setIsSlaEnabled] = useState(true);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -16,6 +17,7 @@ export default function SlaConfigSection() {
         if (config) {
           if (config.firstResponseMins !== undefined) setFirstResponseMins(config.firstResponseMins);
           if (config.resolutionMins !== undefined) setResolutionMins(config.resolutionMins);
+          if (config.isSlaEnabled !== undefined) setIsSlaEnabled(config.isSlaEnabled);
         }
       } catch (err) {
         setError(err.message || 'Error al cargar la configuración SLA');
@@ -36,6 +38,7 @@ export default function SlaConfigSection() {
       await updateSlaConfig({
         firstResponseMins: Number(firstResponseMins),
         resolutionMins: Number(resolutionMins),
+        isSlaEnabled: Boolean(isSlaEnabled)
       });
       setSuccess('Configuración SLA guardada exitosamente.');
       setTimeout(() => setSuccess(''), 3000);
@@ -74,18 +77,35 @@ export default function SlaConfigSection() {
       )}
 
       <form onSubmit={handleSubmit} className="space-y-6 max-w-md">
+        <div className="flex items-center gap-3 bg-sales-slate-800 p-4 rounded-md border border-slate-700">
+          <input
+            id="isSlaEnabled"
+            type="checkbox"
+            checked={isSlaEnabled}
+            onChange={(e) => setIsSlaEnabled(e.target.checked)}
+            className="w-4 h-4 text-sales-coral bg-sales-slate-900 border-sales-slate-600 rounded focus:ring-sales-coral focus:ring-2"
+          />
+          <label htmlFor="isSlaEnabled" className="text-sm font-medium text-sales-slate-200">
+            Habilitar flujos avanzados de SLA
+            <p className="mt-0.5 text-xs text-sales-slate-400 font-normal">
+              Activa los estados complejos (En Espera, Programado, etc.) y las alertas de tiempo de vencimiento.
+            </p>
+          </label>
+        </div>
+
         <div>
-          <label htmlFor="firstResponseMins" className="mb-2 block text-sm font-medium text-sales-slate-300">
+          <label htmlFor="firstResponseMins" className={`mb-2 block text-sm font-medium ${!isSlaEnabled ? 'text-sales-slate-500' : 'text-sales-slate-300'}`}>
             Primer Contacto (minutos)
           </label>
           <input
             id="firstResponseMins"
             type="number"
             min="1"
+            disabled={!isSlaEnabled}
             value={firstResponseMins}
             onChange={(e) => setFirstResponseMins(e.target.value)}
-            className="w-full rounded-md border border-slate-700 bg-slate-800 px-3 py-2 text-sales-slate-200 focus:border-sales-coral focus:outline-none"
-            required
+            className={`w-full rounded-md border border-slate-700 bg-slate-800 px-3 py-2 ${!isSlaEnabled ? 'opacity-50 cursor-not-allowed' : 'text-sales-slate-200 focus:border-sales-coral focus:outline-none'}`}
+            required={isSlaEnabled}
           />
           <p className="mt-1 text-xs text-sales-slate-400">
             Tiempo máximo esperado para la primera respuesta.
@@ -93,17 +113,18 @@ export default function SlaConfigSection() {
         </div>
 
         <div>
-          <label htmlFor="resolutionMins" className="mb-2 block text-sm font-medium text-sales-slate-300">
+          <label htmlFor="resolutionMins" className={`mb-2 block text-sm font-medium ${!isSlaEnabled ? 'text-sales-slate-500' : 'text-sales-slate-300'}`}>
             Resolución (minutos)
           </label>
           <input
             id="resolutionMins"
             type="number"
             min="1"
+            disabled={!isSlaEnabled}
             value={resolutionMins}
             onChange={(e) => setResolutionMins(e.target.value)}
-            className="w-full rounded-md border border-slate-700 bg-slate-800 px-3 py-2 text-sales-slate-200 focus:border-sales-coral focus:outline-none"
-            required
+            className={`w-full rounded-md border border-slate-700 bg-slate-800 px-3 py-2 ${!isSlaEnabled ? 'opacity-50 cursor-not-allowed' : 'text-sales-slate-200 focus:border-sales-coral focus:outline-none'}`}
+            required={isSlaEnabled}
           />
           <p className="mt-1 text-xs text-sales-slate-400">
             Tiempo máximo estimado para cerrar la conversación.
