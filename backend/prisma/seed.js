@@ -70,6 +70,24 @@ async function main() {
   });
 
   console.log('Seed completed:', { tenant: tenant.id, admin: admin.id, coord: coord.id, vendor: vendor.id });
+
+  // -------------------------
+  // SUPERADMIN SEED
+  // -------------------------
+  const superadminEmail = 'admin@algor.mx';
+  const superadminPwd = await bcrypt.hash('superpassword123', 10);
+  
+  const superadmin = await prisma.superadmin.upsert({
+    where: { email: superadminEmail },
+    update: { passwordHash: superadminPwd },
+    create: {
+      email: superadminEmail,
+      name: 'Superadmin Algor',
+      passwordHash: superadminPwd,
+    },
+  });
+
+  console.log('Superadmin Seed completed:', superadmin.email);
 }
 
 main()
