@@ -10,7 +10,6 @@ export default function SuperadminLayout() {
   const navItems = [
     { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { path: '/tenants', label: 'Inquilinos', icon: Users },
-    { path: '/licenses', label: 'Licencias', icon: CreditCard },
   ];
 
   return (
