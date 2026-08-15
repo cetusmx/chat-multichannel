@@ -11,6 +11,11 @@ jest.mock('../../src/config/database', () => ({
   },
   conversation: {
     findMany: jest.fn(),
+  },
+  tenant: {
+    findUnique: jest.fn(),
+    update: jest.fn(),
+    findMany: jest.fn(),
   }
 }));
 
