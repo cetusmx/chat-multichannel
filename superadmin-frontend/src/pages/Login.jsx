@@ -21,7 +21,7 @@ export default function Login() {
     try {
       const response = await api.post('/api/superadmin/auth/login', { email: email.trim(), password });
       
-      if (response && response.success && response.data) {
+      if (response && response.data) {
         setAuth(response.data.token, response.data.admin);
         navigate('/');
       } else {
