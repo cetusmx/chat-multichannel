@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Search, ChevronLeft, ChevronRight, XCircle, Users } from 'lucide-react';
-import { useDebounce } from '../../hooks/useDebounce';
+import { useDebounce } from '../../../hooks/useDebounce';
 
 export default function ClientDirectory() {
   const [clients, setClients] = useState([]);
