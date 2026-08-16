@@ -65,7 +65,10 @@ describe('AIService', () => {
         where: { 
           conversationId: 'conv1',
           senderType: { in: ['CLIENT', 'IA', 'VENDOR'] },
-          content: { not: '' }
+          OR: [
+            { content: { not: '' } },
+            { attachments: { some: {} } }
+          ]
         }
       }));
       expect(knowledgeBaseService.searchSimilarChunks).toHaveBeenCalledWith('tenant1', 'hello', 3);
@@ -99,7 +102,10 @@ describe('AIService', () => {
         where: { 
           conversationId: 'conv1',
           senderType: { in: ['CLIENT', 'IA', 'VENDOR'] },
-          content: { not: '' }
+          OR: [
+            { content: { not: '' } },
+            { attachments: { some: {} } }
+          ]
         }
       }));
       expect(knowledgeBaseService.searchSimilarChunks).toHaveBeenCalledWith('tenant1', 'summarize our products: hello', 3);
