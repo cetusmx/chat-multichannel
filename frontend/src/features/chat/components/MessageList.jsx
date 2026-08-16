@@ -358,15 +358,32 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
       } else {
         setAiError('La IA no devolvió ninguna sugerencia.');
       }
-    } catch (error) {
-      if (error.name !== 'AbortError' && isMountedRef.current) {
-        setAiDraft(''); // Ensure draft is empty on error
-        setAiError(error.message || 'Error al generar sugerencia con IA.');
+    } catch (err) {
+      if (err.name !== 'AbortError') {
+        setAiError(err.message || 'Error de red al conectar con IA');
       }
     } finally {
-      if (isMountedRef.current && abortControllerRef.current === currentController) {
+      if (!currentController.signal.aborted) {
         setIsDrafting(false);
       }
+    }
+  };
+
+  const handleExtractCsf = async () => {
+    if (!conversationId) return;
+    setIsDrafting(true);
+    setAiError(null);
+    try {
+      const res = await post(`/conversations/${conversationId}/extract-csf`);
+      if (!res.ok) {
+        setAiError('Error al procesar la CSF');
+      } else {
+        closeAiPopover();
+      }
+    } catch (err) {
+      setAiError('Error de red al conectar con el servidor');
+    } finally {
+      setIsDrafting(false);
     }
   };
 
@@ -657,10 +674,12 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
         </div>
       )}
 
-      {/* AI Popover */}
-      {aiPopoverOpen && (
-        <div ref={aiPopoverRef} className="absolute bottom-full left-4 right-4 mb-2 bg-sales-slate-800 border border-sales-cyan-700 rounded-lg shadow-xl z-50 overflow-hidden flex flex-col">
-          <div className="bg-sales-cyan-900/40 border-b border-sales-cyan-700 p-2 flex justify-between items-center text-xs text-sales-cyan-100">
+      {/* Input Form */}
+      <div className="p-4 border-t border-sales-slate-800 bg-sales-slate-900 relative">
+        {/* AI Popover */}
+        {aiPopoverOpen && (
+          <div ref={aiPopoverRef} className="absolute bottom-full left-4 right-4 mb-2 bg-sales-slate-800 border border-sales-cyan-700 rounded-lg shadow-xl z-50 overflow-hidden flex flex-col">
+            <div className="bg-sales-cyan-900/40 border-b border-sales-cyan-700 p-2 flex justify-between items-center text-xs text-sales-cyan-100">
             <div className="flex items-center gap-2">
               <span className="animate-pulse">✨</span>
               <span className="font-medium">Asistente IA</span>
@@ -690,7 +709,7 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
                 <div className="flex gap-2 pb-2 mb-1 border-b border-sales-cyan-900/50 overflow-x-auto custom-scrollbar">
                    <button type="button" onClick={() => setAiPrompt('Generar un resumen de los requerimientos técnicos del cliente')} className="shrink-0 bg-sales-slate-800 border border-sales-cyan-700 text-sales-cyan-300 text-[11px] px-2 py-1 rounded hover:bg-sales-cyan-900 hover:text-white transition-colors">Resumir Chat</button>
                    <button type="button" onClick={() => setAiPrompt('Extrae la dirección de envío proporcionada por el cliente y usa la herramienta actualizar_carrito para guardarla en el sistema.')} className="shrink-0 bg-sales-slate-800 border border-sales-cyan-700 text-sales-cyan-300 text-[11px] px-2 py-1 rounded hover:bg-sales-cyan-900 hover:text-white transition-colors">Dirección de Envío</button>
-                   <button type="button" onClick={() => setAiPrompt('Lee el documento adjunto (Constancia de Situación Fiscal o similar) y extrae la Razón Social, RFC y Dirección Fiscal. Usa la herramienta actualizar_carrito para guardar estos datos fiscales (en los campos de facturación/dirección según corresponda).')} className="shrink-0 bg-sales-slate-800 border border-sales-cyan-700 text-sales-cyan-300 text-[11px] px-2 py-1 rounded hover:bg-sales-cyan-900 hover:text-white transition-colors">Extraer CSF</button>
+                   <button type="button" onClick={handleExtractCsf} className="shrink-0 bg-sales-slate-800 border border-sales-cyan-700 text-sales-cyan-300 text-[11px] px-2 py-1 rounded hover:bg-sales-cyan-900 hover:text-white transition-colors">Extraer CSF</button>
                    <button type="button" onClick={() => setAiPrompt('Propón una respuesta cordial y persuasiva ofreciendo nuestros sellos mecánicos u O-rings')} className="shrink-0 bg-sales-slate-800 border border-sales-cyan-700 text-sales-cyan-300 text-[11px] px-2 py-1 rounded hover:bg-sales-cyan-900 hover:text-white transition-colors">Redactar Oferta</button>
                 </div>
                 <form onSubmit={handleGenerateAi} className="flex gap-2">
@@ -738,8 +757,6 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
         </div>
       )}
 
-      {/* Input Form */}
-      <div className="p-4 border-t border-sales-slate-800 bg-sales-slate-900">
         <form onSubmit={handleSend} className="flex gap-2">
           <button
             type="button"
