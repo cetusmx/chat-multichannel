@@ -24,6 +24,7 @@ enum ConversationStatus {
   PENDING_ASSIGNMENT
   ACTIVE
   CLOSED
+  CLOSED_WON
   ESCALATED
   WAITING_CUSTOMER
   SCHEDULED
@@ -273,6 +274,7 @@ model Conversation {
   vendorId            String?            @map("vendor_id")
   status              ConversationStatus @default(PENDING_ASSIGNMENT)
   aiPendingEscalation Boolean            @default(false) @map("ai_pending_escalation")
+  isOutbound          Boolean            @default(false) @map("is_outbound")
   lastMessageAt       DateTime           @default(now()) @map("last_message_at")
   statusUpdatedAt     DateTime           @default(now()) @map("status_updated_at")
   scheduledAt         DateTime?          @map("scheduled_at")

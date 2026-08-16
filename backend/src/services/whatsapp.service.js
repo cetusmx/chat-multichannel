@@ -262,7 +262,7 @@ const whatsappService = {
             
             if (!conversation) {
               conversation = await prisma.conversation.create({
-                data: { tenantId, clientId: finalClient.id, status: 'PENDING_ASSIGNMENT' }
+                data: { tenantId, clientId: finalClient.id, status: 'PENDING_ASSIGNMENT', isOutbound: false }
               });
               try {
                 await assignmentService.autoAssign(tenantId, conversation.id);
