@@ -271,9 +271,16 @@ export default function CartViewer({ cartData, client, onClose }) {
     <div className={`flex flex-col h-full bg-sales-slate-900/95 overflow-hidden rounded-l-2xl shadow-2xl border-l border-sales-slate-700/50 transition-opacity ${isUpdating ? 'opacity-70 pointer-events-none' : ''}`}>
 
       {/* Header & Tabs */}
-      <div className="p-0 border-b border-sales-slate-700/50 bg-sales-slate-800/80 shrink-0">
+      <div className="p-0 border-b border-sales-slate-700/50 bg-sales-slate-800/80 shrink-0 relative">
+        <button
+          onClick={onClose}
+          className="absolute top-3 left-4 z-10 p-2 bg-sales-slate-700/50 hover:bg-sales-slate-600 text-sales-slate-300 hover:text-white rounded-full transition-colors"
+        >
+          <X className="w-5 h-5" />
+        </button>
+
         <div className="flex items-center justify-between p-4 pb-2">
-          <h2 className="text-lg font-bold text-white flex items-center gap-2">
+          <h2 className="text-lg font-bold text-white flex items-center gap-2 pl-12">
             <ShoppingCart className="text-sales-blue-400" />
             Venta Activa
           </h2>
@@ -287,13 +294,6 @@ export default function CartViewer({ cartData, client, onClose }) {
               className="text-sales-slate-400 hover:text-red-400 transition-colors p-1"
             >
               <Trash className="w-4 h-4" />
-            </button>
-            <button
-              onClick={onClose}
-              title="Cerrar Panel"
-              className="text-sales-slate-400 hover:text-white transition-colors p-1 ml-1 bg-sales-slate-700/50 rounded-full"
-            >
-              <X className="w-4 h-4" />
             </button>
           </div>
         </div>
