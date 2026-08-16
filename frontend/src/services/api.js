@@ -304,9 +304,17 @@ export async function searchSealMarketCatalog(params) {
 }
 
 export async function getSealMarketFamilias() {
-  const res = await get('/sealmarket/catalog/familias');
+  const res = await get(`/sealmarket/catalog/familias`);
   if (!res.ok) {
-    throw new Error('Error cargando familias');
+    throw new Error('Error al obtener familias');
+  }
+  return res.json();
+}
+
+export async function getClientByRfc(rfc) {
+  const res = await get(`/sealmarket/clientes/rfc/${rfc}`);
+  if (!res.ok) {
+    throw new Error('RFC no encontrado o error del servidor');
   }
   return res.json();
 }

@@ -64,6 +64,35 @@ router.get('/catalog/search', authenticate, async (req, res, next) => {
   }
 });
 
+router.get('/clientes/rfc/:rfc', authenticate, async (req, res, next) => {
+  try {
+    const rfc = req.params.rfc;
+    const apiUrl = process.env.VITE_API_BASE_URL || 'http://75.119.150.222:3010';
+    const apiKey = process.env.VITE_INTERNAL_SECRET || 'sm_ecommerce_x2ve9yFf0aiDxh1HelezpVeyRAcngGwgEg3ZnSZwhGg2SaZrd2gQiysiVo86R3LcUZFFxZDSMADepof1jMLSumIbiqBRcbjyhvA78haaxnLrrbOuU3zqCi0kQXJf1gSc';
+    
+    const endpoint = `${apiUrl}/api/clientes/rfc/${rfc}`;
+    
+    const fetchRes = await fetch(endpoint, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey
+      }
+    });
+    
+    if (!fetchRes.ok) {
+      if (fetchRes.status === 404) return res.status(404).json({ error: 'RFC no encontrado' });
+      return res.status(fetchRes.status).json({ error: `La API devolvió un error: ${fetchRes.statusText}` });
+    }
+    
+    const data = await fetchRes.json();
+    res.json(data);
+  } catch (error) {
+    console.error('[SEALMARKET] Excepción al buscar RFC:', error.message);
+    res.status(500).json({ error: 'Hubo un fallo al obtener los datos del RFC' });
+  }
+});
+
 router.get('/catalog/familias', authenticate, async (req, res, next) => {
   try {
     const apiUrl = process.env.VITE_API_BASE_URL || 'http://75.119.150.222:3010';

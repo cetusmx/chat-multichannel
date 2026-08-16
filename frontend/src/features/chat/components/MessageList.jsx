@@ -686,8 +686,14 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
                 </div>
               </div>
             ) : !aiDraft ? (
-              <form onSubmit={handleGenerateAi} className="flex gap-2">
-                <input
+              <div className="flex flex-col gap-2">
+                <div className="flex gap-2 pb-2 mb-1 border-b border-sales-cyan-900/50 overflow-x-auto custom-scrollbar">
+                   <button type="button" onClick={() => setAiPrompt('Generar un resumen de los requerimientos técnicos del cliente')} className="shrink-0 bg-sales-slate-800 border border-sales-cyan-700 text-sales-cyan-300 text-[11px] px-2 py-1 rounded hover:bg-sales-cyan-900 hover:text-white transition-colors">Resumir Chat</button>
+                   <button type="button" onClick={() => setAiPrompt('Extrae la dirección de envío o fiscal proporcionada por el cliente y usa la herramienta actualizar_carrito para guardarla en el sistema.')} className="shrink-0 bg-sales-slate-800 border border-sales-cyan-700 text-sales-cyan-300 text-[11px] px-2 py-1 rounded hover:bg-sales-cyan-900 hover:text-white transition-colors">Extraer Dirección a Carrito</button>
+                   <button type="button" onClick={() => setAiPrompt('Propón una respuesta cordial y persuasiva ofreciendo nuestros sellos mecánicos u O-rings')} className="shrink-0 bg-sales-slate-800 border border-sales-cyan-700 text-sales-cyan-300 text-[11px] px-2 py-1 rounded hover:bg-sales-cyan-900 hover:text-white transition-colors">Redactar Oferta</button>
+                </div>
+                <form onSubmit={handleGenerateAi} className="flex gap-2">
+                  <input
                   type="text"
                   autoFocus
                   className="flex-1 bg-sales-slate-900 border border-sales-cyan-500 rounded px-3 py-1.5 text-sm text-sales-slate-200 focus:outline-none"
@@ -706,6 +712,7 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
                   {isDrafting ? '⏳...' : 'Generar'}
                 </button>
               </form>
+              </div>
             ) : (
               <div className="flex flex-col gap-3">
                 <textarea

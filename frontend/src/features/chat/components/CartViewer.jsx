@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ShoppingCart, Package, Info, Plus, Minus, Trash2, Trash, Search, Database, Loader2, ArrowRight, Filter, Send, MessageSquare } from 'lucide-react';
-import { updateClientCart, searchSealMarketCatalog, getSealMarketFamilias } from '../../../services/api';
+import { updateClientCart, searchSealMarketCatalog, getSealMarketFamilias, getClientByRfc } from '../../../services/api';
 import useChatStore from '../../../stores/useChatStore';
 import useAuthStore from '../../../stores/useAuthStore';
 import ConfirmModal from '../../../components/ConfirmModal.jsx';
@@ -16,6 +16,7 @@ export default function CartViewer({ cartData, client }) {
 
   const [isEditingBilling, setIsEditingBilling] = useState(false);
   const [tempBilling, setTempBilling] = useState({ razonSocial: '', rfc: '', billingAddress: '' });
+  const [isSearchingRfc, setIsSearchingRfc] = useState(false);
 
   // Catalog state
   const [familias, setFamilias] = useState([]);
@@ -123,6 +124,35 @@ export default function CartViewer({ cartData, client }) {
       alert('Error al actualizar datos de facturación');
     } finally {
       setIsUpdating(false);
+    }
+  };
+
+  const handleSearchRfc = async () => {
+    if (!tempBilling.rfc) return;
+    setIsSearchingRfc(true);
+    try {
+      const response = await getClientByRfc(tempBilling.rfc);
+      const cliente = response.data;
+      if (cliente) {
+        const calle = cliente.CALLE || '';
+        const num = cliente.NUM || '';
+        const col = cliente.COL || '';
+        const cp = cliente.CP || '';
+        const mun = cliente.MUN || '';
+        const est = cliente.EST || '';
+        const direccion = `${calle} ${num}, ${col}, ${cp}, ${mun}, ${est}`.trim().replace(/,\s*,/g, ',');
+
+        setTempBilling(prev => ({
+          ...prev,
+          razonSocial: cliente.NOMBRE || prev.razonSocial,
+          billingAddress: direccion || prev.billingAddress,
+          rfc: cliente.RFC || prev.rfc
+        }));
+      }
+    } catch (err) {
+      alert(err.message || 'Error al consultar el RFC');
+    } finally {
+      setIsSearchingRfc(false);
     }
   };
 
@@ -306,17 +336,28 @@ export default function CartViewer({ cartData, client }) {
 
                   {isEditingBilling ? (
                     <div className="mt-1 space-y-2">
+                      <div className="flex gap-2">
+                        <input
+                          className="flex-1 bg-sales-slate-900 border border-sales-slate-700 text-sales-slate-200 text-xs rounded-lg p-2 focus:ring-sales-blue-500 min-h-[30px]"
+                          value={tempBilling.rfc}
+                          onChange={(e) => setTempBilling({...tempBilling, rfc: e.target.value})}
+                          placeholder="RFC"
+                        />
+                        <button
+                          onClick={handleSearchRfc}
+                          disabled={!tempBilling.rfc || isSearchingRfc}
+                          className="bg-sales-blue-600 hover:bg-sales-blue-500 text-white text-[10px] px-2 py-1 rounded disabled:opacity-50 flex items-center justify-center gap-1 min-w-[70px]"
+                          title="Buscar datos fiscales del cliente por RFC"
+                        >
+                          {isSearchingRfc ? <Loader2 className="w-3 h-3 animate-spin" /> : <Search className="w-3 h-3" />}
+                          Buscar
+                        </button>
+                      </div>
                       <input
                         className="w-full bg-sales-slate-900 border border-sales-slate-700 text-sales-slate-200 text-xs rounded-lg p-2 focus:ring-sales-blue-500 min-h-[30px]"
                         value={tempBilling.razonSocial}
                         onChange={(e) => setTempBilling({...tempBilling, razonSocial: e.target.value})}
                         placeholder="Razón Social"
-                      />
-                      <input
-                        className="w-full bg-sales-slate-900 border border-sales-slate-700 text-sales-slate-200 text-xs rounded-lg p-2 focus:ring-sales-blue-500 min-h-[30px]"
-                        value={tempBilling.rfc}
-                        onChange={(e) => setTempBilling({...tempBilling, rfc: e.target.value})}
-                        placeholder="RFC"
                       />
                       <textarea
                         className="w-full bg-sales-slate-900 border border-sales-slate-700 text-sales-slate-200 text-xs rounded-lg p-2 focus:ring-sales-blue-500 min-h-[50px]"
