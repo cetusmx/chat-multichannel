@@ -132,14 +132,14 @@ export default function CartViewer({ cartData, client }) {
     setIsSearchingRfc(true);
     try {
       const response = await getClientByRfc(tempBilling.rfc);
-      const cliente = response.data;
+      const cliente = Array.isArray(response.data) ? response.data[0] : response.data;
       if (cliente) {
         const calle = cliente.CALLE || '';
-        const num = cliente.NUM || '';
-        const col = cliente.COL || '';
-        const cp = cliente.CP || '';
-        const mun = cliente.MUN || '';
-        const est = cliente.EST || '';
+        const num = cliente.NUMEXT || '';
+        const col = cliente.COLONIA ? `Col. ${cliente.COLONIA}` : '';
+        const cp = cliente.CODIGO ? `C.P. ${cliente.CODIGO}` : '';
+        const mun = cliente.MUNICIPIO || '';
+        const est = cliente.ESTADO || '';
         const direccion = `${calle} ${num}, ${col}, ${cp}, ${mun}, ${est}`.trim().replace(/,\s*,/g, ',');
 
         setTempBilling(prev => ({
@@ -148,6 +148,8 @@ export default function CartViewer({ cartData, client }) {
           billingAddress: direccion || prev.billingAddress,
           rfc: cliente.RFC || prev.rfc
         }));
+      } else {
+        alert("El RFC no fue encontrado en la base de datos.");
       }
     } catch (err) {
       alert(err.message || 'Error al consultar el RFC');
