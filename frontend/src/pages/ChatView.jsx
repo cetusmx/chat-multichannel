@@ -403,6 +403,7 @@ export default function ChatView() {
           <div className="relative flex h-full w-full min-w-0 overflow-x-auto">
             <div className="flex flex-col relative flex-1 h-full max-w-full bg-sales-slate-900/50">
               <MessageList
+                conversationId={currentConversationId}
                 messages={messages}
                 onSendMessage={sendMessage}
                 onSendMedia={sendMedia}
