@@ -106,9 +106,9 @@ const ChatHeaderActions = ({ activeConv, setConfirmClose, setIsCartOpen }) => {
   if (!activeConv) return null;
 
   const isSlaEnabled = user?.tenant?.isSlaEnabled ?? true;
-  const isAssignedToMe = user?.id === activeConv.assignedVendorId;
+  const isAssignedToMe = user?.id === activeConv.vendorId;
   const status = activeConv.status;
-  const showVendorActions = user?.id === activeConv.assignedVendorId;
+  const showVendorActions = user?.id === activeConv.vendorId;
   const showAdvanced = isSlaEnabled && showVendorActions;
   const isEmpty = !activeConv?.messages || activeConv.messages.length === 0;
   const disabledTooltip = isEmpty ? 'Aún no hay mensajes' : 'El último mensaje debe ser tuyo';
