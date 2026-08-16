@@ -440,16 +440,11 @@ export default function ChatView() {
                 style={{ width: 'min(90vw, 420px)' }}
               >
                 <div className="flex-1 bg-sales-slate-800 flex flex-col overflow-hidden relative">
-                  <button
-                    onClick={() => setIsCartOpen(false)}
-                    className="absolute top-4 left-4 z-10 p-2 bg-sales-slate-700/50 hover:bg-sales-slate-700 text-sales-slate-300 hover:text-white rounded-full transition-colors"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
                   {activeConv?.client && (
                     <CartViewer
                       cartData={activeConv.client.cartData}
                       client={activeConv.client}
+                      onClose={() => setIsCartOpen(false)}
                     />
                   )}
                 </div>

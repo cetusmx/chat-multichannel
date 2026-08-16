@@ -5,8 +5,14 @@ import useUIStore from '../../../stores/useUIStore';
 import ChatList from './ChatList';
 import FocusPanel from './FocusPanel';
 import { motion } from 'framer-motion';
-import { Users, AlertTriangle, CheckCircle, Clock } from 'lucide-react';
+import { Users, CheckCircle, Clock } from 'lucide-react';
 import * as api from '../../../services/api';
+
+const CustomWarningIcon = (props) => (
+  <svg viewBox="0 0 24 24" fill="currentColor" {...props}>
+    <path fillRule="evenodd" d="M9.401 3.003c1.155-2 4.043-2 5.197 0l7.355 12.748c1.154 2-.29 4.5-2.599 4.5H4.645c-2.309 0-3.752-2.5-2.598-4.5L9.4 3.003zM12 8.25a.75.75 0 01.75.75v3.75a.75.75 0 01-1.5 0V9a.75.75 0 01.75-.75zm0 8.25a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+  </svg>
+);
 
 const StatCard = ({ title, value, icon: Icon, iconColor, filterType, activeFilter, setFilter }) => {
   const isActive = activeFilter === filterType;
@@ -92,7 +98,7 @@ export default function CoordinatorDashboard() {
         <div className="absolute inset-0 bg-gradient-to-r from-sales-cyan-900/10 to-sales-blue-900/10 pointer-events-none" />
         <StatCard title="Activos Hoy" value={metrics.total} icon={Users} iconColor="text-sales-blue-400" filterType="ALL" activeFilter={filter} setFilter={setFilter} />
         <StatCard title="En Espera" value={metrics.pending} icon={Clock} iconColor="text-sales-cyan-400" filterType="PENDING" activeFilter={filter} setFilter={setFilter} />
-        <StatCard title="SLA en Riesgo" value={metrics.slaRisk} icon={AlertTriangle} iconColor="text-red-500" filterType="SLA" activeFilter={filter} setFilter={setFilter} />
+        <StatCard title="SLA en Riesgo" value={metrics.slaRisk} icon={CustomWarningIcon} iconColor="text-red-500" filterType="SLA" activeFilter={filter} setFilter={setFilter} />
         <StatCard title="Cerrados" value={metrics.closed} icon={CheckCircle} iconColor="text-emerald-500" filterType="CLOSED" activeFilter={filter} setFilter={setFilter} />
       </div>
 

@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { ShoppingCart, Package, Info, Plus, Minus, Trash2, Trash, Search, Database, Loader2, ArrowRight, Filter, Send, MessageSquare } from 'lucide-react';
+import { ShoppingCart, Package, Info, Plus, Minus, Trash2, Trash, Search, Database, Loader2, ArrowRight, Filter, Send, MessageSquare, X } from 'lucide-react';
 import { updateClientCart, searchSealMarketCatalog, getSealMarketFamilias, getClientByRfc } from '../../../services/api';
 import useChatStore from '../../../stores/useChatStore';
 import useAuthStore from '../../../stores/useAuthStore';
 import ConfirmModal from '../../../components/ConfirmModal.jsx';
 
-export default function CartViewer({ cartData, client }) {
+export default function CartViewer({ cartData, client, onClose }) {
   const [activeTab, setActiveTab] = useState('current'); // 'current' or 'catalog'
   const [isUpdating, setIsUpdating] = useState(false);
   const [confirmModal, setConfirmModal] = useState({ open: false, type: null, idx: null });
@@ -287,6 +287,13 @@ export default function CartViewer({ cartData, client }) {
               className="text-sales-slate-400 hover:text-red-400 transition-colors p-1"
             >
               <Trash className="w-4 h-4" />
+            </button>
+            <button
+              onClick={onClose}
+              title="Cerrar Panel"
+              className="text-sales-slate-400 hover:text-white transition-colors p-1 ml-1 bg-sales-slate-700/50 rounded-full"
+            >
+              <X className="w-4 h-4" />
             </button>
           </div>
         </div>
