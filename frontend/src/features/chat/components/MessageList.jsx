@@ -413,7 +413,12 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
   };
 
   const handleCannedSelect = (content) => {
-    setText(content);
+    let finalContent = content;
+    if (finalContent) {
+      finalContent = finalContent.replace(/\{\{vendedor_nombre\}\}/gi, user?.name || '');
+      finalContent = finalContent.replace(/\{\{cliente_nombre\}\}/gi, clientName || '');
+    }
+    setText(finalContent);
     chatInputRef.current?.focus();
   };
 
