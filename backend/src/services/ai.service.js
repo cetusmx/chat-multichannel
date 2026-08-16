@@ -693,14 +693,14 @@ class AIService {
             const entidad = extractBetween('Nombredela EntidadFederativa:', ['EntreCalle:', '\n']);
 
             let direccionCompleta = [];
-            if (vialidad) direccionCompleta.push(`Nombre de Vialidad: ${vialidad}`);
-            if (numExt) direccionCompleta.push(`Número Exterior: ${numExt}`);
-            if (numInt && numInt.trim().length > 0) direccionCompleta.push(`Número Interior: ${numInt}`);
-            if (colonia) direccionCompleta.push(`Nombre de la Colonia: ${colonia}`);
-            if (localidad) direccionCompleta.push(`Nombre de la Localidad: ${localidad}`);
-            if (municipio) direccionCompleta.push(`Nombre del Municipio o Demarcación Territorial: ${municipio}`);
-            if (entidad) direccionCompleta.push(`Nombre de la Entidad Federativa: ${entidad}`);
-            if (cpExt) direccionCompleta.push(`Código Postal: ${cpExt}`);
+            if (vialidad) direccionCompleta.push(vialidad);
+            if (numExt) direccionCompleta.push(numExt);
+            if (numInt && numInt.trim().length > 0) direccionCompleta.push(numInt);
+            if (colonia) direccionCompleta.push(colonia);
+            if (localidad) direccionCompleta.push(localidad);
+            if (municipio) direccionCompleta.push(municipio);
+            if (entidad) direccionCompleta.push(entidad);
+            if (cpExt) direccionCompleta.push(cpExt);
 
             extractedAddress = direccionCompleta.join(', ');
 
@@ -712,7 +712,7 @@ class AIService {
                 const provider = getProvider(providerName);
                 
                 const prompt = `Extrae de este texto crudo (proveniente de una Constancia de Situación Fiscal) el RFC, la Razón Social y el Domicilio Fiscal.
-Para el Domicilio Fiscal, concatena EXACTAMENTE en este formato: "Nombre de Vialidad: [valor], Número Exterior: [valor], Número Interior: [valor], Nombre de la Colonia: [valor], Nombre de la Localidad: [valor], Nombre del Municipio o Demarcación Territorial: [valor], Nombre de la Entidad Federativa: [valor], Código Postal: [valor]". Si no hay número interior, omítelo de la concatenación.
+Para el Domicilio Fiscal, concatena los valores separándolos únicamente por comas en el siguiente orden: Vialidad, Número Exterior, Número Interior, Colonia, Localidad, Municipio, Entidad Federativa, Código Postal. Si no hay número interior, omítelo de la concatenación.
 Devuelve ÚNICAMENTE un objeto JSON válido con las claves "rfc", "razonSocial" y "domicilioFiscal", sin texto adicional ni formato markdown.
 
 TEXTO:
