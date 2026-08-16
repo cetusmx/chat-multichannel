@@ -157,26 +157,68 @@ router.post('/:id/extract-csf', authenticate, authorize('ADMIN', 'COORDINATOR', 
     let extractedRfc = '';
     let extractedRazonSocial = '';
     let extractedCp = '';
+    let extractedAddress = '';
 
     const rfcMatch = pdfText.match(/RFC:\s*([A-Z0-9]{12,13})/i);
     const cpMatch = pdfText.match(/C\.\s*P\.\s*:\s*(\d{5})/i) || pdfText.match(/Código Postal:\s*(\d{5})/i);
-    // El nombre/razon social usualmente está entre "Nombre, denominación o razón social:" y la siguiente etiqueta.
     const nameMatch = pdfText.match(/Nombre,\s*denominación\s*o\s*razón\s*social:\s*([^\n]+)/i);
 
     if (rfcMatch) extractedRfc = rfcMatch[1].trim();
     if (cpMatch) extractedCp = cpMatch[1].trim();
     if (nameMatch) extractedRazonSocial = nameMatch[1].trim();
 
+    // Extracción avanzada del domicilio basada en etiquetas comunes
+    const extractBetween = (startStr, endStrs) => {
+      let startIndex = pdfText.indexOf(startStr);
+      if (startIndex === -1) return '';
+      startIndex += startStr.length;
+      let endIndex = pdfText.length;
+      for (const endStr of endStrs) {
+        const idx = pdfText.indexOf(endStr, startIndex);
+        if (idx !== -1 && idx < endIndex) {
+          endIndex = idx;
+        }
+      }
+      return pdfText.substring(startIndex, endIndex).replace(/\n/g, ' ').trim();
+    };
+
+    const cpExt = extractBetween('CódigoPostal:\n', ['\n', 'Tipo']) || extractBetween('CódigoPostal:', ['Tipo', '\n']) || extractedCp;
+    const vialidad = extractBetween('NombredeVialidad:', ['NúmeroExterior:', '\n']);
+    const numExt = extractBetween('NúmeroExterior:', ['NúmeroInterior:', '\n']);
+    const numInt = extractBetween('NúmeroInterior:', ['Nombredela Colonia:', '\n']);
+    let colonia = extractBetween('Nombredela Colonia:\n', ['\n', 'Nombredela Localidad:']);
+    if (!colonia) colonia = extractBetween('Nombredela Colonia:', ['Nombredela Localidad:', '\n']);
+    const localidad = extractBetween('Nombredela Localidad:', ['NombredelMunicipio', '\n']);
+    const municipio = extractBetween('DemarcaciónTerritorial:', ['Nombredela EntidadFederativa:', '\n']);
+    const entidad = extractBetween('Nombredela EntidadFederativa:', ['EntreCalle:', '\n']);
+
+    let direccionCompleta = [];
+    if (vialidad) direccionCompleta.push(`Nombre de Vialidad: ${vialidad}`);
+    if (numExt) direccionCompleta.push(`Número Exterior: ${numExt}`);
+    if (numInt && numInt.trim().length > 0) direccionCompleta.push(`Número Interior: ${numInt}`);
+    if (colonia) direccionCompleta.push(`Nombre de la Colonia: ${colonia}`);
+    if (localidad) direccionCompleta.push(`Nombre de la Localidad: ${localidad}`);
+    if (municipio) direccionCompleta.push(`Nombre del Municipio o Demarcación Territorial: ${municipio}`);
+    if (entidad) direccionCompleta.push(`Nombre de la Entidad Federativa: ${entidad}`);
+    if (cpExt) direccionCompleta.push(`Código Postal: ${cpExt}`);
+
+    extractedAddress = direccionCompleta.join(', ');
+
     let methodUsed = 'Regex';
 
-    if (!extractedRfc || !extractedRazonSocial) {
+    if (!extractedRfc || !extractedRazonSocial || !extractedAddress) {
       // Fallback a LLM (Paso 2)
       try {
         const { getProvider } = require('../providers');
         const providerName = process.env.AI_PROVIDER || 'gemini';
         const provider = getProvider(providerName);
         
-        const prompt = `Extrae de este texto crudo (proveniente de una Constancia de Situación Fiscal) el RFC, la Razón Social y el Código Postal. Si no encuentras alguno, omítelo. Devuelve ÚNICAMENTE un objeto JSON válido con las claves "rfc", "razonSocial" y "codigoPostal", sin texto adicional ni formato markdown.\n\nTEXTO:\n${pdfText.substring(0, 3000)}`;
+        const prompt = `Extrae de este texto crudo (proveniente de una Constancia de Situación Fiscal) el RFC, la Razón Social y el Domicilio Fiscal.
+Para el Domicilio Fiscal, concatena EXACTAMENTE en este formato: "Nombre de Vialidad: [valor], Número Exterior: [valor], Número Interior: [valor], Nombre de la Colonia: [valor], Nombre de la Localidad: [valor], Nombre del Municipio o Demarcación Territorial: [valor], Nombre de la Entidad Federativa: [valor], Código Postal: [valor]". Si no hay número interior, omítelo de la concatenación.
+Devuelve ÚNICAMENTE un objeto JSON válido con las claves "rfc", "razonSocial" y "domicilioFiscal", sin texto adicional ni formato markdown.
+
+TEXTO:
+${pdfText.substring(0, 3000)}`;
         
         const response = await provider.generateResponse({
           tenantId: req.user.tenantId,
@@ -189,23 +231,12 @@ router.post('/:id/extract-csf', authenticate, authorize('ADMIN', 'COORDINATOR', 
         
         if (parsed.rfc) extractedRfc = parsed.rfc;
         if (parsed.razonSocial) extractedRazonSocial = parsed.razonSocial;
-        if (parsed.codigoPostal) extractedCp = parsed.codigoPostal;
+        if (parsed.domicilioFiscal) extractedAddress = parsed.domicilioFiscal;
         
         methodUsed = 'AI';
       } catch (aiErr) {
         console.error('[CSF EXTRACTION] Error en fallback de IA:', aiErr.message);
-        
-        // Notificar como susurro
-        io.of('/chat').to(`conversation:${id}`).emit('new_message', {
-          id: `sys_${Date.now()}`,
-          conversationId: id,
-          senderType: 'SYSTEM',
-          content: 'No se pudieron extraer los datos con formato estándar y la IA no está disponible o falló. Por favor, ingresa los datos fiscales manualmente.',
-          createdAt: new Date(),
-          isInternal: true
-        });
-
-        return res.json({ success: false, reason: 'ai_fallback_failed' });
+        return sendErrorWhisper('No se pudieron extraer los datos con formato estándar y la IA no está disponible o falló. Por favor, ingresa los datos fiscales manualmente.', 'ai_fallback_failed');
       }
     }
 
@@ -230,7 +261,7 @@ router.post('/:id/extract-csf', authenticate, authorize('ADMIN', 'COORDINATOR', 
     
     currentCart.rfc = extractedRfc;
     if (extractedRazonSocial) currentCart.razonSocial = extractedRazonSocial;
-    if (extractedCp) currentCart.billingAddress = extractedCp; // o unificarlo
+    if (extractedAddress) currentCart.billingAddress = extractedAddress;
 
     await prisma.client.update({
       where: { id: conversation.clientId },

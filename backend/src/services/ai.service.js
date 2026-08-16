@@ -658,6 +658,7 @@ class AIService {
             let extractedRfc = '';
             let extractedRazonSocial = '';
             let extractedCp = '';
+            let extractedAddress = '';
 
             const rfcMatch = pdfText.match(/RFC:\s*([A-Z0-9]{12,13})/i);
             const cpMatch = pdfText.match(/C\.\s*P\.\s*:\s*(\d{5})/i) || pdfText.match(/Código Postal:\s*(\d{5})/i);
@@ -667,21 +668,63 @@ class AIService {
             if (cpMatch) extractedCp = cpMatch[1].trim();
             if (nameMatch) extractedRazonSocial = nameMatch[1].trim();
 
-            if (!extractedRfc || !extractedRazonSocial) {
+            const extractBetween = (startStr, endStrs) => {
+              let startIndex = pdfText.indexOf(startStr);
+              if (startIndex === -1) return '';
+              startIndex += startStr.length;
+              let endIndex = pdfText.length;
+              for (const endStr of endStrs) {
+                const idx = pdfText.indexOf(endStr, startIndex);
+                if (idx !== -1 && idx < endIndex) {
+                  endIndex = idx;
+                }
+              }
+              return pdfText.substring(startIndex, endIndex).replace(/\n/g, ' ').trim();
+            };
+
+            const cpExt = extractBetween('CódigoPostal:\n', ['\n', 'Tipo']) || extractBetween('CódigoPostal:', ['Tipo', '\n']) || extractedCp;
+            const vialidad = extractBetween('NombredeVialidad:', ['NúmeroExterior:', '\n']);
+            const numExt = extractBetween('NúmeroExterior:', ['NúmeroInterior:', '\n']);
+            const numInt = extractBetween('NúmeroInterior:', ['Nombredela Colonia:', '\n']);
+            let colonia = extractBetween('Nombredela Colonia:\n', ['\n', 'Nombredela Localidad:']);
+            if (!colonia) colonia = extractBetween('Nombredela Colonia:', ['Nombredela Localidad:', '\n']);
+            const localidad = extractBetween('Nombredela Localidad:', ['NombredelMunicipio', '\n']);
+            const municipio = extractBetween('DemarcaciónTerritorial:', ['Nombredela EntidadFederativa:', '\n']);
+            const entidad = extractBetween('Nombredela EntidadFederativa:', ['EntreCalle:', '\n']);
+
+            let direccionCompleta = [];
+            if (vialidad) direccionCompleta.push(`Nombre de Vialidad: ${vialidad}`);
+            if (numExt) direccionCompleta.push(`Número Exterior: ${numExt}`);
+            if (numInt && numInt.trim().length > 0) direccionCompleta.push(`Número Interior: ${numInt}`);
+            if (colonia) direccionCompleta.push(`Nombre de la Colonia: ${colonia}`);
+            if (localidad) direccionCompleta.push(`Nombre de la Localidad: ${localidad}`);
+            if (municipio) direccionCompleta.push(`Nombre del Municipio o Demarcación Territorial: ${municipio}`);
+            if (entidad) direccionCompleta.push(`Nombre de la Entidad Federativa: ${entidad}`);
+            if (cpExt) direccionCompleta.push(`Código Postal: ${cpExt}`);
+
+            extractedAddress = direccionCompleta.join(', ');
+
+            if (!extractedRfc || !extractedRazonSocial || !extractedAddress) {
               // LLM Fallback explicitly since Regex failed
               try {
                 const { getProvider } = require('../providers');
                 const providerName = process.env.AI_PROVIDER || 'gemini';
                 const provider = getProvider(providerName);
                 
-                const prompt = `Extrae de este texto crudo (Constancia de Situación Fiscal) el RFC, Razón Social y Código Postal. Si no encuentras alguno, omítelo. Devuelve ÚNICAMENTE un JSON válido con las claves "rfc", "razonSocial" y "codigoPostal".\n\nTEXTO:\n${pdfText.substring(0, 3000)}`;
+                const prompt = `Extrae de este texto crudo (proveniente de una Constancia de Situación Fiscal) el RFC, la Razón Social y el Domicilio Fiscal.
+Para el Domicilio Fiscal, concatena EXACTAMENTE en este formato: "Nombre de Vialidad: [valor], Número Exterior: [valor], Número Interior: [valor], Nombre de la Colonia: [valor], Nombre de la Localidad: [valor], Nombre del Municipio o Demarcación Territorial: [valor], Nombre de la Entidad Federativa: [valor], Código Postal: [valor]". Si no hay número interior, omítelo de la concatenación.
+Devuelve ÚNICAMENTE un objeto JSON válido con las claves "rfc", "razonSocial" y "domicilioFiscal", sin texto adicional ni formato markdown.
+
+TEXTO:
+${pdfText.substring(0, 3000)}`;
+
                 const response = await provider.generateResponse({ tenantId, messages: [{ role: 'user', content: prompt }] });
                 let jsonStr = response.content.replace(/```json/g, '').replace(/```/g, '').trim();
                 const parsed = JSON.parse(jsonStr);
                 
                 if (parsed.rfc) extractedRfc = parsed.rfc;
                 if (parsed.razonSocial) extractedRazonSocial = parsed.razonSocial;
-                if (parsed.codigoPostal) extractedCp = parsed.codigoPostal;
+                if (parsed.domicilioFiscal) extractedAddress = parsed.domicilioFiscal;
               } catch (aiErr) {
                 console.error('[CSF AI Fallback] error:', aiErr.message);
               }
@@ -697,7 +740,7 @@ class AIService {
             
             currentCart.rfc = extractedRfc;
             if (extractedRazonSocial) currentCart.razonSocial = extractedRazonSocial;
-            if (extractedCp) currentCart.billingAddress = extractedCp;
+            if (extractedAddress) currentCart.billingAddress = extractedAddress;
 
             await prisma.client.update({
               where: { id: conversation.clientId },
