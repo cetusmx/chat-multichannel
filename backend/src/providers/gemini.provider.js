@@ -47,10 +47,49 @@ class GeminiProvider extends AIProvider {
       const apiKey = await this._getApiKey(tenantId);
       const genAI = new GoogleGenerativeAI(apiKey);
       
-      const formattedMessages = messages.map(m => ({
-        role: m.role === 'user' ? 'user' : 'model',
-        parts: [{ text: String(m.content || '') }]
-      }));
+      const fs = require('fs');
+      const path = require('path');
+      
+      const formattedMessages = messages.map(m => {
+        const parts = [];
+        if (m.content) {
+          parts.push({ text: String(m.content) });
+        }
+        
+        if (m.attachments && m.attachments.length > 0) {
+          for (const att of m.attachments) {
+            // att.url is likely something like "/uploads/tenantId/filename.pdf"
+            if (att.mimeType && (att.mimeType === 'application/pdf' || att.mimeType.startsWith('image/'))) {
+              try {
+                // The URL is typically an absolute path from the public directory: /uploads/...
+                const relativePath = att.url.startsWith('/') ? att.url.slice(1) : att.url;
+                const filePath = path.join(__dirname, '..', '..', relativePath);
+                
+                if (fs.existsSync(filePath)) {
+                  const fileBytes = fs.readFileSync(filePath);
+                  parts.push({
+                    inlineData: {
+                      data: fileBytes.toString('base64'),
+                      mimeType: att.mimeType
+                    }
+                  });
+                }
+              } catch (err) {
+                console.error('[GEMINI] Error cargando archivo adjunto:', err.message);
+              }
+            }
+          }
+        }
+        
+        if (parts.length === 0) {
+          parts.push({ text: '[Mensaje vacío o archivo no soportado]' });
+        }
+        
+        return {
+          role: m.role === 'user' ? 'user' : 'model',
+          parts
+        };
+      });
 
       // System instruction is supported in gemini-1.5-flash and above
       let modelOptions = { model: this.defaultModel };

@@ -9,19 +9,25 @@ class AIService {
   
   _formatProviderHistory(history) {
     let formatted = history.map(msg => {
-      let content = msg.content ? String(msg.content) : '[Archivo adjunto]';
-      if (msg.senderType !== 'CLIENT' && msg.senderType !== 'VENDOR') {
+      let content = msg.content ? String(msg.content) : '';
+      if (msg.senderType !== 'CLIENT' && msg.senderType !== 'VENDOR' && content) {
         content = `[${msg.senderType}] ${content}`;
       }
       return {
         role: msg.senderType === 'CLIENT' ? 'user' : 'model',
-        content
+        content,
+        attachments: msg.attachments || []
       };
     }).reverse();
 
     formatted = formatted.reduce((acc, curr) => {
       if (acc.length > 0 && acc[acc.length - 1].role === curr.role) {
-        acc[acc.length - 1].content += '\n' + curr.content;
+        if (curr.content) {
+          acc[acc.length - 1].content += (acc[acc.length - 1].content ? '\n' : '') + curr.content;
+        }
+        if (curr.attachments && curr.attachments.length > 0) {
+          acc[acc.length - 1].attachments = [...(acc[acc.length - 1].attachments || []), ...curr.attachments];
+        }
       } else {
         acc.push(curr);
       }
@@ -72,10 +78,14 @@ class AIService {
         where: { 
           conversationId,
           senderType: { in: ['CLIENT', 'IA', 'VENDOR'] },
-          content: { not: '' }
+          OR: [
+            { content: { not: '' } },
+            { attachments: { some: {} } }
+          ]
         },
         orderBy: { createdAt: 'desc' },
-        take: 12
+        take: 12,
+        include: { attachments: true }
       });
       
       // Map history to provider format (in chronological order)
@@ -194,7 +204,7 @@ class AIService {
           },
           {
             name: "actualizar_carrito",
-            description: "Actualiza el estado persistente del carrito de compras del cliente. Úsala CADA VEZ que el cliente confirme que quiere agregar un producto o modificar cantidades, o cuando confirme su dirección de envío.",
+            description: "Actualiza el estado persistente del carrito de compras del cliente. Úsala CADA VEZ que el cliente confirme que quiere agregar un producto o modificar cantidades, o cuando confirme su dirección de envío o envíe sus datos fiscales.",
             parameters: {
               type: "OBJECT",
               properties: {
@@ -205,6 +215,18 @@ class AIService {
                 shipping_address: {
                   type: "STRING",
                   description: "Opcional. La dirección de envío completa que el cliente ha confirmado para este pedido."
+                },
+                razon_social: {
+                  type: "STRING",
+                  description: "Opcional. La Razón Social del cliente (si la extrajiste o la proporcionó)."
+                },
+                rfc: {
+                  type: "STRING",
+                  description: "Opcional. El RFC del cliente (si lo extrajiste o lo proporcionó)."
+                },
+                billing_address: {
+                  type: "STRING",
+                  description: "Opcional. El domicilio fiscal del cliente."
                 }
               },
               required: ["cart_items"]
@@ -348,13 +370,13 @@ class AIService {
             // Handle legacy format (if db has array) or new format (if db has object)
             const currentClient = await prisma.client.findUnique({ where: { id: conversation.clientId } });
             const currentCart = currentClient.cartData || {};
-            const razonSocial = Array.isArray(currentCart) ? null : currentCart.razonSocial;
+            
             const newCartData = {
               items: parsedItems,
               shippingAddress: args.shipping_address || (Array.isArray(currentCart) ? null : currentCart.shippingAddress),
-              razonSocial: razonSocial,
-              rfc: Array.isArray(currentCart) ? null : currentCart.rfc,
-              billingAddress: Array.isArray(currentCart) ? null : currentCart.billingAddress
+              razonSocial: args.razon_social || (Array.isArray(currentCart) ? null : currentCart.razonSocial),
+              rfc: args.rfc || (Array.isArray(currentCart) ? null : currentCart.rfc),
+              billingAddress: args.billing_address || (Array.isArray(currentCart) ? null : currentCart.billingAddress)
             };
 
             if (conversation?.clientId) {
@@ -643,10 +665,14 @@ class AIService {
         where: { 
           conversationId,
           senderType: { in: ['CLIENT', 'IA', 'VENDOR'] },
-          content: { not: '' }
+          OR: [
+            { content: { not: '' } },
+            { attachments: { some: {} } }
+          ]
         },
         orderBy: { createdAt: 'desc' },
-        take: 10
+        take: 10,
+        include: { attachments: true }
       });
       
       const formattedHistory = this._formatProviderHistory(history);
