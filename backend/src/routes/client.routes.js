@@ -7,6 +7,91 @@ const { getIo } = require('../socket');
 
 const prisma = new PrismaClient();
 
+router.get('/', authenticate, async (req, res, next) => {
+  try {
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = Math.min(parseInt(req.query.limit, 10) || 10, 100);
+    const skip = (page - 1) * limit;
+
+    const { phoneNumber, rfc } = req.query;
+
+    const where = {
+      tenantId: req.user.tenantId,
+    };
+
+    if (phoneNumber && typeof phoneNumber === 'string') {
+      where.phoneNumber = { contains: phoneNumber };
+    }
+
+    if (rfc && typeof rfc === 'string') {
+      where.cartData = { path: ['rfc'], string_contains: rfc };
+    }
+
+    const [clients, total] = await Promise.all([
+      prisma.client.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          conversations: {
+            orderBy: { lastMessageAt: 'desc' },
+            include: { vendor: true }
+          }
+        }
+      }),
+      prisma.client.count({ where })
+    ]);
+
+    const mappedClients = clients.map(client => {
+      let lastVendor = null;
+      let lastPurchaseDate = null;
+      let lastInboundDate = null;
+
+      if (client.conversations && client.conversations.length > 0) {
+        const vendorConv = client.conversations.find(c => c.vendorId && c.vendor);
+        if (vendorConv) {
+          lastVendor = {
+            id: vendorConv.vendor.id,
+            name: vendorConv.vendor.name
+          };
+        }
+
+        const purchaseConv = client.conversations.find(c => c.status === 'CLOSED_WON');
+        if (purchaseConv) {
+          lastPurchaseDate = purchaseConv.statusUpdatedAt;
+        }
+
+        const inboundConv = client.conversations.find(c => c.isOutbound === false);
+        if (inboundConv) {
+          lastInboundDate = inboundConv.lastMessageAt;
+        }
+      }
+
+      const { conversations, ...clientData } = client;
+
+      return {
+        ...clientData,
+        lastVendor,
+        lastPurchaseDate,
+        lastInboundDate
+      };
+    });
+
+    res.json({
+      data: mappedClients,
+      meta: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit)
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.patch('/:id/block', authenticate, authorize('ADMIN', 'COORDINATOR'), async (req, res, next) => {
   try {
     const { id } = req.params;
