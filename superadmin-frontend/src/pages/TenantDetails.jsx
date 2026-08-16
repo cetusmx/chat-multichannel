@@ -24,7 +24,8 @@ export default function TenantDetails() {
     try {
       setLoading(true);
       setError(null);
-      const data = await api.get(`/api/superadmin/tenants/${id}`);
+      const response = await api.get(`/api/superadmin/tenants/${id}`);
+      const data = response.data; // Unwrap the success() structure
       setTenant(data);
       setMaxUsers(data.maxUsers === -1 ? '' : data.maxUsers);
       setIsUnlimitedUsers(data.maxUsers === -1);
