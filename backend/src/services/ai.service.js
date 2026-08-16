@@ -9,14 +9,13 @@ class AIService {
   
   _formatProviderHistory(history) {
     let formatted = history.map(msg => {
-      let content = msg.content ? String(msg.content) : '';
+      let content = msg.content ? String(msg.content) : '[Archivo adjunto]';
       if (msg.senderType !== 'CLIENT' && msg.senderType !== 'VENDOR' && content) {
         content = `[${msg.senderType}] ${content}`;
       }
       return {
         role: msg.senderType === 'CLIENT' ? 'user' : 'model',
-        content,
-        attachments: msg.attachments || []
+        content
       };
     }).reverse();
 
@@ -24,9 +23,6 @@ class AIService {
       if (acc.length > 0 && acc[acc.length - 1].role === curr.role) {
         if (curr.content) {
           acc[acc.length - 1].content += (acc[acc.length - 1].content ? '\n' : '') + curr.content;
-        }
-        if (curr.attachments && curr.attachments.length > 0) {
-          acc[acc.length - 1].attachments = [...(acc[acc.length - 1].attachments || []), ...curr.attachments];
         }
       } else {
         acc.push(curr);
@@ -265,7 +261,17 @@ class AIService {
                   description: "Dirección completa del cliente (Calle, número, colonia, CP)"
                 }
               },
-              required: ["razon_social"]
+              required: []
+            }
+          },
+          {
+            name: "extraer_constancia_fiscal",
+            description: "Lee y extrae RFC, Razón Social y Código Postal del último archivo PDF adjunto enviado por el cliente (Constancia de Situación Fiscal o similar). Úsala cuando el cliente haya enviado un archivo adjunto para sus datos fiscales de facturación.",
+            parameters: {
+              type: "OBJECT",
+              properties: {
+                confirmar: { type: "BOOLEAN", description: "Siempre envía true" }
+              }
             }
           },
           {
@@ -610,6 +616,109 @@ class AIService {
           } catch (e) {
             console.error('[AI TOOL] Excepción en enviar_cotizacion_email:', e);
             return { status: 'error', message: `Error al enviar el PDF por correo: ${e.message}` };
+          }
+        },
+        extraer_constancia_fiscal: async () => {
+          try {
+            console.log('[AI TOOL] extraer_constancia_fiscal invocado');
+            const lastPdfMsg = await prisma.message.findFirst({
+              where: { conversationId, attachments: { some: { mimeType: 'application/pdf' } } },
+              orderBy: { createdAt: 'desc' },
+              include: { attachments: true }
+            });
+            if (!lastPdfMsg) return { status: 'error', message: 'No se encontró ningún archivo PDF en el historial reciente de esta conversación.' };
+
+            const pdfAttachment = lastPdfMsg.attachments.find(a => a.mimeType === 'application/pdf');
+            if (!pdfAttachment) return { status: 'error', message: 'El archivo no es un PDF.' };
+
+            const fs = require('fs');
+            const path = require('path');
+            const pdfParse = require('pdf-parse');
+            
+            const relativePath = pdfAttachment.url.startsWith('/') ? pdfAttachment.url.slice(1) : pdfAttachment.url;
+            const filePath = path.join(__dirname, '..', '..', relativePath);
+            if (!fs.existsSync(filePath)) return { status: 'error', message: 'El archivo PDF no se pudo encontrar en el servidor local.' };
+
+            const dataBuffer = fs.readFileSync(filePath);
+            let pdfText = '';
+            try {
+              const data = await pdfParse(dataBuffer);
+              pdfText = data.text;
+            } catch (err) {
+              return { status: 'error', message: `Error al intentar leer el PDF: ${err.message}` };
+            }
+
+            if (!pdfText.trim()) return { status: 'error', message: 'El documento está vacío o es una imagen escaneada sin texto legible.' };
+
+            const actividadesEconIdx = pdfText.search(/Actividades Económicas/i);
+            if (actividadesEconIdx !== -1) {
+              pdfText = pdfText.substring(0, actividadesEconIdx);
+            }
+
+            let extractedRfc = '';
+            let extractedRazonSocial = '';
+            let extractedCp = '';
+
+            const rfcMatch = pdfText.match(/RFC:\s*([A-Z0-9]{12,13})/i);
+            const cpMatch = pdfText.match(/C\.\s*P\.\s*:\s*(\d{5})/i) || pdfText.match(/Código Postal:\s*(\d{5})/i);
+            const nameMatch = pdfText.match(/Nombre,\s*denominación\s*o\s*razón\s*social:\s*([^\n]+)/i);
+
+            if (rfcMatch) extractedRfc = rfcMatch[1].trim();
+            if (cpMatch) extractedCp = cpMatch[1].trim();
+            if (nameMatch) extractedRazonSocial = nameMatch[1].trim();
+
+            if (!extractedRfc || !extractedRazonSocial) {
+              // LLM Fallback explicitly since Regex failed
+              try {
+                const { getProvider } = require('../providers');
+                const providerName = process.env.AI_PROVIDER || 'gemini';
+                const provider = getProvider(providerName);
+                
+                const prompt = `Extrae de este texto crudo (Constancia de Situación Fiscal) el RFC, Razón Social y Código Postal. Si no encuentras alguno, omítelo. Devuelve ÚNICAMENTE un JSON válido con las claves "rfc", "razonSocial" y "codigoPostal".\n\nTEXTO:\n${pdfText.substring(0, 3000)}`;
+                const response = await provider.generateResponse({ tenantId, messages: [{ role: 'user', content: prompt }] });
+                let jsonStr = response.content.replace(/```json/g, '').replace(/```/g, '').trim();
+                const parsed = JSON.parse(jsonStr);
+                
+                if (parsed.rfc) extractedRfc = parsed.rfc;
+                if (parsed.razonSocial) extractedRazonSocial = parsed.razonSocial;
+                if (parsed.codigoPostal) extractedCp = parsed.codigoPostal;
+              } catch (aiErr) {
+                console.error('[CSF AI Fallback] error:', aiErr.message);
+              }
+            }
+
+            if (!extractedRfc) {
+               return { status: 'error', message: 'Se leyó el documento pero no se encontró ningún RFC válido. Probablemente no sea una constancia fiscal válida.' };
+            }
+
+            // Update cartData directly so the AI context refreshes correctly
+            let currentCart = conversation.client?.cartData || {};
+            if (Array.isArray(currentCart)) currentCart = { items: currentCart };
+            
+            currentCart.rfc = extractedRfc;
+            if (extractedRazonSocial) currentCart.razonSocial = extractedRazonSocial;
+            if (extractedCp) currentCart.billingAddress = extractedCp;
+
+            await prisma.client.update({
+              where: { id: conversation.clientId },
+              data: { cartData: currentCart }
+            });
+
+            // Emit to frontend explicitly so the vendor sees the new RFC
+            const io = require('../socket').getIo();
+            io.of('/chat').to(`tenant_${tenantId}_coordinators`).to(`conversation:${conversationId}`).emit('cart_updated', {
+              clientId: conversation.clientId,
+              cartData: currentCart
+            });
+
+            return { 
+              status: 'success', 
+              message: 'Constancia analizada y datos agregados exitosamente al carrito/perfil.',
+              datos_extraidos: { rfc: extractedRfc, razonSocial: extractedRazonSocial, codigoPostal: extractedCp }
+            };
+          } catch (e) {
+            console.error('[AI TOOL] Excepción en extraer_constancia_fiscal:', e);
+            return { status: 'error', message: `Error fatal: ${e.message}` };
           }
         }
       };
