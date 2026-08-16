@@ -103,6 +103,8 @@ const ChatHeaderActions = ({ activeConv, setConfirmClose, setIsCartOpen }) => {
     return () => document.removeEventListener('keydown', handleEsc);
   }, [isDropdownOpen]);
 
+  const modalConvIdRef = useRef(null);
+
   if (!activeConv) return null;
 
   const isSlaEnabled = user?.tenant?.isSlaEnabled ?? true;
@@ -112,6 +114,8 @@ const ChatHeaderActions = ({ activeConv, setConfirmClose, setIsCartOpen }) => {
   const showAdvanced = isSlaEnabled && showVendorActions;
   const isEmpty = !activeConv?.messages || activeConv.messages.length === 0;
   const disabledTooltip = isEmpty ? 'Aún no hay mensajes' : 'El último mensaje debe ser tuyo';
+  
+  const isCoordinatorOrAdmin = user?.role === 'COORDINATOR' || user?.role === 'ADMIN' || user?.role === 'SUPERADMIN';
 
   const renderCartButton = () => (
     <button
@@ -135,38 +139,6 @@ const ChatHeaderActions = ({ activeConv, setConfirmClose, setIsCartOpen }) => {
       })()}
     </button>
   );
-
-  if (status === 'PENDING_ASSIGNMENT') {
-    return (
-      <div className="flex items-center gap-2">
-        {renderCartButton()}
-      </div>
-    );
-  }
-
-  if (status === 'ESCALATED') {
-    return (
-      <div className="flex items-center gap-2">
-        <div className="bg-sales-coral-500/20 border border-sales-coral-500 text-sales-coral-400 px-4 py-2 rounded-lg font-bold text-sm shadow-sm flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-sales-coral-400 animate-pulse"></span>
-          Escalado - Esperando al Coordinador
-        </div>
-        {renderCartButton()}
-      </div>
-    );
-  }
-
-  if (status === 'CLOSED' || status === 'CLOSED_INACTIVE' || status === 'DISCARDED') {
-    return (
-      <div className="flex items-center gap-2">
-        {renderCartButton()}
-      </div>
-    );
-  }
-
-  const isVendorLast = activeConv?.messages?.at(-1)?.senderType === 'VENDOR';
-
-  const modalConvIdRef = useRef(null);
 
   const handleAction = async (payload) => {
     setActiveModal(null);
@@ -194,7 +166,44 @@ const ChatHeaderActions = ({ activeConv, setConfirmClose, setIsCartOpen }) => {
     setModalError(null);
   };
 
+  if (status === 'PENDING_ASSIGNMENT') {
+    return (
+      <div className="flex items-center gap-2">
+        {renderCartButton()}
+      </div>
+    );
+  }
 
+  if (status === 'ESCALATED') {
+    return (
+      <div className="flex items-center gap-2">
+        <div className="bg-sales-coral-500/20 border border-sales-coral-500 text-sales-coral-400 px-4 py-2 rounded-lg font-bold text-sm shadow-sm flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-sales-coral-400 animate-pulse"></span>
+          Escalado - Esperando al Coordinador
+        </div>
+        {isCoordinatorOrAdmin && (
+          <button
+            onClick={() => handleAction({ status: 'ACTIVE' })}
+            disabled={isPatching}
+            className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded font-medium disabled:opacity-50 text-sm transition-colors"
+          >
+            Devolver a Vendedor
+          </button>
+        )}
+        {renderCartButton()}
+      </div>
+    );
+  }
+
+  if (status === 'CLOSED' || status === 'CLOSED_INACTIVE' || status === 'DISCARDED') {
+    return (
+      <div className="flex items-center gap-2">
+        {renderCartButton()}
+      </div>
+    );
+  }
+
+  const isVendorLast = activeConv?.messages?.at(-1)?.senderType === 'VENDOR';
 
   if (['ON_HOLD', 'WAITING_CUSTOMER', 'SCHEDULED'].includes(status)) {
     return (
