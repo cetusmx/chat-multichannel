@@ -233,7 +233,7 @@ export default function ClientDirectory() {
                       {formatDate(client.lastPurchaseDate)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      {client.conversations?.[0]?.vendorId || 'N/D'}
+                      {client.lastVendor?.name || 'N/D'}
                     </td>
                   </tr>
                 ))}

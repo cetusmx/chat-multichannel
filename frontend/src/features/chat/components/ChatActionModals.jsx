@@ -60,6 +60,42 @@ export default function ChatActionModals({
 
   if (!activeModal) return null;
 
+  if (activeModal === 'RESOLVE') {
+    return (
+      <div className="fixed inset-0 bg-sales-slate-950/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+        <div ref={modalRef} className="bg-sales-slate-900 border border-sales-slate-800 rounded-lg shadow-2xl w-full max-w-sm overflow-hidden">
+          <div className="p-4 border-b border-sales-slate-800 flex justify-between items-center">
+            <h3 className="text-lg font-bold text-white">Finalizar Conversación</h3>
+            <button onClick={onClose} disabled={isPatching} className="text-sales-slate-400 hover:text-white">&times;</button>
+          </div>
+          {apiError && (
+            <div className="mx-4 mt-4 p-3 bg-red-900/50 border border-red-500/50 rounded text-red-200 text-sm">
+              {apiError}
+            </div>
+          )}
+          <div className="p-6 flex flex-col gap-3">
+            <button
+              onClick={() => onSubmit({ status: 'CLOSED_WON' })}
+              disabled={isPatching}
+              className="w-full px-4 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded font-medium disabled:opacity-50 flex justify-between items-center transition-colors"
+            >
+              Cierre con Venta
+              {isPatching ? <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" /> : <span>→</span>}
+            </button>
+            <button
+              onClick={() => onSubmit({ status: 'CLOSED' })}
+              disabled={isPatching}
+              className="w-full px-4 py-3 bg-sales-slate-700 hover:bg-sales-slate-600 text-white rounded font-medium disabled:opacity-50 flex justify-between items-center transition-colors"
+            >
+              Cierre sin Venta
+              {isPatching ? <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" /> : <span>→</span>}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (activeModal === 'DISCARDED') {
     return (
       <ConfirmModal

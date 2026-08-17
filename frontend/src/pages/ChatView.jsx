@@ -233,7 +233,7 @@ const ChatHeaderActions = ({ activeConv, setConfirmClose, setIsCartOpen }) => {
         {showVendorActions && (
           <>
             <button
-              onClick={() => setConfirmClose(true)}
+              onClick={() => openModal('RESOLVE')}
               disabled={isPatching || isEmpty}
               aria-disabled={isPatching || isEmpty ? "true" : "false"}
               className="px-3 py-1.5 bg-sales-slate-800 hover:bg-emerald-600/90 text-emerald-500 hover:text-white rounded border border-emerald-500/30 hover:border-emerald-500 transition-colors flex items-center gap-1.5 disabled:opacity-50 text-sm"
@@ -459,18 +459,6 @@ export default function ChatView() {
       </div>
     </div>
 
-    <ConfirmModal
-      open={confirmClose}
-      title="Finalizar Conversación"
-      message="¿Estás seguro de finalizar esta conversación? Esto detendrá los medidores de SLA."
-      confirmText="Finalizar"
-      confirmVariant="primary"
-      onConfirm={() => {
-        resolveConversation(currentConversationId);
-        setConfirmClose(false);
-      }}
-      onCancel={() => setConfirmClose(false)}
-    />
     </>
   );
 }
