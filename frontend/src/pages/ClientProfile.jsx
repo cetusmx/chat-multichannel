@@ -170,22 +170,32 @@ export default function ClientProfile() {
               </div>
             </div>
 
-            {client.cartData?.items?.length > 0 && (
-              <div className="bg-emerald-900/20 border border-emerald-500/20 rounded-xl p-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <ShoppingCart className="w-5 h-5 text-emerald-400" />
-                  <h4 className="text-white font-medium text-sm">Carrito Actual</h4>
+            {(() => {
+              const cartItems = Array.isArray(client.cartData) ? client.cartData : (client.cartData?.items || []);
+              if (cartItems.length === 0) return null;
+
+              return (
+                <div className="bg-emerald-900/20 border border-emerald-500/20 rounded-xl p-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <ShoppingCart className="w-5 h-5 text-emerald-400" />
+                    <h4 className="text-white font-medium text-sm">Carrito Actual</h4>
+                  </div>
+                  <ul className="space-y-2">
+                    {cartItems.map((item, idx) => {
+                      const name = item.descripcion || item.clave || item.name || 'Producto';
+                      const quantity = item.cantidad || item.quantity || 1;
+                      const price = item.precio || item.precio_unitario || item.price || 0;
+                      return (
+                        <li key={idx} className="text-sm text-gray-300 flex justify-between">
+                          <span className="truncate pr-2">{name} x{quantity}</span>
+                          <span className="text-white whitespace-nowrap">${(price * quantity).toLocaleString()}</span>
+                        </li>
+                      );
+                    })}
+                  </ul>
                 </div>
-                <ul className="space-y-2">
-                  {client.cartData.items.map((item, idx) => (
-                    <li key={idx} className="text-sm text-gray-300 flex justify-between">
-                      <span className="truncate pr-2">{item.name || 'Producto'} x{item.quantity || 1}</span>
-                      <span className="text-white whitespace-nowrap">${(item.price * (item.quantity || 1)).toLocaleString()}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
+              );
+            })()}
           </div>
 
           <div className="mt-auto pt-6">
@@ -340,7 +350,15 @@ export default function ClientProfile() {
                                   <div className="flex justify-between items-center mb-1 text-gray-300">
                                     <span>Total Final Aprox.</span>
                                     <span className="text-emerald-400 font-bold font-mono">
-                                      ${client.cartData?.total?.toLocaleString() || '---'}
+                                      {(() => {
+                                        const items = Array.isArray(client.cartData) ? client.cartData : (client.cartData?.items || []);
+                                        const total = items.reduce((sum, item) => {
+                                          const qty = item.cantidad || item.quantity || 1;
+                                          const price = item.precio || item.precio_unitario || item.price || 0;
+                                          return sum + (price * qty);
+                                        }, 0);
+                                        return total > 0 ? `$${total.toLocaleString()}` : '---';
+                                      })()}
                                     </span>
                                   </div>
                                 </div>
