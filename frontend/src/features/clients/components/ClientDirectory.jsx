@@ -54,8 +54,8 @@ export default function ClientDirectory() {
         setMeta(data.meta);
       } catch (err) {
         if (err.name !== 'AbortError') {
-          console.error('Error fetching clients:', err);
-          setIsError('Failed to fetch clients. Please try again.');
+          console.error('Error al obtener clientes:', err);
+          setIsError('Ocurrió un error al cargar el directorio de clientes. Por favor, intenta de nuevo.');
         }
       } finally {
         setIsLoading(false);
@@ -102,8 +102,8 @@ export default function ClientDirectory() {
     <div className="w-full space-y-6">
       {/* Header & Filters */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <h2 className="text-2xl font-bold bg-gradient-to-r from-orange-400 to-rose-400 bg-clip-text text-transparent">
-          Client Directory
+        <h2 className="text-2xl font-semibold text-sales-slate-100">
+          Directorio de Clientes
         </h2>
         
         <div className="flex flex-col sm:flex-row gap-3">
@@ -113,7 +113,7 @@ export default function ClientDirectory() {
             </div>
             <input
               type="text"
-              placeholder="Search by RFC..."
+              placeholder="Buscar por RFC..."
               className="pl-10 pr-4 py-2 w-full sm:w-64 rounded-xl bg-white/10 backdrop-blur-md border border-white/20 focus:outline-none focus:ring-2 focus:ring-orange-400 text-white placeholder-gray-400 transition-all"
               value={rfcInput}
               onChange={(e) => setRfcInput(e.target.value)}
@@ -125,7 +125,7 @@ export default function ClientDirectory() {
             </div>
             <input
               type="text"
-              placeholder="Search by Phone..."
+              placeholder="Buscar por Teléfono..."
               className="pl-10 pr-4 py-2 w-full sm:w-64 rounded-xl bg-white/10 backdrop-blur-md border border-white/20 focus:outline-none focus:ring-2 focus:ring-orange-400 text-white placeholder-gray-400 transition-all"
               value={phoneInput}
               onChange={(e) => setPhoneInput(e.target.value)}
@@ -165,15 +165,15 @@ export default function ClientDirectory() {
                <XCircle className="h-8 w-8 text-red-400" />
              </div>
              <div>
-               <h3 className="text-lg font-medium text-white">Error loading clients</h3>
-               <p className="text-gray-400 text-sm mt-1">Please try again or contact support.</p>
+               <h3 className="text-lg font-medium text-white">Error al cargar clientes</h3>
+               <p className="text-gray-400 text-sm mt-1">Por favor intenta nuevamente o contacta a soporte.</p>
              </div>
              {hasActiveFilters && (
               <button
                 onClick={clearFilters}
                 className="mt-2 px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-white transition-colors text-sm"
               >
-                Clear Filters
+                Limpiar Filtros
               </button>
              )}
           </div>
@@ -184,11 +184,11 @@ export default function ClientDirectory() {
               <Users className="h-8 w-8 text-gray-400" />
             </div>
             <div>
-              <h3 className="text-lg font-medium text-white">No clients found</h3>
+              <h3 className="text-lg font-medium text-white">No se encontraron clientes</h3>
               <p className="text-gray-400 text-sm mt-1">
                 {hasActiveFilters 
-                  ? "We couldn't find any clients matching your search criteria."
-                  : "Your client directory is currently empty."}
+                  ? "No encontramos ningún cliente que coincida con tus criterios de búsqueda."
+                  : "Tu directorio de clientes está vacío."}
               </p>
             </div>
             {hasActiveFilters && (
@@ -196,7 +196,7 @@ export default function ClientDirectory() {
                 onClick={clearFilters}
                 className="mt-2 px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-white transition-colors text-sm"
               >
-                Clear Filters
+                Limpiar Filtros
               </button>
             )}
           </div>
@@ -206,25 +206,25 @@ export default function ClientDirectory() {
             <table className="w-full text-left text-sm text-gray-300">
               <thead className="bg-white/5 border-b border-white/10 text-gray-400">
                 <tr>
-                  <th className="px-6 py-4 font-medium whitespace-nowrap">Name</th>
-                  <th className="px-6 py-4 font-medium whitespace-nowrap">Phone Number</th>
+                  <th className="px-6 py-4 font-medium whitespace-nowrap">Nombre</th>
+                  <th className="px-6 py-4 font-medium whitespace-nowrap">Teléfono</th>
                   <th className="px-6 py-4 font-medium whitespace-nowrap">RFC</th>
-                  <th className="px-6 py-4 font-medium whitespace-nowrap">Last Inbound Contact</th>
-                  <th className="px-6 py-4 font-medium whitespace-nowrap">Last Purchase</th>
-                  <th className="px-6 py-4 font-medium whitespace-nowrap">Last Vendor</th>
+                  <th className="px-6 py-4 font-medium whitespace-nowrap">Último Contacto</th>
+                  <th className="px-6 py-4 font-medium whitespace-nowrap">Última Compra</th>
+                  <th className="px-6 py-4 font-medium whitespace-nowrap">Último Asesor</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/10">
                 {clients.map((client) => (
                   <tr key={client.id} className="hover:bg-white/5 transition-colors">
                     <td className="px-6 py-4 whitespace-nowrap text-white font-medium">
-                      {client.name || 'N/A'}
+                      {client.name || 'N/D'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      {client.phoneNumber || 'N/A'}
+                      {client.phoneNumber || 'N/D'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      {client.cartData?.rfc || 'N/A'}
+                      {client.cartData?.rfc || 'N/D'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       {formatDate(client.lastInboundDate)}
@@ -233,7 +233,7 @@ export default function ClientDirectory() {
                       {formatDate(client.lastPurchaseDate)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      {client.conversations?.[0]?.vendorId || 'N/A'}
+                      {client.conversations?.[0]?.vendorId || 'N/D'}
                     </td>
                   </tr>
                 ))}
@@ -247,8 +247,8 @@ export default function ClientDirectory() {
       {!isInitialLoad && !isEmpty && meta && (
         <div className="flex items-center justify-between bg-white/5 backdrop-blur-md border border-white/20 rounded-xl p-4">
           <p className="text-sm text-gray-400">
-            Showing <span className="font-medium text-white">{clients.length}</span> results 
-            (Page {page} of {totalPages})
+            Mostrando <span className="font-medium text-white">{clients.length}</span> resultados 
+            (Página {page} de {totalPages})
           </p>
           <div className="flex gap-2">
             <button
