@@ -90,7 +90,7 @@ class AIService {
               },
               shipping_address: {
                 type: "STRING",
-                description: "Opcional. La dirección de envío completa que el cliente ha confirmado para este pedido."
+                description: "Opcional. La dirección de envío depurada y con formato profesional (Calle, Número, Colonia, Código Postal, Ciudad, Estado). IMPORTANTE: NO pases el texto crudo del cliente, siempre corrígelo y dale formato antes."
               },
               razon_social: {
                 type: "STRING",
@@ -858,10 +858,11 @@ ${pdfText.substring(0, 3000)}`;
         console.warn('RAG search failed for inline suggestion, continuing without context:', err.message);
       }
 
-      const systemInstruction = `You are an AI assistant helping a human sales representative (Vendor) draft a reply to a client. 
+      const systemInstruction = `You are an AI assistant helping a human sales representative (Vendor) draft a reply to a client or perform actions on their behalf. 
 Use the following context from our knowledge base (if any) and the conversation history to draft an accurate and helpful response.
 Do NOT include [[ESCALATE]] in this context. You must follow the exact instruction provided by the Vendor Prompt.
-Draft ONLY the text that the vendor should send to the client. Do not include quotes or commentary.
+If the Vendor Prompt requests you to use a tool (such as updating the cart), YOU MUST EXECUTE THAT TOOL.
+When drafting a reply, draft ONLY the text that the vendor should send to the client. Do not include quotes or commentary.
 
 Context:
 ${contextString}`;
