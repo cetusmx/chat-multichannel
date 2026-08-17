@@ -72,19 +72,6 @@ const ChatHeaderActions = ({ activeConv, setConfirmClose, setIsCartOpen }) => {
   }, [activeModal]);
 
   useEffect(() => {
-    if (!socket || !activeConv?.id) return;
-    const handleStatusUpdate = (event) => {
-      const payload = event.payload || event;
-      if (payload.conversationId === activeConv.id && activeModalRef.current && !isPatchingRef.current) {
-        window.alert("El estado del chat ha cambiado. La acción ha sido cancelada.");
-        setActiveModal(null);
-      }
-    };
-    socket.on('chat:status_updated', handleStatusUpdate);
-    return () => socket.off('chat:status_updated', handleStatusUpdate);
-  }, [socket, activeConv?.id]);
-
-  useEffect(() => {
     const handleClickOutside = (e) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
         setIsDropdownOpen(false);
@@ -154,10 +141,10 @@ const ChatHeaderActions = ({ activeConv, setConfirmClose, setIsCartOpen }) => {
   const handleModalSubmit = async (payload) => {
     setModalError(null);
     try {
-      await updateChatStatus(modalConvIdRef.current || activeConv.id, payload);
       if (payload.status) {
         prevStatusRef.current = payload.status;
       }
+      await updateChatStatus(modalConvIdRef.current || activeConv.id, payload);
       setActiveModal(null);
     } catch (e) {
        setModalError("Error de API: " + e.message);
