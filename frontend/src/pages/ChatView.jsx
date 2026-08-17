@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
+import { useLocation } from 'react-router-dom';
 import { ShoppingCart, X, CheckCircle, ShieldAlert, EllipsisVertical, Clock, PauseCircle, Calendar, Ban } from 'lucide-react';
 import ChatList from '../features/chat/components/ChatList';
 import MessageList from '../features/chat/components/MessageList';
@@ -375,10 +376,17 @@ export default function ChatView() {
     resolveConversation,
   } = useChatStore();
 
+  const location = useLocation();
+
   useEffect(() => {
     // Solo recargar conversaciones al montar la vista de chat para tener datos frescos (opcional, App.jsx ya lo hace)
-    fetchConversations();
-  }, [fetchConversations]);
+    fetchConversations().then(() => {
+      if (location.state?.conversationId) {
+        selectConversation(location.state.conversationId);
+        window.history.replaceState({}, document.title);
+      }
+    });
+  }, [fetchConversations, location.state?.conversationId, selectConversation]);
 
   const activeConv = conversations.find(c => c.id === currentConversationId);
 
