@@ -746,6 +746,17 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
               disabled={isUploading || isDrafting}
             />
           </div>
+          {currentConversationId === 'draft' && (
+            <button
+              type="button"
+              onClick={() => {
+                useChatStore.getState().cancelDraftConversation();
+              }}
+              className="px-4 py-2 rounded-lg font-medium text-sales-slate-300 hover:text-white bg-sales-slate-800 hover:bg-sales-slate-700 transition-colors border border-sales-slate-700"
+            >
+              Cancelar
+            </button>
+          )}
           <button
             type="submit"
             disabled={(!text.trim() && !selectedFile) || isUploading || isDrafting}

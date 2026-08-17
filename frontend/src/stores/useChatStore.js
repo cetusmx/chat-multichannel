@@ -167,6 +167,14 @@ const useChatStore = create((set, get) => ({
     });
   },
 
+  cancelDraftConversation: () => {
+    set((state) => ({
+      conversations: state.conversations.filter(c => c.id !== 'draft'),
+      currentConversationId: state.currentConversationId === 'draft' ? null : state.currentConversationId,
+      messages: state.currentConversationId === 'draft' ? [] : state.messages,
+    }));
+  },
+
   fetchMessages: async (conversationId, cursor = null, aroundMessageId = null) => {
     try {
       let url = `/chat/${conversationId}/messages?limit=50`;

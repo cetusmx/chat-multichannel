@@ -5,7 +5,7 @@ import useUIStore from '../../../stores/useUIStore';
 import ChatList from './ChatList';
 import FocusPanel from './FocusPanel';
 import { motion } from 'framer-motion';
-import { Users, CheckCircle, Clock } from 'lucide-react';
+import { Users, CheckCircle, Clock, ShoppingCart, Percent } from 'lucide-react';
 import * as api from '../../../services/api';
 
 const CustomWarningIcon = (props) => (
@@ -76,15 +76,18 @@ export default function CoordinatorDashboard() {
   const metrics = {
     total: conversations.filter(c => new Date(c.createdAt).toDateString() === todayStr || new Date(c.lastMessageAt).toDateString() === todayStr).length,
     pending: conversations.filter(c => c.status === 'PENDING_ASSIGNMENT' || c.status === 'ESCALATED').length,
-    slaRisk: conversations.filter(c => c.isSlaBreached && c.status !== 'CLOSED').length,
-    closed: conversations.filter(c => c.status === 'CLOSED').length,
+    slaRisk: conversations.filter(c => c.isSlaBreached && !c.status?.startsWith('CLOSED')).length,
+    closed: conversations.filter(c => c.status?.startsWith('CLOSED')).length,
+    sales: conversations.filter(c => c.status === 'CLOSED_WON').length,
   };
+  metrics.conversionRate = metrics.closed > 0 ? Math.round((metrics.sales / metrics.closed) * 100) : 0;
 
   const filteredConversations = conversations.filter(c => {
     if (filter === 'ALL') return true;
     if (filter === 'PENDING') return c.status === 'PENDING_ASSIGNMENT' || c.status === 'ESCALATED';
-    if (filter === 'SLA') return c.isSlaBreached && c.status !== 'CLOSED';
-    if (filter === 'CLOSED') return c.status === 'CLOSED';
+    if (filter === 'SLA') return c.isSlaBreached && !c.status?.startsWith('CLOSED');
+    if (filter === 'CLOSED') return c.status?.startsWith('CLOSED');
+    if (filter === 'CLOSED_WON' || filter === 'CONVERSION') return c.status === 'CLOSED_WON';
     return true;
   });
 
@@ -94,12 +97,14 @@ export default function CoordinatorDashboard() {
     <div className="flex flex-col relative w-full h-full bg-sales-slate-900 text-sales-slate-100 rounded-lg border border-sales-slate-800 shadow-xl overflow-hidden">
 
       {/* KPI Command Center Ribbon */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 p-4 border-b border-sales-slate-800 bg-sales-slate-900/95 shrink-0 z-20 shadow-sm relative">
+      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-4 p-4 border-b border-sales-slate-800 bg-sales-slate-900/95 shrink-0 z-20 shadow-sm relative">
         <div className="absolute inset-0 bg-gradient-to-r from-sales-cyan-900/10 to-sales-blue-900/10 pointer-events-none" />
         <StatCard title="Activos Hoy" value={metrics.total} icon={Users} iconColor="text-sales-blue-400" filterType="ALL" activeFilter={filter} setFilter={setFilter} />
         <StatCard title="En Espera" value={metrics.pending} icon={Clock} iconColor="text-sales-cyan-400" filterType="PENDING" activeFilter={filter} setFilter={setFilter} />
         <StatCard title="SLA en Riesgo" value={metrics.slaRisk} icon={CustomWarningIcon} iconColor="text-red-500" filterType="SLA" activeFilter={filter} setFilter={setFilter} />
-        <StatCard title="Cerrados" value={metrics.closed} icon={CheckCircle} iconColor="text-emerald-500" filterType="CLOSED" activeFilter={filter} setFilter={setFilter} />
+        <StatCard title="Cerrados" value={metrics.closed} icon={CheckCircle} iconColor="text-sales-slate-400" filterType="CLOSED" activeFilter={filter} setFilter={setFilter} />
+        <StatCard title="Ventas" value={metrics.sales} icon={ShoppingCart} iconColor="text-emerald-500" filterType="CLOSED_WON" activeFilter={filter} setFilter={setFilter} />
+        <StatCard title="Conversión" value={`${metrics.conversionRate}%`} icon={Percent} iconColor="text-emerald-400" filterType="CONVERSION" activeFilter={filter} setFilter={setFilter} />
       </div>
 
       {/* Main Work Area */}
@@ -114,6 +119,7 @@ export default function CoordinatorDashboard() {
                 {filter === 'ALL' ? (isCoordinator ? 'Vista Global (Agrupada por Asesor)' : 'Mis Tickets Activos') :
                  filter === 'PENDING' ? 'Bolsa de Trabajo (En Espera)' :
                  filter === 'SLA' ? (isCoordinator ? 'Tickets Críticos (Agrupados por Asesor)' : 'Mis Tickets Críticos') :
+                 (filter === 'CLOSED_WON' || filter === 'CONVERSION') ? (isCoordinator ? 'Ventas Cerradas (Agrupadas por Asesor)' : 'Mis Ventas Cerradas') :
                  (isCoordinator ? 'Tickets Archivados (Agrupados por Asesor)' : 'Mis Tickets Cerrados')}
               </h2>
               <div className="text-sm font-medium text-sales-slate-400 bg-sales-slate-800/50 px-3 py-1 rounded-full border border-sales-slate-700/50">
