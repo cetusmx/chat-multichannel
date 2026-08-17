@@ -746,7 +746,7 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
               disabled={isUploading || isDrafting}
             />
           </div>
-          {currentConversationId === 'draft' && (
+          {conversationId === 'draft' && (
             <button
               type="button"
               onClick={() => {
