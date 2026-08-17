@@ -345,8 +345,9 @@ export default function ClientProfile() {
                                   ? "Esta conversación terminó en una venta concreta. El carrito asociado fue procesado y guardado en el expediente." 
                                   : "Se detectó actividad de carrito o cotización en el texto de esta conversación."}
                               </p>
-                              {isWon && client.cartData && (() => {
-                                const items = Array.isArray(client.cartData) ? client.cartData : (client.cartData?.items || []);
+                              {isWon && (conv.cartSnapshot || client.cartData) && (() => {
+                                const historicCartData = conv.cartSnapshot || client.cartData;
+                                const items = Array.isArray(historicCartData) ? historicCartData : (historicCartData?.items || []);
                                 const total = items.reduce((sum, item) => {
                                   const qty = item.cantidad || item.quantity || 1;
                                   const price = item.precio || item.precio_unitario || item.price || 0;

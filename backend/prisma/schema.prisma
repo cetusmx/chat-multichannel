@@ -281,6 +281,7 @@ model Conversation {
   onHoldReason        String?            @db.VarChar(255) @map("on_hold_reason")
   onHoldExpiration    DateTime?          @map("on_hold_expiration")
   assignedAt          DateTime?          @map("assigned_at")
+  cartSnapshot        Json?              @map("cart_snapshot")
   createdAt           DateTime           @default(now()) @map("created_at")
   updatedAt           DateTime           @updatedAt @map("updated_at")
 
