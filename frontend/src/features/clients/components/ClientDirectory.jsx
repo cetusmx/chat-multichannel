@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import { get } from '../../../services/api';
 import { Search, ChevronLeft, ChevronRight, XCircle, Users } from 'lucide-react';
 import { useDebounce } from '../../../hooks/useDebounce';
 
@@ -34,20 +34,26 @@ export default function ClientDirectory() {
       setIsError(null);
 
       try {
-        const response = await axios.get('/api/clients', {
-          params: {
-            page,
-            limit: 10,
-            rfc: debouncedRfc || undefined,
-            phoneNumber: debouncedPhone || undefined,
-          },
+        const params = new URLSearchParams({
+          page,
+          limit: 10,
+        });
+        if (debouncedRfc) params.append('rfc', debouncedRfc);
+        if (debouncedPhone) params.append('phoneNumber', debouncedPhone);
+
+        const response = await get(`/clients?${params.toString()}`, {
           signal: abortController.signal,
         });
 
-        setClients(response.data.data);
-        setMeta(response.data.meta);
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+        setClients(data.data);
+        setMeta(data.meta);
       } catch (err) {
-        if (!axios.isCancel(err)) {
+        if (err.name !== 'AbortError') {
           console.error('Error fetching clients:', err);
           setIsError('Failed to fetch clients. Please try again.');
         }
