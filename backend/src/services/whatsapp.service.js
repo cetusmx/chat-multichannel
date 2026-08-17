@@ -474,7 +474,7 @@ const whatsappService = {
             // ------------------------------------
 
             // AI Auto-Response Orchestration
-            if (conversation.status === 'PENDING_ASSIGNMENT' && !mediaData && text && text.trim() !== '') {
+            if (conversation.status === 'PENDING_ASSIGNMENT' && text && text.trim() !== '') {
               setImmediate(async () => {
                 if (activeAiGenerations.has(conversation.id)) return;
                 activeAiGenerations.add(conversation.id);
@@ -601,6 +601,7 @@ const whatsappService = {
 
             } catch (innerErr) {
               logger.error('[WHATSAPP_SERVICE] Error processing specific message:', innerErr);
+              console.error('PRISMA_ERROR:', innerErr.message);
             } finally {
               incomingLocks.delete(lockKey);
               if (releaseLock) releaseLock();

@@ -102,8 +102,20 @@ class GeminiProvider extends AIProvider {
         calls = result.response.functionCalls();
       }
 
+      let finalContent = '';
+      try {
+        finalContent = result.response.text();
+      } catch (e) {
+        // If text() throws because there is no text part
+        finalContent = '';
+      }
+
+      if (!finalContent || finalContent.trim() === '') {
+        finalContent = 'He actualizado tu información. ¿Puedo ayudarte con algo más?';
+      }
+
       return { 
-        content: result.response.text(),
+        content: finalContent,
         tokens: result.response.usageMetadata?.totalTokenCount || null 
       };
     } catch (error) {

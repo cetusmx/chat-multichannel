@@ -280,8 +280,10 @@ class AIService {
                 cartData: newCartData
               });
 
+            console.log('[AI TOOL] actualizar_carrito procesado exitosamente.');
             return { status: "success", cartData: newCartData };
           }
+          console.log('[AI TOOL] actualizar_carrito: Falló por falta de clientId.');
           return { error: "No se encontró el cliente asociado a esta conversación para guardar el carrito." };
         } catch (e) {
           console.error('[AI TOOL] Error en actualizar_carrito:', e.message);
