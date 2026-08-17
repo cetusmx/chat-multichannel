@@ -48,22 +48,8 @@ export default function ClientProfile() {
     return () => controller.abort();
   }, [id]);
 
-  const handleNewOutboundChat = async () => {
-    setIsStartingChat(true);
-    try {
-      const response = await post('/chat/outbound', {
-        clientId: client.id,
-        message: '¡Hola! Nos comunicamos de ventas.'
-      });
-      if (!response.ok) throw new Error('API error');
-      const data = await response.json();
-      navigate('/chat', { state: { conversationId: data.data.id } });
-    } catch (error) {
-      console.error("Error starting chat:", error);
-      alert('Error al iniciar el chat. Por favor, intenta de nuevo.');
-    } finally {
-      setIsStartingChat(false);
-    }
+  const handleNewOutboundChat = () => {
+    navigate('/chat', { state: { draftClient: client } });
   };
 
   // Filter conversations and messages based on searchQuery
@@ -201,10 +187,10 @@ export default function ClientProfile() {
             <button
               onClick={handleNewOutboundChat}
               disabled={isStartingChat}
-              className="w-full bg-sales-cyan-500 hover:bg-sales-cyan-400 text-sales-slate-900 font-bold py-3 rounded-xl transition-colors flex justify-center items-center gap-2 disabled:opacity-50"
+              className="w-full rounded-lg bg-blue-600 px-6 py-2.5 text-sm font-bold text-white hover:bg-blue-500 transition-colors shadow-md disabled:opacity-50 flex justify-center items-center gap-2"
             >
               {isStartingChat ? (
-                <span className="animate-spin rounded-full h-5 w-5 border-b-2 border-sales-slate-900" />
+                <span className="animate-spin rounded-full h-5 w-5 border-b-2 border-white" />
               ) : (
                 <MessageSquare className="w-5 h-5" />
               )}

@@ -384,9 +384,12 @@ export default function ChatView() {
       if (location.state?.conversationId) {
         selectConversation(location.state.conversationId);
         window.history.replaceState({}, document.title);
+      } else if (location.state?.draftClient) {
+        useChatStore.getState().setDraftConversation(location.state.draftClient);
+        window.history.replaceState({}, document.title);
       }
     });
-  }, [fetchConversations, location.state?.conversationId, selectConversation]);
+  }, [fetchConversations, location.state?.conversationId, location.state?.draftClient, selectConversation]);
 
   const activeConv = conversations.find(c => c.id === currentConversationId);
 

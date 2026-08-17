@@ -132,6 +132,9 @@ const useChatStore = create((set, get) => ({
       errorMsg: null,
       unreadCounts: { ...state.unreadCounts, [id]: 0 },
     }));
+
+    if (id === 'draft') return; // Do not fetch or join sockets for draft
+
     const { socket } = get();
 
     // Join room
@@ -140,6 +143,28 @@ const useChatStore = create((set, get) => ({
     }
 
     await get().fetchMessages(id, null, aroundMessageId);
+  },
+
+  setDraftConversation: (client) => {
+    set((state) => {
+      const filtered = state.conversations.filter(c => c.id !== 'draft');
+      const draftConv = {
+        id: 'draft',
+        clientId: client.id,
+        status: 'PENDING_ASSIGNMENT',
+        isOutbound: true,
+        client: client,
+        createdAt: new Date().toISOString(),
+        lastMessageAt: new Date().toISOString(),
+        messages: [],
+      };
+      return {
+        conversations: [draftConv, ...filtered],
+        currentConversationId: 'draft',
+        messages: [],
+        errorMsg: null
+      };
+    });
   },
 
   fetchMessages: async (conversationId, cursor = null, aroundMessageId = null) => {
@@ -219,6 +244,25 @@ const useChatStore = create((set, get) => ({
     set((state) => ({ messages: [...state.messages, tempMsg] }));
 
     try {
+      if (currentConversationId === 'draft') {
+        const draftConv = get().conversations.find(c => c.id === 'draft');
+        const res = await config.api.post('/chat/outbound', { clientId: draftConv.clientId, message: content });
+        if (!res.ok) throw new Error('Error al iniciar chat saliente');
+        const newConvRes = await res.json();
+        const realConv = newConvRes.data;
+
+        set((state) => {
+          const filtered = state.conversations.filter(c => c.id !== 'draft');
+          return {
+            conversations: [realConv, ...filtered],
+            currentConversationId: realConv.id,
+            messages: []
+          };
+        });
+        await get().selectConversation(realConv.id);
+        return;
+      }
+
       const res = await config.api.post(`/chat/${currentConversationId}/messages`, { content, isInternal });
       if (!res.ok) {
         const errText = await res.text();
