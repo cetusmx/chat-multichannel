@@ -171,28 +171,25 @@ export default function ClientProfile() {
             </div>
 
             {(() => {
-              const cartItems = Array.isArray(client.cartData) ? client.cartData : (client.cartData?.items || []);
-              if (cartItems.length === 0) return null;
-
+              const shipping = client.cartData?.shippingAddress;
+              const billing = client.cartData?.billingAddress;
+              if (!shipping && !billing) return null;
+              
               return (
-                <div className="bg-emerald-900/20 border border-emerald-500/20 rounded-xl p-4">
-                  <div className="flex items-center gap-2 mb-3">
-                    <ShoppingCart className="w-5 h-5 text-emerald-400" />
-                    <h4 className="text-white font-medium text-sm">Carrito Actual</h4>
-                  </div>
-                  <ul className="space-y-2">
-                    {cartItems.map((item, idx) => {
-                      const name = item.descripcion || item.clave || item.name || 'Producto';
-                      const quantity = item.cantidad || item.quantity || 1;
-                      const price = item.precio || item.precio_unitario || item.price || 0;
-                      return (
-                        <li key={idx} className="text-sm text-gray-300 flex justify-between">
-                          <span className="truncate pr-2">{name} x{quantity}</span>
-                          <span className="text-white whitespace-nowrap">${(price * quantity).toLocaleString()}</span>
-                        </li>
-                      );
-                    })}
-                  </ul>
+                <div className="bg-white/5 border border-white/10 rounded-xl p-4 space-y-3 mt-4">
+                  <h4 className="text-gray-400 font-medium text-xs uppercase tracking-wider mb-2">Domicilios</h4>
+                  {shipping && (
+                    <div>
+                      <span className="text-gray-500 text-xs block mb-1">Envío</span>
+                      <span className="text-gray-300 text-sm leading-relaxed block">{shipping}</span>
+                    </div>
+                  )}
+                  {billing && (
+                    <div className="pt-2">
+                      <span className="text-gray-500 text-xs block mb-1">Fiscal</span>
+                      <span className="text-gray-300 text-sm leading-relaxed block">{billing}</span>
+                    </div>
+                  )}
                 </div>
               );
             })()}
@@ -202,10 +199,10 @@ export default function ClientProfile() {
             <button
               onClick={handleNewOutboundChat}
               disabled={isStartingChat}
-              className="w-full bg-gradient-to-r from-orange-500 to-rose-500 hover:from-orange-400 hover:to-rose-400 text-white font-medium py-3 rounded-xl transition-all flex justify-center items-center gap-2 shadow-lg shadow-orange-500/20 disabled:opacity-50"
+              className="w-full bg-sales-cyan-500 hover:bg-sales-cyan-400 text-sales-slate-900 font-bold py-3 rounded-xl transition-colors flex justify-center items-center gap-2 disabled:opacity-50"
             >
               {isStartingChat ? (
-                <span className="animate-spin rounded-full h-5 w-5 border-b-2 border-white" />
+                <span className="animate-spin rounded-full h-5 w-5 border-b-2 border-sales-slate-900" />
               ) : (
                 <MessageSquare className="w-5 h-5" />
               )}
@@ -289,9 +286,9 @@ export default function ClientProfile() {
                             Atendido por: <span className="font-medium text-white">{conv.vendor?.name || 'Bot (IA)'}</span>
                           </div>
                           
-                          {/* Messages Excerpts */}
-                          <div className="space-y-2">
-                            {msgsToDisplay.slice(0, 3).map(msg => {
+                          {/* Full Chat History */}
+                          <div className="space-y-3 mt-2 max-h-96 overflow-y-auto custom-scrollbar pr-2 pb-2">
+                            {msgsToDisplay.slice().sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt)).map(msg => {
                               // Highlight search term if present
                               const content = msg.content;
                               let displayContent = content;
@@ -303,22 +300,25 @@ export default function ClientProfile() {
                                 );
                               }
 
+                              const isClient = msg.senderType === 'CLIENT';
+
                               return (
-                                <div key={msg.id} className="text-sm bg-black/30 p-3 rounded-lg border border-white/5 relative group/msg">
-                                  <span className="text-xs font-bold text-gray-500 mb-1 block">
-                                    {msg.senderType === 'CLIENT' ? 'Cliente' : 'Asesor / Bot'}
+                                <div key={msg.id} className={`flex flex-col ${isClient ? 'items-start' : 'items-end'}`}>
+                                  <span className="text-[10px] text-gray-500 mb-1 ml-1 mr-1">
+                                    {isClient ? 'Cliente' : 'Asesor / Bot'} • {new Intl.DateTimeFormat('es-MX', { timeStyle: 'short' }).format(new Date(msg.createdAt))}
                                   </span>
-                                  <p className="text-gray-300 leading-relaxed line-clamp-3 group-hover/msg:line-clamp-none transition-all">
-                                    {displayContent}
-                                  </p>
+                                  <div className={`text-sm p-3 rounded-2xl max-w-[85%] border relative group/msg ${
+                                    isClient 
+                                      ? 'bg-black/30 border-white/5 rounded-tl-sm' 
+                                      : 'bg-sales-cyan-900/20 border-sales-cyan-500/20 rounded-tr-sm text-sales-cyan-50'
+                                  }`}>
+                                    <p className="text-gray-200 leading-relaxed whitespace-pre-wrap">
+                                      {displayContent}
+                                    </p>
+                                  </div>
                                 </div>
                               );
                             })}
-                            {msgsToDisplay.length > 3 && (
-                              <p className="text-xs text-sales-cyan-500 font-medium pl-1">
-                                + {msgsToDisplay.length - 3} mensajes más coincidentes
-                              </p>
-                            )}
                             {msgsToDisplay.length === 0 && (
                               <p className="text-sm text-gray-500 italic">No hay mensajes legibles.</p>
                             )}
@@ -345,24 +345,39 @@ export default function ClientProfile() {
                                   ? "Esta conversación terminó en una venta concreta. El carrito asociado fue procesado y guardado en el expediente." 
                                   : "Se detectó actividad de carrito o cotización en el texto de esta conversación."}
                               </p>
-                              {isWon && client.cartData && (
-                                <div className="mt-4 pt-4 border-t border-white/10 text-xs">
-                                  <div className="flex justify-between items-center mb-1 text-gray-300">
-                                    <span>Total Final Aprox.</span>
-                                    <span className="text-emerald-400 font-bold font-mono">
-                                      {(() => {
-                                        const items = Array.isArray(client.cartData) ? client.cartData : (client.cartData?.items || []);
-                                        const total = items.reduce((sum, item) => {
-                                          const qty = item.cantidad || item.quantity || 1;
-                                          const price = item.precio || item.precio_unitario || item.price || 0;
-                                          return sum + (price * qty);
-                                        }, 0);
-                                        return total > 0 ? `$${total.toLocaleString()}` : '---';
-                                      })()}
-                                    </span>
+                              {isWon && client.cartData && (() => {
+                                const items = Array.isArray(client.cartData) ? client.cartData : (client.cartData?.items || []);
+                                const total = items.reduce((sum, item) => {
+                                  const qty = item.cantidad || item.quantity || 1;
+                                  const price = item.precio || item.precio_unitario || item.price || 0;
+                                  return sum + (price * qty);
+                                }, 0);
+                                return (
+                                  <div className="mt-4 pt-4 border-t border-white/10 text-xs">
+                                    <div className="max-h-32 overflow-y-auto custom-scrollbar pr-1 mb-2 space-y-2">
+                                      {items.map((item, idx) => {
+                                        const name = item.descripcion || item.clave || item.name || 'Producto';
+                                        const quantity = item.cantidad || item.quantity || 1;
+                                        const price = item.precio || item.precio_unitario || item.price || 0;
+                                        return (
+                                          <div key={idx} className="flex justify-between items-start text-gray-300">
+                                            <span className="pr-2 leading-tight">
+                                              <span className="font-medium">{quantity}x</span> {name}
+                                            </span>
+                                            <span className="text-white whitespace-nowrap">${(price * quantity).toLocaleString()}</span>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                    <div className="flex justify-between items-center text-gray-300 pt-2 border-t border-white/5">
+                                      <span className="font-medium">Total Final Aprox.</span>
+                                      <span className="text-emerald-400 font-bold font-mono text-sm">
+                                        {total > 0 ? `$${total.toLocaleString()}` : '---'}
+                                      </span>
+                                    </div>
                                   </div>
-                                </div>
-                              )}
+                                );
+                              })()}
                             </div>
                           </div>
                         )}
