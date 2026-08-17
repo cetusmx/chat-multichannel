@@ -40,7 +40,7 @@ export default function ChatList({ conversations, currentConversationId, current
       }
     }
 
-    if (conv.status === 'CLOSED') {
+    if (conv.status.startsWith('CLOSED')) {
       listStyles += ' opacity-75 grayscale-[0.2]';
       gridStyles += ' opacity-75 grayscale-[0.2]';
     }
@@ -69,12 +69,20 @@ export default function ChatList({ conversations, currentConversationId, current
                 Nuevo
               </span>
             )}
-            {conv.status === 'CLOSED' && (
+            {conv.status === 'CLOSED_INACTIVE' && (
               <span
                 className="flex-shrink-0 px-1.5 py-0.5 rounded bg-sales-slate-700/50 text-sales-slate-400 border border-sales-slate-600 text-[10px] font-bold uppercase tracking-wider"
-                title="Chat finalizado"
+                title="Chat finalizado sin venta"
               >
                 Cerrado
+              </span>
+            )}
+            {conv.status === 'CLOSED_WON' && (
+              <span
+                className="flex-shrink-0 px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[10px] font-bold uppercase tracking-wider"
+                title="Venta concretada"
+              >
+                Cerrado (Venta)
               </span>
             )}
             {conv.status === 'ESCALATED' && (
@@ -86,7 +94,7 @@ export default function ChatList({ conversations, currentConversationId, current
                 Escalado
               </span>
             )}
-            {isSlaBreached && conv.status !== 'CLOSED' && (
+            {isSlaBreached && !conv.status.startsWith('CLOSED') && (
               <SlaBadge isSlaBreached={isSlaBreached} breachType={breachType} />
             )}
           </span>
