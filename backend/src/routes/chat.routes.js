@@ -813,6 +813,54 @@ router.post('/quote/generate', authenticate, async (req, res, next) => {
   }
 });
 
+router.post('/outbound', authenticate, authorize('ADMIN', 'COORDINATOR', 'VENDOR'), async (req, res, next) => {
+  try {
+    const { clientId, message } = req.body;
+    
+    if (!clientId) {
+      return res.status(400).json({ error: 'clientId is required' });
+    }
+
+    const client = await prisma.client.findUnique({
+      where: { id: clientId }
+    });
+
+    if (!client || client.tenantId !== req.user.tenantId) {
+      return res.status(404).json({ error: 'Client not found' });
+    }
+    
+    // In a real scenario, we would send a template message to WhatsApp here
+    // For this spec, we just create the conversation marked as isOutbound = true
+    const conversation = await prisma.conversation.create({
+      data: {
+        clientId: client.id,
+        tenantId: req.user.tenantId,
+        status: 'ACTIVE',
+        vendorId: req.user.id,
+        isOutbound: true
+      }
+    });
+
+    if (message) {
+      await prisma.message.create({
+        data: {
+          conversationId: conversation.id,
+          content: message,
+          senderType: 'VENDOR',
+          status: 'SENT'
+        }
+      });
+    }
+
+    const io = socket.getIo();
+    io.of('/chat').to(`tenant_${req.user.tenantId}`).emit('new_conversation', conversation);
+
+    res.json({ data: conversation });
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.post('/quote/send-email', authenticate, async (req, res, next) => {
   try {
     const { client, cartItems, email } = req.body;

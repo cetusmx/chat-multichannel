@@ -92,6 +92,38 @@ router.get('/', authenticate, async (req, res, next) => {
   }
 });
 
+router.get('/:id', authenticate, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    
+    const client = await prisma.client.findUnique({
+      where: { id },
+      include: {
+        conversations: {
+          orderBy: { createdAt: 'desc' },
+          include: {
+            vendor: {
+              select: { id: true, name: true }
+            },
+            messages: {
+              orderBy: { createdAt: 'desc' },
+              take: 50
+            }
+          }
+        }
+      }
+    });
+
+    if (!client || client.tenantId !== req.user.tenantId) {
+      return res.status(404).json({ error: 'Client not found' });
+    }
+
+    res.json({ data: client });
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.patch('/:id/block', authenticate, authorize('ADMIN', 'COORDINATOR'), async (req, res, next) => {
   try {
     const { id } = req.params;
