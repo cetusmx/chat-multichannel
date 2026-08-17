@@ -12,6 +12,7 @@ import History from './pages/History.jsx';
 import UserListPage from './features/users/UserListPage.jsx';
 import CreateUserForm from './features/users/CreateUserForm.jsx';
 import LoginPage from './features/auth/LoginPage.jsx';
+import ClientProfile from './pages/ClientProfile.jsx';
 import useChatStore from './stores/useChatStore.js';
 import useTabNotification from './hooks/useTabNotification.js';
 
@@ -38,6 +39,7 @@ function AppLayout() {
             <Route path="/chat" element={<ChatView />} />
             <Route path="/chat/:id" element={<ChatView />} />
             <Route path="/clients" element={<Clients />} />
+            <Route path="/clients/:id" element={<ClientProfile />} />
             <Route path="/users" element={<UserListPage />} />
             <Route path="/users/new" element={<CreateUserForm onSuccess={() => window.location.href = '/users'} />} />
             <Route path="/metrics" element={<Metrics />} />

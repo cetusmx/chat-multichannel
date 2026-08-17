@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { get } from '../../../services/api';
 import { Search, ChevronLeft, ChevronRight, XCircle, Users } from 'lucide-react';
 import { useDebounce } from '../../../hooks/useDebounce';
-import ClientProfileDrawer from './ClientProfileDrawer';
 
 export default function ClientDirectory() {
+  const navigate = useNavigate();
   const [clients, setClients] = useState([]);
   const [meta, setMeta] = useState(null);
-  const [selectedClientId, setSelectedClientId] = useState(null);
   
   // Filtering and Pagination State
   const [page, setPage] = useState(1);
@@ -221,7 +221,7 @@ export default function ClientDirectory() {
                   <tr 
                     key={client.id} 
                     className="hover:bg-white/10 transition-colors cursor-pointer group"
-                    onClick={() => setSelectedClientId(client.id)}
+                    onClick={() => navigate(`/clients/${client.id}`)}
                   >
                     <td className="px-6 py-4 whitespace-nowrap text-white font-medium group-hover:text-sales-cyan-400 transition-colors">
                       {client.name || 'N/D'}
@@ -274,11 +274,6 @@ export default function ClientDirectory() {
           </div>
         </div>
       )}
-      
-      <ClientProfileDrawer 
-        clientId={selectedClientId} 
-        onClose={() => setSelectedClientId(null)} 
-      />
     </div>
   );
 }
