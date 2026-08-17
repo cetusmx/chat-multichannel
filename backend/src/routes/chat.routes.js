@@ -1001,9 +1001,19 @@ router.patch('/:conversationId/status', authenticate, authorize('ADMIN', 'COORDI
         const clientRec = await tx.client.findUnique({ where: { id: conversation.clientId } });
         if (clientRec && clientRec.cartData) {
           dataToUpdate.cartSnapshot = clientRec.cartData;
+          
+          let newCartData = {};
+          if (typeof clientRec.cartData === 'object' && !Array.isArray(clientRec.cartData)) {
+            // Keep everything except items
+            newCartData = { ...clientRec.cartData };
+            delete newCartData.items;
+          } else {
+            newCartData = [];
+          }
+          
           await tx.client.update({
             where: { id: conversation.clientId },
-            data: { cartData: [] }
+            data: { cartData: newCartData }
           });
         }
       }
