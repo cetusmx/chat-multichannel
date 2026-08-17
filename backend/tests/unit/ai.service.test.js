@@ -112,7 +112,9 @@ describe('AIService', () => {
       expect(aiService.generateResponse).toHaveBeenCalledWith(
         'tenant1',
         expect.any(Array), // Formatted history
-        expect.stringMatching(/Company info: we sell widgets/) // Context
+        expect.stringMatching(/Company info: we sell widgets/), // Context
+        expect.any(Array), // Tools
+        expect.any(Object) // Tool handlers
       );
       expect(result).toBe('Suggested reply: We sell widgets.');
     });
