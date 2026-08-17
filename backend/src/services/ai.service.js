@@ -61,7 +61,8 @@ class AIService {
     }
   }
 
-  _getAiToolsAndHandlers(tenantId, conversationId, conversation) {\n    const tools = [{
+  _getAiToolsAndHandlers(tenantId, conversationId, conversation) {
+    const tools = [{
       functionDeclarations: [
         {
           name: "consultar_catalogo",
@@ -655,7 +656,10 @@ ${pdfText.substring(0, 3000)}`;
       }
     };
 
-    return { tools, toolHandlers };\n  }\n\n  async generateAutoResponse(tenantId, conversationId, incomingText, options = {}) {
+    return { tools, toolHandlers };
+  }
+
+  async generateAutoResponse(tenantId, conversationId, incomingText, options = {}) {
     if (!tenantId || !conversationId || !incomingText) {
       throw new ApiError(400, 'Missing required parameters for auto-response');
     }
@@ -776,7 +780,8 @@ ${pdfText.substring(0, 3000)}`;
       // ----------------------------------------------------
       // DEFINICIÓN DE HERRAMIENTAS GENÉRICAS (AGNOSTICAS)
       // ----------------------------------------------------
-      const { tools, toolHandlers } = this._getAiToolsAndHandlers(tenantId, conversationId, conversation);\n      const response = await this.generateResponse(tenantId, formattedHistory, baseSystemInstruction, tools, toolHandlers);
+      const { tools, toolHandlers } = this._getAiToolsAndHandlers(tenantId, conversationId, conversation);
+      const response = await this.generateResponse(tenantId, formattedHistory, baseSystemInstruction, tools, toolHandlers);
       
       const exactTokens = response.tokens;
       const promptLength = baseSystemInstruction.length + formattedHistory.reduce((acc, msg) => acc + (msg.content?.length || 0), 0);
