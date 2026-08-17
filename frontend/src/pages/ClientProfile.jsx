@@ -3,7 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { get, post } from '../services/api';
 import { 
   ChevronLeft, MessageSquare, ShoppingCart, User, 
-  Phone, CheckCircle, ArrowRight, Clock, Search 
+  Phone, CheckCircle, ArrowRight, Clock, Search,
+  Paperclip, Image as ImageIcon
 } from 'lucide-react';
 
 export default function ClientProfile() {
@@ -312,9 +313,21 @@ export default function ClientProfile() {
                                       ? 'bg-black/30 border-white/5 rounded-tl-sm' 
                                       : 'bg-sales-cyan-900/20 border-sales-cyan-500/20 rounded-tr-sm text-sales-cyan-50'
                                   }`}>
-                                    <p className="text-gray-200 leading-relaxed whitespace-pre-wrap">
-                                      {displayContent}
-                                    </p>
+                                    {msg.attachments && msg.attachments.length > 0 && (
+                                      <div className="flex flex-col gap-1 mb-2">
+                                        {msg.attachments.map((att, i) => (
+                                          <div key={i} className="flex items-center gap-1.5 text-sales-cyan-400 bg-black/20 p-1.5 rounded text-xs border border-white/5">
+                                            {att.type === 'IMAGE' ? <ImageIcon className="w-3.5 h-3.5" /> : <Paperclip className="w-3.5 h-3.5" />}
+                                            <span className="truncate max-w-[150px]">{att.name || 'Archivo adjunto'}</span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+                                    {displayContent && (
+                                      <p className="text-gray-200 leading-relaxed whitespace-pre-wrap">
+                                        {displayContent}
+                                      </p>
+                                    )}
                                   </div>
                                 </div>
                               );

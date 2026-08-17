@@ -107,7 +107,8 @@ router.get('/:id', authenticate, async (req, res, next) => {
             },
             messages: {
               orderBy: { createdAt: 'desc' },
-              take: 50
+              take: 50,
+              include: { attachments: true }
             }
           }
         }
