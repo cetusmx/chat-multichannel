@@ -154,6 +154,9 @@ const ChatHeaderActions = ({ activeConv, setConfirmClose, setIsCartOpen }) => {
     setModalError(null);
     try {
       await updateChatStatus(modalConvIdRef.current || activeConv.id, payload);
+      if (payload.status) {
+        prevStatusRef.current = payload.status;
+      }
       setActiveModal(null);
     } catch (e) {
        setModalError("Error de API: " + e.message);
@@ -195,7 +198,7 @@ const ChatHeaderActions = ({ activeConv, setConfirmClose, setIsCartOpen }) => {
     );
   }
 
-  if (status === 'CLOSED' || status === 'CLOSED_INACTIVE' || status === 'DISCARDED') {
+  if (status === 'CLOSED' || status === 'CLOSED_INACTIVE' || status === 'DISCARDED' || status === 'CLOSED_WON') {
     return (
       <div className="flex items-center gap-2">
         {renderCartButton()}
