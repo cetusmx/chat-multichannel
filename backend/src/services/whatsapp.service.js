@@ -311,6 +311,11 @@ const whatsappService = {
               }
             }
             
+            // Re-fetch conversation in case autoAssign changed vendorId or status
+            conversation = await prisma.conversation.findUnique({
+              where: { id: conversation.id }
+            });
+
             // 3. Guardar el Mensaje
             let msgRecord = await prisma.message.create({
               data: {
