@@ -15,6 +15,15 @@ import LoginPage from './features/auth/LoginPage.jsx';
 import ClientProfile from './pages/ClientProfile.jsx';
 import useChatStore from './stores/useChatStore.js';
 import useTabNotification from './hooks/useTabNotification.js';
+import CoordinatorChatView from './features/chat/components/CoordinatorChatView.jsx';
+
+function ChatRoute() {
+  const user = useAuthStore(s => s.user);
+  if (user?.role === 'VENDOR') {
+    return <ChatView />;
+  }
+  return <CoordinatorChatView />;
+}
 
 function AppLayout() {
   useTabNotification();
@@ -36,8 +45,8 @@ function AppLayout() {
         <main className="flex-1 overflow-auto p-6 min-w-0">
           <Routes>
             <Route path="/" element={<Dashboard />} />
-            <Route path="/chat" element={<ChatView />} />
-            <Route path="/chat/:id" element={<ChatView />} />
+            <Route path="/chat" element={<ChatRoute />} />
+            <Route path="/chat/:id" element={<ChatRoute />} />
             <Route path="/clients" element={<Clients />} />
             <Route path="/clients/:id" element={<ClientProfile />} />
             <Route path="/users" element={<UserListPage />} />
