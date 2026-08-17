@@ -6,6 +6,7 @@ import {
   Phone, CheckCircle, ArrowRight, Clock, Search,
   Paperclip, Image as ImageIcon
 } from 'lucide-react';
+import SecureMedia from '../components/SecureMedia';
 
 export default function ClientProfile() {
   const { id } = useParams();
@@ -314,12 +315,15 @@ export default function ClientProfile() {
                                       : 'bg-sales-cyan-900/20 border-sales-cyan-500/20 rounded-tr-sm text-sales-cyan-50'
                                   }`}>
                                     {msg.attachments && msg.attachments.length > 0 && (
-                                      <div className="flex flex-col gap-1 mb-2">
+                                      <div className="flex flex-col gap-2 mb-2">
                                         {msg.attachments.map((att, i) => (
-                                          <div key={i} className="flex items-center gap-1.5 text-sales-cyan-400 bg-black/20 p-1.5 rounded text-xs border border-white/5">
-                                            {att.type === 'IMAGE' ? <ImageIcon className="w-3.5 h-3.5" /> : <Paperclip className="w-3.5 h-3.5" />}
-                                            <span className="truncate max-w-[150px]">{att.name || 'Archivo adjunto'}</span>
-                                          </div>
+                                          <SecureMedia
+                                            key={i}
+                                            url={att.url}
+                                            type={att.type}
+                                            fallbackText={att.name}
+                                            className="w-full"
+                                          />
                                         ))}
                                       </div>
                                     )}
