@@ -555,6 +555,52 @@ class AIService {
           const nameMatch = pdfText.match(/Nombre,\s*denominación\s*o\s*razón\s*social:\s*([^\n]+)/i);
 
           if (rfcMatch) extractedRfc = rfcMatch[1].trim();
+
+          // INTENTO DE BD: Si sacamos el RFC por regex básico, probamos leerlo de la BD primero
+          if (extractedRfc) {
+            try {
+              const apiUrl = process.env.VITE_API_BASE_URL || 'http://75.119.150.222:3010';
+              const apiKey = process.env.VITE_INTERNAL_SECRET || 'sm_ecommerce_x2ve9yFf0aiDxh1HelezpVeyRAcngGwgEg3ZnSZwhGg2SaZrd2gQiysiVo86R3LcUZFFxZDSMADepof1jMLSumIbiqBRcbjyhvA78haaxnLrrbOuU3zqCi0kQXJf1gSc';
+              const fetchRes = await fetch(`${apiUrl}/api/clientes/rfc/${extractedRfc}`, {
+                method: 'GET',
+                headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey }
+              });
+              
+              if (fetchRes.ok) {
+                const data = await fetchRes.json();
+                if (data && data.data && data.data.length > 0) {
+                  const cliente = data.data[0];
+                  if (cliente.STATUS === 'A') {
+                    const calle = cliente.CALLE || '';
+                    const num = cliente.NUMEXT || '';
+                    const col = cliente.COLONIA ? `Col. ${cliente.COLONIA}` : '';
+                    const cpStr = cliente.CODIGO ? `C.P. ${cliente.CODIGO}` : '';
+                    const mun = cliente.MUNICIPIO || '';
+                    const est = cliente.ESTADO || '';
+                    extractedAddress = `${calle} ${num}, ${col}, ${cpStr}, ${mun}, ${est}`.trim().replace(/,\s*,/g, ',');
+                    extractedRazonSocial = cliente.NOMBRE;
+                    extractedCp = cliente.CODIGO || '';
+                    
+                    // Encontrado en DB, no necesitamos seguir extrayendo el resto de la CSF
+                    // Procedemos a guardar en cartData y salir
+                    let currentCart = conversation.client?.cartData || {};
+                    if (Array.isArray(currentCart)) currentCart = { items: currentCart };
+                    currentCart.rfc = extractedRfc;
+                    currentCart.razonSocial = extractedRazonSocial;
+                    currentCart.billingAddress = extractedAddress;
+                    await prisma.client.update({
+                      where: { id: conversation.clientId },
+                      data: { cartData: currentCart }
+                    });
+                    return { status: "success", message: "RFC encontrado en la base de datos.", razon_social: extractedRazonSocial, rfc: extractedRfc, direccion: extractedAddress };
+                  }
+                }
+              }
+            } catch(e) {
+              console.error("[CSF DB Try] Error querying DB:", e.message);
+            }
+          }
+
           if (cpMatch) extractedCp = cpMatch[1].trim();
           if (nameMatch) extractedRazonSocial = nameMatch[1].trim();
 
@@ -760,7 +806,7 @@ ${pdfText.substring(0, 3000)}`;
 8. SIN PRECIO: Si un producto tiene precio $0 o nulo, NO le muestres el precio. Simplemente dile que "más tarde un asesor lo contactará para proporcionarle el precio exacto" y ofrécele seguir buscando más productos.
 9. PEDIDOS Y CARRITO: Tu rol incluye TOMAR EL PEDIDO. Ve recordando internamente qué productos y cantidades confirma el cliente. SIEMPRE usa la herramienta 'actualizar_carrito' para guardar este estado.
 10. FORMATO DE RESULTADOS Y PRECIOS: Cuando muestres productos, NO satures el chat. Muestra ÚNICAMENTE la clave del artículo, la descripción breve, el precio neto (ya con el 16% de IVA incluido) y el total global de existencias. TODOS los precios que devuelva el catálogo están antes de impuestos. DEBES multiplicar siempre el precio por 1.16 y mostrar el resultado final indicando explícitamente "Precio Neto (IVA Incluido)". Haz lo mismo para la suma total de cotizaciones.
-11. COTIZACIONES Y RFC: Si el cliente solicita explícitamente una cotización formal, primero pregúntale su RFC. Si responde que no tiene, asume que es un cliente genérico (Mostrador). Si proporciona un RFC, usa la herramienta 'consultar_cliente_rfc'. Si el resultado es 'success', CONFÍRMALE AL CLIENTE que encontraste sus datos (menciónale su Razón Social / NOMBRE) y dile que con esos datos se elaborará la cotización. MUY IMPORTANTE: Guarda celosamente la "razon_social" y la "direccion" exactas que te devuelva esa herramienta. Cuando llames a 'generar_cotizacion_pdf', pásale esa "razon_social" exacta en los argumentos (NUNCA pases el nombre de pila o nombre de WhatsApp del cliente). NOTA: El PDF generado YA CONTIENE automáticamente los datos bancarios y las instrucciones de pago de la empresa; NO le digas al cliente que se los enviarás después, indícale que los datos bancarios vienen dentro del documento PDF adjunto.
+11. COTIZACIONES Y RFC: Si el cliente solicita explícitamente una cotización formal, primero pregúntale su RFC. Si responde que no tiene, asume que es un cliente genérico (Mostrador). Si en lugar de escribir el RFC, el cliente envía un archivo adjunto (como un PDF), ASUME INMEDIATAMENTE que se trata de su Constancia de Situación Fiscal (CSF) y llama a la herramienta 'extraer_constancia_fiscal' SIN pedirle confirmación. Si el cliente escribe su RFC manualmente, usa la herramienta 'consultar_cliente_rfc'. Si alguna de las herramientas devuelve 'success', CONFÍRMALE AL CLIENTE que encontraste sus datos (menciónale su Razón Social / NOMBRE) y dile que con esos datos se elaborará la cotización. MUY IMPORTANTE: Guarda celosamente la "razon_social" y la "direccion" exactas que te devuelvan. Cuando llames a 'generar_cotizacion_pdf', pásale esa "razon_social" exacta en los argumentos (NUNCA pases el nombre de pila o nombre de WhatsApp del cliente). NOTA: El PDF generado YA CONTIENE automáticamente los datos bancarios y las instrucciones de pago de la empresa; NO le digas al cliente que se los enviarás después, indícale que los datos bancarios vienen dentro del documento PDF adjunto.
 12. DATOS DE ENVÍO Y ESCALAMIENTO: Cuando el cliente confirme el pedido, te solicite datos bancarios y llegue el momento de coordinar el envío, ANTES de transferirlo a un humano, solicítale su Código Postal y Dirección de Envío completa. Si el cliente te da una dirección pero omite el Código Postal, DEBES pedirle específicamente el Código Postal antes de avanzar. Si previamente obtuviste sus datos fiscales, PREGÚNTALE si la dirección de envío es la misma que su dirección fiscal, MOSTRÁNDOSELA explícitamente. Una vez que tengas la dirección de envío completa (incluyendo Código Postal), DEBES corregir cualquier falta de ortografía y capitalizar correctamente los nombres propios de la dirección. Luego, DEBES invocar OBLIGATORIAMENTE la herramienta 'actualizar_carrito' para inyectar y guardar esa dirección corregida. Después de guardar la dirección, APLICA LA REGLA 14.
 13. RECOLECCIÓN EN SUCURSAL: Si el cliente indica que desea pasar a recoger los productos a una sucursal, ACÉPTALO de inmediato (no te muestres renuente). Ofrécele generarle la cotización y, MUY IMPORTANTE, APLICA LA REGLA 14.
 14. REGLA DE ORO ANTES DE ESCALAR (CUALQUIER FLUJO): IMPORTANTE: Sin importar cuál haya sido la última petición o respuesta del cliente, NUNCA ASUMAS QUE LA INTERACCIÓN HA TERMINADO. Siempre debes preguntarle al cliente si requiere consultar algún otro producto o necesita ayuda con algo más. **ESTÁ ESTRICTAMENTE PROHIBIDO COLOCAR LA ETIQUETA [[ESCALATE]] EN EL MISMO MENSAJE DONDE LE PREGUNTAS SI REQUIERE ALGO MÁS.** Primero haz la pregunta y espera a que el cliente responda. SÓLO si el cliente responde que ya no necesita nada más, entonces procedes a despedirte y AHORA SÍ colocas la etiqueta [[ESCALATE]]. Si el cliente dice que sí quiere agregar otro producto, ayúdalo con eso y no escales el chat todavía.
