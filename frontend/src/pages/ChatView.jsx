@@ -108,9 +108,13 @@ const ChatHeaderActions = ({ activeConv, setConfirmClose, setIsCartOpen }) => {
   const renderCartButton = () => (
     <button
       onClick={() => setIsCartOpen(true)}
-      disabled={isPatching}
-      className="relative z-40 cursor-pointer bg-gradient-to-r from-sales-cyan-600 to-sales-blue-600 hover:from-sales-cyan-500 hover:to-sales-blue-500 text-white p-2 rounded-full shadow-[0_0_12px_rgba(6,182,212,0.6)] border border-sales-cyan-400/50 transition-all duration-300 hover:scale-110 active:scale-95 flex items-center justify-center disabled:opacity-50"
-      title="Ver Carrito"
+      disabled={isPatching || ['CLOSED', 'CLOSED_INACTIVE', 'DISCARDED', 'CLOSED_WON'].includes(activeConv?.status)}
+      className={`relative z-40 bg-gradient-to-r from-sales-cyan-600 to-sales-blue-600 text-white p-2 rounded-full shadow-[0_0_12px_rgba(6,182,212,0.6)] border border-sales-cyan-400/50 flex items-center justify-center ${
+        isPatching || ['CLOSED', 'CLOSED_INACTIVE', 'DISCARDED', 'CLOSED_WON'].includes(activeConv?.status) 
+        ? 'opacity-50 cursor-not-allowed' 
+        : 'cursor-pointer hover:from-sales-cyan-500 hover:to-sales-blue-500 transition-all duration-300 hover:scale-110 active:scale-95'
+      }`}
+      title={['CLOSED', 'CLOSED_INACTIVE', 'DISCARDED', 'CLOSED_WON'].includes(activeConv?.status) ? "Carrito deshabilitado en chats cerrados" : "Ver Carrito"}
     >
       <ShoppingCart className="w-4 h-4" />
       {(() => {
