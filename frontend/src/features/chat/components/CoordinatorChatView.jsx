@@ -100,18 +100,19 @@ export default function CoordinatorChatView() {
             layout
             className="w-full h-full overflow-hidden flex flex-col p-4"
           >
-            <div className="flex items-center justify-between mb-4 px-4 shrink-0">
-              <h2 className="text-xl font-bold bg-gradient-to-r from-sales-slate-100 to-sales-slate-300 bg-clip-text text-transparent flex items-center gap-2">
-                {filter === 'ALL' ? (isCoordinator ? 'Vista Global (Agrupada por Asesor)' : 'Mis Tickets Activos') :
-                 filter === 'PENDING' ? 'Bolsa de Trabajo (En Espera)' :
-                 filter === 'SLA' ? (isCoordinator ? 'Tickets Críticos (Agrupados por Asesor)' : 'Mis Tickets Críticos') :
-                 filter === 'CLOSED_WON' ? (isCoordinator ? 'Ventas Cerradas (Agrupadas por Asesor)' : 'Mis Ventas Cerradas') :
-                 (isCoordinator ? 'Tickets Archivados (Agrupados por Asesor)' : 'Mis Tickets Cerrados')}
-              </h2>
-              <div className="text-sm font-medium text-sales-slate-400 bg-sales-slate-800/50 px-3 py-1 rounded-full border border-sales-slate-700/50">
-                {filteredConversations.length} {filteredConversations.length === 1 ? 'resultado' : 'resultados'}
+            {!['PENDING', 'ON_HOLD', 'CLOSED'].includes(filter) && (
+              <div className="flex items-center justify-between mb-4 px-4 shrink-0">
+                <h2 className="text-xl font-bold bg-gradient-to-r from-sales-slate-100 to-sales-slate-300 bg-clip-text text-transparent flex items-center gap-2">
+                  {filter === 'ALL' ? (isCoordinator ? 'Vista Global (Agrupada por Asesor)' : 'Mis Tickets Activos') :
+                   filter === 'SLA' ? (isCoordinator ? 'Tickets Críticos (Agrupados por Asesor)' : 'Mis Tickets Críticos') :
+                   filter === 'CLOSED_WON' ? (isCoordinator ? 'Ventas Cerradas (Agrupadas por Asesor)' : 'Mis Ventas Cerradas') :
+                   (isCoordinator ? 'Agendados (Agrupados por Asesor)' : 'Mis Tickets Agendados')}
+                </h2>
+                <div className="text-sm font-medium text-sales-slate-400 bg-sales-slate-800/50 px-3 py-1 rounded-full border border-sales-slate-700/50">
+                  {filteredConversations.length} {filteredConversations.length === 1 ? 'resultado' : 'resultados'}
+                </div>
               </div>
-            </div>
+            )}
             
             {['PENDING', 'ON_HOLD', 'CLOSED'].includes(filter) ? (
               <div className="flex gap-6 w-full h-full overflow-x-auto custom-scrollbar pb-2 px-2 items-start">
@@ -127,10 +128,12 @@ export default function CoordinatorChatView() {
                   { title: 'Descartados / Spam', statuses: ['DISCARDED'] }
                 ]).map(col => {
                   const colChats = filteredConversations.filter(c => col.statuses.includes(c.status));
+                  if (colChats.length === 0) return null;
+                  
                   return (
-                    <div key={col.title} className="flex flex-col min-w-[320px] max-w-[400px] flex-1 bg-sales-slate-900/40 rounded-xl border border-sales-slate-700/50 p-4 shadow-lg shrink-0 max-h-full">
+                    <div key={col.title} className="flex flex-col min-w-[320px] max-w-[400px] flex-1 shrink-0 max-h-full px-2">
                       <div className="flex items-center justify-between border-b border-sales-slate-700/50 pb-3 mb-4 shrink-0">
-                        <h3 className="text-xs font-bold text-sales-slate-300 uppercase tracking-wider">{col.title}</h3>
+                        <h3 className="text-sm font-bold text-sales-slate-300 uppercase tracking-wider">{col.title}</h3>
                         <span className="bg-sales-slate-800 text-sales-slate-400 px-2.5 py-0.5 rounded-full text-xs font-bold shadow-inner border border-sales-slate-700/50">
                           {colChats.length}
                         </span>

@@ -143,13 +143,14 @@ export default function ChatList({ conversations, currentConversationId, current
     return (
       <div className="flex flex-col gap-6 p-2 pb-8">
         {Object.entries(groups).sort(([a], [b]) => a.localeCompare(b)).map(([vendorName, chats]) => (
-          <div key={vendorName} className="flex flex-col gap-2">
-            <div className="flex items-center gap-2 border-b border-sales-slate-700 pb-2 px-2">
-              <h3 className="text-[11px] font-bold text-sales-slate-300 uppercase tracking-wider">{vendorName}</h3>
-              <span className="bg-sales-slate-800 text-sales-slate-400 px-2 py-0.5 rounded-full text-[10px] font-bold shadow-inner border border-sales-slate-700/50">{chats.length}</span>
-            </div>
+          <div key={vendorName} className="flex flex-col gap-3 bg-sales-slate-800/20 p-3 rounded-xl border border-sales-slate-700/30">
             <div className={layout === 'kanban' ? 'flex flex-col gap-3' : isGrid ? 'grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4' : 'divide-y divide-sales-slate-800'}>
               {chats.map(renderConvItem)}
+            </div>
+            <div className="flex justify-center pt-2 mt-1 border-t border-sales-slate-700/30">
+              <span className="text-[10px] font-bold text-sales-slate-400 uppercase tracking-widest">
+                {vendorName} ({chats.length})
+              </span>
             </div>
           </div>
         ))}
