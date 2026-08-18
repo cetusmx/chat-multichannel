@@ -69,7 +69,7 @@ export default function ChatList({ conversations, currentConversationId, current
                 Nuevo
               </span>
             )}
-            {conv.status === 'CLOSED_INACTIVE' && (
+            {(conv.status === 'CLOSED' || conv.status === 'CLOSED_INACTIVE') && (
               <span
                 className="flex-shrink-0 px-1.5 py-0.5 rounded bg-sales-slate-700/50 text-sales-slate-400 border border-sales-slate-600 text-[10px] font-bold uppercase tracking-wider"
                 title="Chat finalizado sin venta"
@@ -85,6 +85,14 @@ export default function ChatList({ conversations, currentConversationId, current
                 Cerrado (Venta)
               </span>
             )}
+            {conv.status === 'DISCARDED' && (
+              <span
+                className="flex-shrink-0 px-1.5 py-0.5 rounded bg-sales-slate-800 text-sales-slate-500 border border-sales-slate-700 text-[10px] font-bold uppercase tracking-wider line-through"
+                title="Chat descartado"
+              >
+                Descartado
+              </span>
+            )}
             {conv.status === 'ESCALATED' && (
               <span
                 className="flex-shrink-0 px-1.5 py-0.5 rounded bg-red-500 text-white shadow-sm shadow-red-500/20 text-[10px] font-bold uppercase tracking-wider"
@@ -94,7 +102,7 @@ export default function ChatList({ conversations, currentConversationId, current
                 Escalado
               </span>
             )}
-            {(conv.status === 'ON_HOLD' || conv.status === 'SCHEDULED') && (
+            {(conv.status === 'ON_HOLD' || conv.status === 'SCHEDULED' || conv.status === 'WAITING_CUSTOMER') && (
               <span
                 className="flex-shrink-0 px-1.5 py-0.5 rounded bg-sales-amber-500/20 text-sales-amber-400 border border-sales-amber-500/30 text-[10px] font-bold uppercase tracking-wider"
                 title="Esperando al cliente"
