@@ -13,7 +13,7 @@ export default function ChatList({ conversations, currentConversationId, current
   }
 
   const selectedIds = currentConversationId ? [currentConversationId] : currentConversationIds;
-  const isGrid = layout === 'grid';
+  const isGrid = layout === 'grid' || layout === 'kanban';
 
   const renderConvItem = (conv) => {
     const isSelected = selectedIds.includes(conv.id);
@@ -148,7 +148,7 @@ export default function ChatList({ conversations, currentConversationId, current
               <h3 className="text-[11px] font-bold text-sales-slate-300 uppercase tracking-wider">{vendorName}</h3>
               <span className="bg-sales-slate-800 text-sales-slate-400 px-2 py-0.5 rounded-full text-[10px] font-bold shadow-inner border border-sales-slate-700/50">{chats.length}</span>
             </div>
-            <div className={isGrid ? 'grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4' : 'divide-y divide-sales-slate-800'}>
+            <div className={layout === 'kanban' ? 'flex flex-col gap-3' : isGrid ? 'grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4' : 'divide-y divide-sales-slate-800'}>
               {chats.map(renderConvItem)}
             </div>
           </div>
@@ -158,7 +158,7 @@ export default function ChatList({ conversations, currentConversationId, current
   }
 
   return (
-    <div className={isGrid ? 'grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4 p-2' : 'divide-y divide-sales-slate-800'}>
+    <div className={layout === 'kanban' ? 'flex flex-col gap-3' : isGrid ? 'grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4 p-2' : 'divide-y divide-sales-slate-800'}>
       {conversations.map(renderConvItem)}
     </div>
   );

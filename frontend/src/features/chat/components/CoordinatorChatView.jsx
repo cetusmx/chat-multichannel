@@ -98,9 +98,9 @@ export default function CoordinatorChatView() {
         {coordinatorViewMode === 'preview' ? (
           <motion.div
             layout
-            className="w-full h-full overflow-y-auto p-4 custom-scrollbar"
+            className="w-full h-full overflow-hidden flex flex-col p-4"
           >
-            <div className="flex items-center justify-between mb-4 px-4">
+            <div className="flex items-center justify-between mb-4 px-4 shrink-0">
               <h2 className="text-xl font-bold bg-gradient-to-r from-sales-slate-100 to-sales-slate-300 bg-clip-text text-transparent flex items-center gap-2">
                 {filter === 'ALL' ? (isCoordinator ? 'Vista Global (Agrupada por Asesor)' : 'Mis Tickets Activos') :
                  filter === 'PENDING' ? 'Bolsa de Trabajo (En Espera)' :
@@ -112,14 +112,55 @@ export default function CoordinatorChatView() {
                 {filteredConversations.length} {filteredConversations.length === 1 ? 'resultado' : 'resultados'}
               </div>
             </div>
-            <ChatList
-              conversations={filteredConversations}
-              currentConversationIds={focusedChatIds}
-              onSelect={toggleFocusedChat}
-              layout="grid"
-              groupByVendor={shouldGroup}
-              vendorMap={vendorsMap}
-            />
+            
+            {['PENDING', 'ON_HOLD', 'CLOSED'].includes(filter) ? (
+              <div className="flex gap-6 w-full h-full overflow-x-auto custom-scrollbar pb-2 px-2 items-start">
+                {(filter === 'PENDING' ? [
+                  { title: 'Nuevos (Sin Asignar)', statuses: ['PENDING_ASSIGNMENT'] },
+                  { title: 'Escalados (Ayuda)', statuses: ['ESCALATED'] }
+                ] : filter === 'ON_HOLD' ? [
+                  { title: 'Esperando al Cliente', statuses: ['WAITING_CUSTOMER'] },
+                  { title: 'Pausados (Terceros)', statuses: ['ON_HOLD'] }
+                ] : [
+                  { title: 'Resueltos', statuses: ['CLOSED'] },
+                  { title: 'Inactivos (Auto-cierre)', statuses: ['CLOSED_INACTIVE'] },
+                  { title: 'Descartados / Spam', statuses: ['DISCARDED'] }
+                ]).map(col => {
+                  const colChats = filteredConversations.filter(c => col.statuses.includes(c.status));
+                  return (
+                    <div key={col.title} className="flex flex-col min-w-[320px] max-w-[400px] flex-1 bg-sales-slate-900/40 rounded-xl border border-sales-slate-700/50 p-4 shadow-lg shrink-0 max-h-full">
+                      <div className="flex items-center justify-between border-b border-sales-slate-700/50 pb-3 mb-4 shrink-0">
+                        <h3 className="text-xs font-bold text-sales-slate-300 uppercase tracking-wider">{col.title}</h3>
+                        <span className="bg-sales-slate-800 text-sales-slate-400 px-2.5 py-0.5 rounded-full text-xs font-bold shadow-inner border border-sales-slate-700/50">
+                          {colChats.length}
+                        </span>
+                      </div>
+                      <div className="flex-1 overflow-y-auto custom-scrollbar -mx-2 px-2">
+                        <ChatList
+                          conversations={colChats}
+                          currentConversationIds={focusedChatIds}
+                          onSelect={toggleFocusedChat}
+                          layout="kanban"
+                          groupByVendor={shouldGroup}
+                          vendorMap={vendorsMap}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="flex-1 overflow-y-auto custom-scrollbar px-2">
+                <ChatList
+                  conversations={filteredConversations}
+                  currentConversationIds={focusedChatIds}
+                  onSelect={toggleFocusedChat}
+                  layout="grid"
+                  groupByVendor={shouldGroup}
+                  vendorMap={vendorsMap}
+                />
+              </div>
+            )}
           </motion.div>
         ) : (
           <motion.div
