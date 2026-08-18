@@ -199,6 +199,10 @@ const ChatHeaderActions = ({ activeConv, setConfirmClose, setIsCartOpen }) => {
   if (['ON_HOLD', 'WAITING_CUSTOMER', 'SCHEDULED'].includes(status)) {
     return (
       <div className="flex items-center gap-2">
+        <div className="bg-sales-amber-500/20 border border-sales-amber-500 text-sales-amber-400 px-4 py-2 rounded-lg font-bold text-sm shadow-sm flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-sales-amber-400 animate-pulse"></span>
+          Esperando al Cliente
+        </div>
         {showVendorActions && (
           <button
             onClick={() => handleAction({ status: 'ACTIVE' })}
