@@ -102,10 +102,10 @@ export default function CoordinatorChatView() {
             {!['PENDING', 'ON_HOLD', 'CLOSED'].includes(filter) && (
               <div className="flex items-center justify-between mb-4 px-4 shrink-0">
                 <h2 className="text-xl font-bold bg-gradient-to-r from-sales-slate-100 to-sales-slate-300 bg-clip-text text-transparent flex items-center gap-2">
-                  {filter === 'ALL' ? (isCoordinator ? 'Vista Global (Agrupada por Asesor)' : 'Mis Tickets Activos') :
-                   filter === 'SLA' ? (isCoordinator ? 'Tickets Críticos (Agrupados por Asesor)' : 'Mis Tickets Críticos') :
-                   filter === 'CLOSED_WON' ? (isCoordinator ? 'Ventas Cerradas (Agrupadas por Asesor)' : 'Mis Ventas Cerradas') :
-                   (isCoordinator ? 'Agendados (Agrupados por Asesor)' : 'Mis Tickets Agendados')}
+                  {filter === 'ALL' ? (isCoordinator ? 'Vista Global' : 'Mis Tickets Activos') :
+                   filter === 'SLA' ? (isCoordinator ? 'Tickets Críticos' : 'Mis Tickets Críticos') :
+                   filter === 'CLOSED_WON' ? (isCoordinator ? 'Ventas Cerradas' : 'Mis Ventas Cerradas') :
+                   (isCoordinator ? 'Agendados' : 'Mis Tickets Agendados')}
                 </h2>
                 <div className="text-sm font-medium text-sales-slate-400 bg-sales-slate-800/50 px-3 py-1 rounded-full border border-sales-slate-700/50">
                   {filteredConversations.length} {filteredConversations.length === 1 ? 'resultado' : 'resultados'}
