@@ -278,6 +278,7 @@ const FocusedChat = memo(({ conversationId, clientName, conversation }) => {
          errorMsg={errorMsg}
          clearError={() => setErrorMsg(null)}
          isUploading={isUploading}
+         disabledInput={['CLOSED', 'CLOSED_INACTIVE', 'CLOSED_WON', 'DISCARDED'].includes(conversation?.status)}
          headerActions={conversation ? (
            <>
              <ClientBlockToggle conversation={conversation} />
