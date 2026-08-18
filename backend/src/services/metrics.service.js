@@ -86,13 +86,13 @@ const getVendorProductivityMetrics = async (tenantId, startDate, endDate) => {
     total_handled AS (
       SELECT vendor_id, COUNT(conversation_id)::int as total_chats
       FROM filtered_conversations
-      WHERE vendor_id IS NOT NULL
+      WHERE vendor_id IS NOT NULL AND status != 'DISCARDED'
       GROUP BY vendor_id
     ),
     closed_handled AS (
       SELECT vendor_id, COUNT(conversation_id)::int as closed_chats
       FROM filtered_conversations
-      WHERE status = 'CLOSED' AND vendor_id IS NOT NULL
+      WHERE status IN ('CLOSED', 'CLOSED_WON', 'CLOSED_INACTIVE') AND vendor_id IS NOT NULL
       GROUP BY vendor_id
     )
     SELECT 
