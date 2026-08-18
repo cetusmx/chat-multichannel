@@ -51,6 +51,7 @@ export default function CoordinatorDashboard() {
   const metrics = {
     total: conversations.filter(c => new Date(c.createdAt).toDateString() === todayStr || new Date(c.lastMessageAt).toDateString() === todayStr).length,
     pending: conversations.filter(c => c.status === 'PENDING_ASSIGNMENT' || c.status === 'ESCALATED').length,
+    onHold: conversations.filter(c => c.status === 'ON_HOLD' || c.status === 'SCHEDULED').length,
     slaRisk: conversations.filter(c => c.isSlaBreached && !c.status?.startsWith('CLOSED')).length,
     closed: conversations.filter(c => c.status?.startsWith('CLOSED')).length,
     sales: conversations.filter(c => c.status === 'CLOSED_WON').length,
@@ -61,9 +62,10 @@ export default function CoordinatorDashboard() {
     <div className="flex flex-col w-full h-full bg-sales-slate-900 text-sales-slate-100 rounded-lg border border-sales-slate-800 shadow-xl overflow-hidden p-8 gap-8">
       <h1 className="text-3xl font-bold text-white">Dashboard Global</h1>
       
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
         <StatCard title="Activos Hoy" value={metrics.total} icon={Users} iconColor="text-sales-blue-400" />
-        <StatCard title="En Espera" value={metrics.pending} icon={Clock} iconColor="text-sales-cyan-400" />
+        <StatCard title="Sin Asignar" value={metrics.pending} icon={Clock} iconColor="text-sales-cyan-400" />
+        <StatCard title="En Seguimiento" value={metrics.onHold} icon={Clock} iconColor="text-sales-amber-400" />
         <StatCard title="SLA en Riesgo" value={metrics.slaRisk} icon={CustomWarningIcon} iconColor="text-red-500" />
         <StatCard title="Cerrados" value={metrics.closed} icon={CheckCircle} iconColor="text-sales-slate-400" />
         <StatCard title="Ventas" value={metrics.sales} icon={ShoppingCart} iconColor="text-emerald-500" />

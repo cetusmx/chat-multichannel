@@ -60,6 +60,7 @@ export default function CoordinatorChatView() {
   const metrics = {
     total: conversations.filter(c => new Date(c.createdAt).toDateString() === todayStr || new Date(c.lastMessageAt).toDateString() === todayStr).length,
     pending: conversations.filter(c => c.status === 'PENDING_ASSIGNMENT' || c.status === 'ESCALATED').length,
+    onHold: conversations.filter(c => c.status === 'ON_HOLD' || c.status === 'SCHEDULED').length,
     slaRisk: conversations.filter(c => c.isSlaBreached && !c.status?.startsWith('CLOSED')).length,
     closed: conversations.filter(c => c.status?.startsWith('CLOSED')).length,
     sales: conversations.filter(c => c.status === 'CLOSED_WON').length,
@@ -68,6 +69,7 @@ export default function CoordinatorChatView() {
   const filteredConversations = conversations.filter(c => {
     if (filter === 'ALL') return true;
     if (filter === 'PENDING') return c.status === 'PENDING_ASSIGNMENT' || c.status === 'ESCALATED';
+    if (filter === 'ON_HOLD') return c.status === 'ON_HOLD' || c.status === 'SCHEDULED';
     if (filter === 'SLA') return c.isSlaBreached && !c.status?.startsWith('CLOSED');
     if (filter === 'CLOSED') return c.status?.startsWith('CLOSED');
     if (filter === 'CLOSED_WON') return c.status === 'CLOSED_WON';
@@ -81,7 +83,8 @@ export default function CoordinatorChatView() {
       {/* Filters Ribbon */}
       <div className="flex px-4 pt-2 border-b border-sales-slate-800 bg-sales-slate-900/95 shrink-0 z-20 shadow-sm relative gap-2 overflow-x-auto custom-scrollbar">
         <FilterButton label="Todos" count={metrics.total} isActive={filter === 'ALL'} onClick={() => setFilter('ALL')} />
-        <FilterButton label="En Espera" count={metrics.pending} isActive={filter === 'PENDING'} onClick={() => setFilter('PENDING')} />
+        <FilterButton label="Sin Asignar" count={metrics.pending} isActive={filter === 'PENDING'} onClick={() => setFilter('PENDING')} />
+        <FilterButton label="En Seguimiento" count={metrics.onHold} isActive={filter === 'ON_HOLD'} onClick={() => setFilter('ON_HOLD')} />
         <FilterButton label="SLA en Riesgo" count={metrics.slaRisk} isActive={filter === 'SLA'} onClick={() => setFilter('SLA')} />
         <FilterButton label="Cerrados" count={metrics.closed} isActive={filter === 'CLOSED'} onClick={() => setFilter('CLOSED')} />
         <FilterButton label="Ventas" count={metrics.sales} isActive={filter === 'CLOSED_WON'} onClick={() => setFilter('CLOSED_WON')} />

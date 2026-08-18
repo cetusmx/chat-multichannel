@@ -94,6 +94,14 @@ export default function ChatList({ conversations, currentConversationId, current
                 Escalado
               </span>
             )}
+            {(conv.status === 'ON_HOLD' || conv.status === 'SCHEDULED') && (
+              <span
+                className="flex-shrink-0 px-1.5 py-0.5 rounded bg-sales-amber-500/20 text-sales-amber-400 border border-sales-amber-500/30 text-[10px] font-bold uppercase tracking-wider"
+                title="Esperando al cliente"
+              >
+                En Espera
+              </span>
+            )}
             {isSlaBreached && !conv.status.startsWith('CLOSED') && (
               <SlaBadge isSlaBreached={isSlaBreached} breachType={breachType} />
             )}
