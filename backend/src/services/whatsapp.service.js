@@ -565,13 +565,22 @@ const whatsappService = {
                       await this.sendMessage(conversation.id, responseText, null, 'IA');
 
                       if (requiresEscalation) {
-                        const updatedConv = await prisma.conversation.update({
-                          where: { id: conversation.id },
-                          data: { 
-                            aiPendingEscalation: true,
-                            status: 'ESCALATED' 
-                          }
-                        });
+                        const vendor = await assignmentService.autoAssign(tenantId, conversation.id);
+                        let updatedConv;
+
+                        if (!vendor) {
+                          updatedConv = await prisma.conversation.update({
+                            where: { id: conversation.id },
+                            data: { 
+                              aiPendingEscalation: true,
+                              status: 'ESCALATED' 
+                            }
+                          });
+                        } else {
+                          updatedConv = await prisma.conversation.findUnique({
+                            where: { id: conversation.id }
+                          });
+                        }
                         
                         try {
                           const io = socket.getIo();
