@@ -1,7 +1,7 @@
 const { PrismaClient } = require('@prisma/client');
 const env = require('../config/env');
 const socket = require('../socket');
-const { isOffHours } = require('../utils/date');
+const { isOffHours, getBusinessMinutesElapsed } = require('../utils/date');
 const crypto = require('crypto');
 const logger = require('../utils/logger');
 const aiService = require('./ai.service');
@@ -257,7 +257,8 @@ const whatsappService = {
                 tenantId, 
                 clientId: finalClient.id, 
                 status: { in: ['ACTIVE', 'PENDING_ASSIGNMENT', 'ESCALATED', 'WAITING_CUSTOMER', 'SCHEDULED', 'ON_HOLD'] } 
-              }
+              },
+              include: { tenant: { select: { businessHours: true } } }
             });
             
             if (!conversation) {
@@ -279,29 +280,42 @@ const whatsappService = {
               }
 
               // Auto-resume atomic update for paused SLA states
-              const resumeResult = await prisma.conversation.updateMany({
-                where: {
-                  id: conversation.id,
-                  status: { in: ['WAITING_CUSTOMER', 'SCHEDULED', 'ON_HOLD'] }
-                },
-                data: {
-                  status: 'ACTIVE',
-                  statusUpdatedAt: new Date()
+              if (['WAITING_CUSTOMER', 'SCHEDULED', 'ON_HOLD'].includes(conversation.status)) {
+                const now = new Date();
+                let pausedBusinessMins = 0;
+                
+                try {
+                  const statusUpdatedTime = new Date(conversation.statusUpdatedAt).getTime();
+                  if (conversation.tenant && conversation.tenant.businessHours) {
+                    pausedBusinessMins = getBusinessMinutesElapsed(statusUpdatedTime, now, conversation.tenant.businessHours);
+                  } else {
+                    pausedBusinessMins = Math.floor((now.getTime() - statusUpdatedTime) / 60000);
+                  }
+                } catch (e) {
+                  logger.error('[WHATSAPP_SERVICE] Error calculating paused SLA minutes:', e);
                 }
-              });
 
-              if (resumeResult.count > 0) {
-                 // Fetch updated conversation to have correct status for sockets
-                 conversation = await prisma.conversation.findUnique({ where: { id: conversation.id } });
-                 try {
-                   // Subtask 2.3 Webhook WebSocket Ordering: Emit 'conversation_updated'
-                   const socket = require('../socket');
-                   let ioEvent = socket.getIo().of('/chat').to(`conversation:${conversation.id}`).to(`tenant_${tenantId}_coordinators`);
-                   if (conversation.vendorId) ioEvent = ioEvent.to(`vendor_${conversation.vendorId}`);
-                   ioEvent.emit('conversation_updated', conversation);
-                 } catch (err) {
-                   logger.error('[WHATSAPP_SERVICE] No se pudo emitir conversation_updated por socket:', err.message);
-                 }
+                await prisma.conversation.update({
+                  where: { id: conversation.id },
+                  data: {
+                    status: 'ACTIVE',
+                    statusUpdatedAt: now,
+                    lastMessageAt: now,
+                    slaPausedMins: { increment: Math.max(0, pausedBusinessMins) }
+                  }
+                });
+
+                // Fetch updated conversation to have correct status for sockets
+                conversation = await prisma.conversation.findUnique({ where: { id: conversation.id } });
+                try {
+                  // Subtask 2.3 Webhook WebSocket Ordering: Emit 'conversation_updated'
+                  const socket = require('../socket');
+                  let ioEvent = socket.getIo().of('/chat').to(`conversation:${conversation.id}`).to(`tenant_${tenantId}_coordinators`);
+                  if (conversation.vendorId) ioEvent = ioEvent.to(`vendor_${conversation.vendorId}`);
+                  ioEvent.emit('conversation_updated', conversation);
+                } catch (err) {
+                  logger.error('[WHATSAPP_SERVICE] No se pudo emitir conversation_updated por socket:', err.message);
+                }
               } else {
                  // Si no estaba pausada, solo actualizamos lastMessageAt
                  await prisma.conversation.update({

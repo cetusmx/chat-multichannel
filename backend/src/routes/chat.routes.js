@@ -990,6 +990,23 @@ router.patch('/:conversationId/status', authenticate, authorize('ADMIN', 'COORDI
         statusUpdatedAt: new Date(),
       };
 
+      if (status === 'ACTIVE' && ['WAITING_CUSTOMER', 'SCHEDULED', 'ON_HOLD'].includes(conversation.status)) {
+        const now = new Date();
+        const { getBusinessMinutesElapsed } = require('../utils/date');
+        let pausedMins = 0;
+        try {
+          const statusUpdatedTime = new Date(conversation.statusUpdatedAt).getTime();
+          if (conversation.tenant && conversation.tenant.businessHours) {
+            pausedMins = getBusinessMinutesElapsed(statusUpdatedTime, now, conversation.tenant.businessHours);
+          } else {
+            pausedMins = Math.floor((now.getTime() - statusUpdatedTime) / 60000);
+          }
+        } catch(e) {
+          console.error('[API] Error calculating paused SLA minutes:', e);
+        }
+        dataToUpdate.slaPausedMins = { increment: Math.max(0, pausedMins) };
+      }
+
       if (status === 'SCHEDULED') {
         dataToUpdate.scheduledAt = dayjs.utc(scheduledAt).toDate();
       } else if (status === 'ON_HOLD') {

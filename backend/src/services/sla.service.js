@@ -276,7 +276,11 @@ class SlaService extends EventEmitter {
 
           if (metric && startTime) {
             const startTimeMs = startTime instanceof Date ? startTime.getTime() : new Date(startTime).getTime();
-            const elapsedMins = getBusinessMinutesElapsed(startTimeMs, now, businessHours);
+            let elapsedMins = getBusinessMinutesElapsed(startTimeMs, now, businessHours);
+            
+            if (metric === 'resolution' && conv.slaPausedMins > 0) {
+              elapsedMins = Math.max(0, elapsedMins - conv.slaPausedMins);
+            }
             
             if (elapsedMins > thresholdMins) {
               const excessMinutes = Math.round(elapsedMins - thresholdMins);
