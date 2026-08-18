@@ -1014,7 +1014,7 @@ router.patch('/:conversationId/status', authenticate, authorize('ADMIN', 'COORDI
         dataToUpdate.onHoldExpiration = dayjs.utc().add(timebombHours, 'hour').toDate();
       }
 
-      if (status === 'CLOSED_WON') {
+      if (['CLOSED_WON', 'CLOSED', 'CLOSED_INACTIVE', 'DISCARDED'].includes(status)) {
         const clientRec = await tx.client.findUnique({ where: { id: conversation.clientId } });
         if (clientRec && clientRec.cartData) {
           dataToUpdate.cartSnapshot = clientRec.cartData;
