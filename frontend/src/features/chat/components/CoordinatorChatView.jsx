@@ -60,18 +60,20 @@ export default function CoordinatorChatView() {
   const metrics = {
     total: conversations.filter(c => new Date(c.createdAt).toDateString() === todayStr || new Date(c.lastMessageAt).toDateString() === todayStr).length,
     pending: conversations.filter(c => c.status === 'PENDING_ASSIGNMENT' || c.status === 'ESCALATED').length,
-    onHold: conversations.filter(c => c.status === 'ON_HOLD' || c.status === 'SCHEDULED').length,
+    onHold: conversations.filter(c => c.status === 'ON_HOLD' || c.status === 'WAITING_CUSTOMER').length,
+    scheduled: conversations.filter(c => c.status === 'SCHEDULED').length,
     slaRisk: conversations.filter(c => c.isSlaBreached && !c.status?.startsWith('CLOSED')).length,
-    closed: conversations.filter(c => c.status?.startsWith('CLOSED')).length,
+    closed: conversations.filter(c => c.status?.startsWith('CLOSED') || c.status === 'DISCARDED').length,
     sales: conversations.filter(c => c.status === 'CLOSED_WON').length,
   };
 
   const filteredConversations = conversations.filter(c => {
     if (filter === 'ALL') return true;
     if (filter === 'PENDING') return c.status === 'PENDING_ASSIGNMENT' || c.status === 'ESCALATED';
-    if (filter === 'ON_HOLD') return c.status === 'ON_HOLD' || c.status === 'SCHEDULED';
+    if (filter === 'ON_HOLD') return c.status === 'ON_HOLD' || c.status === 'WAITING_CUSTOMER';
+    if (filter === 'SCHEDULED') return c.status === 'SCHEDULED';
     if (filter === 'SLA') return c.isSlaBreached && !c.status?.startsWith('CLOSED');
-    if (filter === 'CLOSED') return c.status?.startsWith('CLOSED');
+    if (filter === 'CLOSED') return c.status?.startsWith('CLOSED') || c.status === 'DISCARDED';
     if (filter === 'CLOSED_WON') return c.status === 'CLOSED_WON';
     return true;
   });
@@ -85,6 +87,7 @@ export default function CoordinatorChatView() {
         <FilterButton label="Todos" count={metrics.total} isActive={filter === 'ALL'} onClick={() => setFilter('ALL')} />
         <FilterButton label="Sin Asignar" count={metrics.pending} isActive={filter === 'PENDING'} onClick={() => setFilter('PENDING')} />
         <FilterButton label="En Seguimiento" count={metrics.onHold} isActive={filter === 'ON_HOLD'} onClick={() => setFilter('ON_HOLD')} />
+        <FilterButton label="Agendados" count={metrics.scheduled} isActive={filter === 'SCHEDULED'} onClick={() => setFilter('SCHEDULED')} />
         <FilterButton label="SLA en Riesgo" count={metrics.slaRisk} isActive={filter === 'SLA'} onClick={() => setFilter('SLA')} />
         <FilterButton label="Cerrados" count={metrics.closed} isActive={filter === 'CLOSED'} onClick={() => setFilter('CLOSED')} />
         <FilterButton label="Ventas" count={metrics.sales} isActive={filter === 'CLOSED_WON'} onClick={() => setFilter('CLOSED_WON')} />

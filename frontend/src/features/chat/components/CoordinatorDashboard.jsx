@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import useAuthStore from '../../../stores/useAuthStore';
 import useChatStore from '../../../stores/useChatStore';
-import { Users, CheckCircle, Clock, ShoppingCart, Percent } from 'lucide-react';
+import { Users, CheckCircle, Clock, ShoppingCart, Percent, Calendar } from 'lucide-react';
 import * as api from '../../../services/api';
 
 const CustomWarningIcon = (props) => (
@@ -51,9 +51,10 @@ export default function CoordinatorDashboard() {
   const metrics = {
     total: conversations.filter(c => new Date(c.createdAt).toDateString() === todayStr || new Date(c.lastMessageAt).toDateString() === todayStr).length,
     pending: conversations.filter(c => c.status === 'PENDING_ASSIGNMENT' || c.status === 'ESCALATED').length,
-    onHold: conversations.filter(c => c.status === 'ON_HOLD' || c.status === 'SCHEDULED').length,
+    onHold: conversations.filter(c => c.status === 'ON_HOLD' || c.status === 'WAITING_CUSTOMER').length,
+    scheduled: conversations.filter(c => c.status === 'SCHEDULED').length,
     slaRisk: conversations.filter(c => c.isSlaBreached && !c.status?.startsWith('CLOSED')).length,
-    closed: conversations.filter(c => c.status?.startsWith('CLOSED')).length,
+    closed: conversations.filter(c => c.status?.startsWith('CLOSED') || c.status === 'DISCARDED').length,
     sales: conversations.filter(c => c.status === 'CLOSED_WON').length,
   };
   metrics.conversionRate = metrics.closed > 0 ? Math.round((metrics.sales / metrics.closed) * 100) : 0;
@@ -66,6 +67,7 @@ export default function CoordinatorDashboard() {
         <StatCard title="Activos Hoy" value={metrics.total} icon={Users} iconColor="text-sales-blue-400" />
         <StatCard title="Sin Asignar" value={metrics.pending} icon={Clock} iconColor="text-sales-cyan-400" />
         <StatCard title="En Seguimiento" value={metrics.onHold} icon={Clock} iconColor="text-sales-amber-400" />
+        <StatCard title="Agendados" value={metrics.scheduled} icon={Calendar} iconColor="text-purple-400" />
         <StatCard title="SLA en Riesgo" value={metrics.slaRisk} icon={CustomWarningIcon} iconColor="text-red-500" />
         <StatCard title="Cerrados" value={metrics.closed} icon={CheckCircle} iconColor="text-sales-slate-400" />
         <StatCard title="Ventas" value={metrics.sales} icon={ShoppingCart} iconColor="text-emerald-500" />
