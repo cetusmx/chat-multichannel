@@ -90,7 +90,6 @@ export default function CoordinatorChatView() {
         <FilterButton label="Agendados" count={metrics.scheduled} isActive={filter === 'SCHEDULED'} onClick={() => setFilter('SCHEDULED')} />
         <FilterButton label="SLA en Riesgo" count={metrics.slaRisk} isActive={filter === 'SLA'} onClick={() => setFilter('SLA')} />
         <FilterButton label="Cerrados" count={metrics.closed} isActive={filter === 'CLOSED'} onClick={() => setFilter('CLOSED')} />
-        <FilterButton label="Ventas" count={metrics.sales} isActive={filter === 'CLOSED_WON'} onClick={() => setFilter('CLOSED_WON')} />
       </div>
 
       {/* Main Work Area */}
@@ -123,8 +122,8 @@ export default function CoordinatorChatView() {
                   { title: 'Esperando al Cliente', statuses: ['WAITING_CUSTOMER'] },
                   { title: 'Pausados (Terceros)', statuses: ['ON_HOLD'] }
                 ] : [
-                  { title: 'Resueltos', statuses: ['CLOSED'] },
-                  { title: 'Inactivos (Auto-cierre)', statuses: ['CLOSED_INACTIVE'] },
+                  { title: 'Ventas Cerradas', statuses: ['CLOSED_WON'] },
+                  { title: 'Cerrados e Inactivos', statuses: ['CLOSED', 'CLOSED_INACTIVE'] },
                   { title: 'Descartados / Spam', statuses: ['DISCARDED'] }
                 ]).map(col => {
                   const colChats = filteredConversations.filter(c => col.statuses.includes(c.status));
