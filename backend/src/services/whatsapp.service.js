@@ -265,19 +265,7 @@ const whatsappService = {
               conversation = await prisma.conversation.create({
                 data: { tenantId, clientId: finalClient.id, status: 'PENDING_ASSIGNMENT', isOutbound: false }
               });
-              try {
-                await assignmentService.autoAssign(tenantId, conversation.id);
-              } catch (autoAssignErr) {
-                logger.error(`[WHATSAPP_SERVICE] Error auto-assigning chat for tenant ${tenantId}, conversation ${conversation.id}:`, autoAssignErr);
-              }
-            } else {
-              if (conversation.status === 'PENDING_ASSIGNMENT') {
-                try {
-                  await assignmentService.autoAssign(tenantId, conversation.id);
-                } catch (autoAssignErr) {
-                  logger.error(`[WHATSAPP_SERVICE] Error auto-assigning chat for tenant ${tenantId}, conversation ${conversation.id}:`, autoAssignErr);
-                }
-              }
+            }
 
               // Auto-resume atomic update for paused SLA states
               if (['WAITING_CUSTOMER', 'SCHEDULED', 'ON_HOLD'].includes(conversation.status)) {
