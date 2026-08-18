@@ -36,7 +36,7 @@ const formatDateLabel = (dateString) => {
  *
  * @component
  */
-export default function MessageList({ conversationId, messages, onSendMessage, onSendMedia, isUploading, errorMsg, clearError, clientName, hasMore, loadMoreMessages, isLoadingMore, headerActions }) {
+export default function MessageList({ conversationId, messages, onSendMessage, onSendMedia, isUploading, errorMsg, clearError, clientName, hasMore, loadMoreMessages, isLoadingMore, headerActions, disabledInput = false }) {
   const [text, setText] = useState('');
   const [isInternal, setIsInternal] = useState(false);
   const [aiPopoverOpen, setAiPopoverOpen] = useState(false);
@@ -678,7 +678,7 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
           <button
             type="button"
             ref={aiTriggerRef}
-            disabled={isUploading}
+            disabled={isUploading || disabledInput}
             onClick={() => {
               if (aiPopoverOpen) {
                 closeAiPopover();
@@ -696,7 +696,7 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
           </button>
           <button
             type="button"
-            disabled={isUploading || isDrafting}
+            disabled={isUploading || isDrafting || disabledInput}
             onClick={() => fileInputRef.current?.click()}
             className="p-2 text-sales-slate-400 hover:text-sales-cyan-400 disabled:opacity-50 transition-colors"
             title="Adjuntar archivo"
@@ -708,13 +708,13 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
             ref={fileInputRef}
             className="hidden"
             onChange={handleFileUpload}
-            disabled={isUploading || isDrafting}
+            disabled={isUploading || isDrafting || disabledInput}
             accept="image/*,video/*,audio/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
           />
           {user && ['ADMIN', 'COORDINATOR', 'VENDOR'].includes(user.role) && (
             <button
               type="button"
-              disabled={isUploading}
+              disabled={isUploading || disabledInput}
               onClick={() => setIsInternal(!isInternal)}
               className={`flex items-center justify-center p-2 rounded-lg transition-colors font-bold text-xs ${
                 isInternal
@@ -737,13 +737,13 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
             <textarea
               rows="1"
               ref={chatInputRef}
-              className={'w-full bg-sales-slate-800 border border-sales-slate-700 rounded-lg px-4 py-2 text-sales-slate-200 focus:outline-none focus:border-sales-cyan-400 transition-all resize-y'}
+              className={`w-full bg-sales-slate-800 border border-sales-slate-700 rounded-lg px-4 py-2 text-sales-slate-200 focus:outline-none focus:border-sales-cyan-400 transition-all resize-y ${disabledInput ? 'cursor-not-allowed opacity-50 bg-sales-slate-900' : ''}`}
               style={{ minHeight: '42px', maxHeight: '150px' }}
-              placeholder={isUploading ? 'Enviando...' : (selectedFile ? 'Añadir un comentario...' : (isInternal ? 'Escribe un comentario interno...' : 'Escribe un mensaje al cliente... (Usa / para respuestas rápidas)'))}
+              placeholder={disabledInput ? 'Esta conversación ha sido cerrada.' : isUploading ? 'Enviando...' : (selectedFile ? 'Añadir un comentario...' : (isInternal ? 'Escribe un comentario interno...' : 'Escribe un mensaje al cliente... (Usa / para respuestas rápidas)'))}
               value={text}
               onChange={handleTextChange}
               onKeyDown={handleKeyDown}
-              disabled={isUploading || isDrafting}
+              disabled={isUploading || isDrafting || disabledInput}
             />
           </div>
           {conversationId === 'draft' && (

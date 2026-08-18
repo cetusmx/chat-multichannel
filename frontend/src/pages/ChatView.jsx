@@ -419,6 +419,7 @@ export default function ChatView() {
                 hasMore={hasMore[currentConversationId] || false}
                 loadMoreMessages={() => loadMoreMessages(currentConversationId)}
                 isLoadingMore={isLoadingMore}
+                disabledInput={['CLOSED', 'CLOSED_INACTIVE', 'CLOSED_WON', 'DISCARDED'].includes(activeConv?.status)}
                 headerActions={
                   <div className="flex items-center gap-3">
                     <ChatHeaderActions
