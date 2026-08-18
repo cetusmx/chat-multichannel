@@ -310,8 +310,7 @@ const whatsappService = {
                    where: { id: conversation.id },
                    data: { lastMessageAt: new Date() }
                  });
-              }
-            }
+               }
             
             // Re-fetch conversation in case autoAssign changed vendorId or status
             conversation = await prisma.conversation.findUnique({
