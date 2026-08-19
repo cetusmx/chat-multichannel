@@ -193,13 +193,14 @@ export default function HistoryDashboard() {
                 <th className="px-6 py-4 font-medium">Fecha</th>
                 <th className="px-6 py-4 font-medium">Cliente</th>
                 <th className="px-6 py-4 font-medium">Asesor</th>
+                <th className="px-6 py-4 font-medium">Estatus</th>
                 <th className="px-6 py-4 font-medium text-right">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/50">
               {loading ? (
                 <tr>
-                  <td colSpan="4" className="px-6 py-8 text-center text-slate-500">
+                  <td colSpan="5" className="px-6 py-8 text-center text-slate-500">
                     <div className="flex items-center justify-center gap-2">
                       <div className="w-4 h-4 rounded-full border-2 border-blue-500 border-t-transparent animate-spin"></div>
                       Cargando...
@@ -208,7 +209,7 @@ export default function HistoryDashboard() {
                 </tr>
               ) : historyData.length === 0 ? (
                 <tr>
-                  <td colSpan="4" className="px-6 py-8 text-center text-slate-500">
+                  <td colSpan="5" className="px-6 py-8 text-center text-slate-500">
                     No se encontraron resultados
                   </td>
                 </tr>
@@ -217,6 +218,25 @@ export default function HistoryDashboard() {
                   const date = new Date(chat.createdAt || chat.updatedAt || Date.now()).toLocaleString();
                   const clientName = chat.client?.name || chat.clientName || chat.contact?.name || chat.clientPhone || 'Desconocido';
                   const advisorName = chat.vendor?.name || chat.user?.name || chat.vendorName || 'No asignado';
+
+                  let statusLabel = chat.status;
+                  let statusColor = 'text-gray-400';
+                  
+                  switch(chat.status) {
+                    case 'CLOSED_WON':
+                      statusLabel = 'Venta Cerrada';
+                      statusColor = 'text-emerald-400';
+                      break;
+                    case 'DISCARDED':
+                      statusLabel = 'Descartado';
+                      statusColor = 'text-rose-400';
+                      break;
+                    case 'CLOSED':
+                    case 'CLOSED_INACTIVE':
+                      statusLabel = 'Cerrado';
+                      statusColor = 'text-slate-400';
+                      break;
+                  }
 
                   return (
                     <tr
@@ -227,6 +247,9 @@ export default function HistoryDashboard() {
                       <td className="px-6 py-4 text-slate-300">{date}</td>
                       <td className="px-6 py-4 font-medium text-white">{clientName}</td>
                       <td className="px-6 py-4 text-slate-400">{advisorName}</td>
+                      <td className={`px-6 py-4 font-medium ${statusColor}`}>
+                        {statusLabel}
+                      </td>
                       <td className="px-6 py-4 text-right">
                         <button className="text-blue-400 hover:text-blue-300 text-sm font-medium">
                           Ver chat
