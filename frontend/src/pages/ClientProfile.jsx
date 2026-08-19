@@ -284,7 +284,7 @@ export default function ClientProfile() {
                                 const parts = content.split(new RegExp(`(${searchQuery})`, 'gi'));
                                 displayContent = parts.map((part, i) => 
                                   part.toLowerCase() === searchQuery.toLowerCase() ? 
-                                  <mark key={i} className="bg-sales-cyan-500/40 text-white rounded px-0.5">{part}</mark> : part
+                                  <mark key={i} className="bg-yellow-300 text-black rounded px-0.5">{part}</mark> : part
                                 );
                               }
 
