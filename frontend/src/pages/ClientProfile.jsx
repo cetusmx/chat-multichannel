@@ -366,38 +366,40 @@ export default function ClientProfile() {
                       <div className="flex-1 bg-white/5 hover:bg-white/[0.07] border border-white/10 rounded-2xl overflow-hidden transition-colors flex flex-col md:flex-row shadow-xl">
                         
                         {/* Left Side: Metadata & Messages */}
-                        <div className={`flex-1 p-5 ${isChatExpanded && hasPurchaseEvidence ? 'border-b md:border-b-0 md:border-r border-white/5' : ''}`}>
+                        <div className={`flex-1 p-3 px-4 ${isChatExpanded && hasPurchaseEvidence ? 'border-b md:border-b-0 md:border-r border-white/5' : ''}`}>
                           <div 
                             className="cursor-pointer select-none group/header flex justify-between items-center"
                             onClick={() => toggleChatExpand(conv.id)}
                           >
                             <div className="flex-1 pr-4">
-                              <div className="flex flex-wrap gap-2 items-center mb-3">
-                                <span className={`text-xs font-bold px-2 py-1 rounded-md tracking-wide ${conv.isOutbound ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30' : 'bg-sales-cyan-500/20 text-sales-cyan-400 border border-cyan-500/30'}`}>
-                                  {conv.isOutbound ? 'SALIENTE' : 'ENTRANTE'}
-                                </span>
-                                <span className={`flex items-center gap-1 text-xs font-bold px-2 py-1 rounded-md border ${statusStyles}`}>
-                                  {StatusIcon && <StatusIcon className="w-3 h-3" />}
-                                  {statusLabel}
-                                </span>
-                              </div>
-                              
-                              <div className="text-sm text-gray-300 flex flex-wrap items-center gap-3 mb-2">
-                                <span className="flex items-center gap-1.5">
-                                  <User className="w-4 h-4 text-gray-500" />
-                                  <span className="font-medium text-white">{conv.vendor?.name || 'Bot (IA)'}</span>
-                                </span>
-                                <span className="text-xs text-gray-500 flex items-center gap-1">
-                                  <Clock className="w-3 h-3" />
-                                  {new Intl.DateTimeFormat('es-MX', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(conv.createdAt))}
-                                </span>
+                              <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                                <div className="flex gap-2 items-center">
+                                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded tracking-wide ${conv.isOutbound ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30' : 'bg-sales-cyan-500/20 text-sales-cyan-400 border border-cyan-500/30'}`}>
+                                    {conv.isOutbound ? 'SALIENTE' : 'ENTRANTE'}
+                                  </span>
+                                  <span className={`flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded border ${statusStyles}`}>
+                                    {StatusIcon && <StatusIcon className="w-3 h-3" />}
+                                    {statusLabel}
+                                  </span>
+                                </div>
+                                
+                                <div className="text-xs text-gray-300 flex items-center gap-3">
+                                  <span className="flex items-center gap-1">
+                                    <User className="w-3.5 h-3.5 text-gray-500" />
+                                    <span className="font-medium text-white">{conv.vendor?.name || 'Bot (IA)'}</span>
+                                  </span>
+                                  <span className="text-gray-500 flex items-center gap-1 border-l border-white/10 pl-3">
+                                    <Clock className="w-3.5 h-3.5" />
+                                    {new Intl.DateTimeFormat('es-MX', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(conv.createdAt))}
+                                  </span>
+                                </div>
                               </div>
 
                               {!isChatExpanded && msgsToDisplay.length > 0 && (() => {
                                 const snippetMsg = searchQuery.trim() ? msgsToDisplay[0] : msgsToDisplay[msgsToDisplay.length - 1];
                                 const prefix = searchQuery.trim() ? 'Coincidencia:' : 'Último mensaje:';
                                 return (
-                                  <div className="text-sm text-gray-400 italic bg-black/20 p-3 rounded-lg border border-white/5 truncate mt-2">
+                                  <div className="text-[13px] text-gray-400 italic bg-black/20 p-2 px-3 rounded-lg border border-white/5 truncate mt-2">
                                     <span className="font-medium text-gray-500 mr-2">{prefix}</span>
                                     {snippetMsg.content || 'Mensaje con archivo adjunto'}
                                   </div>
