@@ -258,14 +258,14 @@ router.get('/conversations', authenticate, authorize('ADMIN', 'COORDINATOR', 'VE
     // Exclude CLOSED by default for operational dashboard unless requested,
     // but ALWAYS include CLOSED conversations from the current day so they don't vanish immediately.
     if (req.query.includeClosed !== 'true') {
-      const startOfToday = new Date();
-      startOfToday.setHours(0, 0, 0, 0);
+      const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const terminalStates = ['CLOSED', 'CLOSED_WON', 'CLOSED_INACTIVE', 'DISCARDED'];
       
       whereClause.OR = [
-        { status: { not: 'CLOSED' } },
+        { status: { notIn: terminalStates } },
         { 
-          status: 'CLOSED',
-          updatedAt: { gte: startOfToday }
+          status: { in: terminalStates },
+          updatedAt: { gte: twentyFourHoursAgo }
         }
       ];
     }
