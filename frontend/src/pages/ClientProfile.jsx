@@ -301,8 +301,8 @@ export default function ClientProfile() {
             <div className="space-y-6">
               {filteredConversations.length > 0 ? (
                 filteredConversations.map((conv, idx) => {
-                  const msgsToDisplay = conv.messages || [];
-                  const matchingMessages = conv.matchingMessages || [];
+                  const msgsToDisplay = [...(conv.messages || [])].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+                  const matchingMessages = [...(conv.matchingMessages || [])].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
                   const isWon = conv.status === 'CLOSED_WON';
                   const hasPurchaseEvidence = isWon || msgsToDisplay.some(m => m.content.toLowerCase().includes('carrito') || m.content.toLowerCase().includes('compra'));
                   const isChatExpanded = expandedChats[conv.id] ?? Boolean(searchQuery.trim());
@@ -413,7 +413,7 @@ export default function ClientProfile() {
                           {/* Full Chat History */}
                           {isChatExpanded && (
                             <div className="space-y-3 mt-4 max-h-96 overflow-y-auto custom-scrollbar pr-2 pb-2">
-                              {msgsToDisplay.slice().sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt)).map(msg => {
+                              {msgsToDisplay.map(msg => {
                                 // Highlight search term if present
                                 const content = msg.content;
                               let displayContent = content;
