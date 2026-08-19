@@ -427,11 +427,16 @@ export default function ClientProfile() {
                               }
 
                               const isClient = msg.senderType === 'CLIENT';
+                              let senderLabel = 'Asesor';
+                              if (isClient) senderLabel = 'Cliente';
+                              else if (msg.senderType === 'IA') senderLabel = '🤖 Bot (IA)';
+                              else if (msg.senderType === 'SYSTEM') senderLabel = '⚙️ Sistema';
+                              else senderLabel = conv.vendor?.name ? `👨‍💼 ${conv.vendor.name}` : '👨‍💼 Asesor';
 
                               return (
                                 <div key={msg.id} className={`flex flex-col ${isClient ? 'items-start' : 'items-end'}`}>
                                   <span className="text-[10px] text-gray-500 mb-1 ml-1 mr-1">
-                                    {isClient ? 'Cliente' : 'Asesor / Bot'} • {new Intl.DateTimeFormat('es-MX', { timeStyle: 'short' }).format(new Date(msg.createdAt))}
+                                    {senderLabel} • {new Intl.DateTimeFormat('es-MX', { timeStyle: 'short' }).format(new Date(msg.createdAt))}
                                   </span>
                                   <div className={`text-sm p-3 rounded-2xl max-w-[85%] border relative group/msg ${
                                     isClient 
