@@ -285,9 +285,11 @@ router.get('/history', authenticate, authorize('ADMIN', 'COORDINATOR', 'VENDOR')
     const { search, vendorId, startDate, endDate, page = 1, limit = 20 } = req.query;
     const tenantId = req.user.tenantId;
 
+    const terminalStates = ['CLOSED', 'CLOSED_WON', 'CLOSED_INACTIVE', 'DISCARDED'];
+    
     const whereClause = {
       tenantId,
-      status: 'CLOSED'
+      status: { in: terminalStates }
     };
 
     if (req.user.role === 'VENDOR') {
