@@ -4,7 +4,7 @@ import { get, post } from '../services/api';
 import { 
   ChevronLeft, MessageSquare, ShoppingCart, User, 
   Phone, CheckCircle, ArrowRight, Clock, Search,
-  Paperclip, Image as ImageIcon
+  Paperclip, Image as ImageIcon, ChevronDown, ChevronUp, Calendar
 } from 'lucide-react';
 import SecureMedia from '../components/SecureMedia';
 
@@ -16,6 +16,12 @@ export default function ClientProfile() {
   const [isError, setIsError] = useState(false);
   const [isStartingChat, setIsStartingChat] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [expandedChats, setExpandedChats] = useState({});
+  const [dateFilter, setDateFilter] = useState('');
+
+  const toggleChatExpand = (chatId) => {
+    setExpandedChats(prev => ({ ...prev, [chatId]: !prev[chatId] }));
+  };
 
   useEffect(() => {
     if (!id) return;
@@ -52,14 +58,28 @@ export default function ClientProfile() {
     navigate('/chat', { state: { draftClient: client } });
   };
 
-  // Filter conversations and messages based on searchQuery
+  // Filter conversations and messages based on searchQuery and dateFilter
   const filteredConversations = useMemo(() => {
     if (!client?.conversations) return [];
-    if (!searchQuery.trim()) return client.conversations;
+    
+    let result = client.conversations;
+
+    if (dateFilter) {
+      // Create local date string YYYY-MM-DD from the createdAt timestamp to match date picker
+      result = result.filter(c => {
+        const d = new Date(c.createdAt);
+        const localDate = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+        return localDate === dateFilter;
+      });
+    }
+
+    if (!searchQuery.trim()) return result;
 
     const query = searchQuery.toLowerCase();
+    const escapedQuery = searchQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(escapedQuery, 'gi');
     
-    return client.conversations.map(conv => {
+    return result.map(conv => {
       // Filter messages that match the query
       const matchingMessages = conv.messages?.filter(m => 
         m.content.toLowerCase().includes(query)
@@ -219,9 +239,9 @@ export default function ClientProfile() {
         {/* Right Panel (70%) - Timeline and Search */}
         <div className="flex-1 flex flex-col min-w-0 bg-transparent relative">
           
-          {/* Search Bar */}
-          <div className="p-6 pb-2 shrink-0">
-            <div className="relative flex items-center">
+          {/* Search Bar and Filters */}
+          <div className="p-6 pb-2 shrink-0 flex gap-3">
+            <div className="relative flex-1 flex items-center">
               <Search className="absolute left-3 w-5 h-5 text-gray-400" />
               <input 
                 type="text" 
@@ -236,6 +256,23 @@ export default function ClientProfile() {
                 </div>
               )}
             </div>
+            <div className="relative w-40">
+              <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input 
+                type="date"
+                value={dateFilter}
+                onChange={(e) => setDateFilter(e.target.value)}
+                className="w-full bg-black/20 border border-white/10 rounded-xl py-3 pl-9 pr-3 text-white placeholder-gray-500 focus:outline-none focus:border-sales-cyan-500 transition-colors shadow-inner [color-scheme:dark] text-sm"
+              />
+              {dateFilter && (
+                <button 
+                  onClick={() => setDateFilter('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white text-xs"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Timeline Scroll Area */}
@@ -247,7 +284,7 @@ export default function ClientProfile() {
                   const isWon = conv.status === 'CLOSED_WON';
                   const hasPurchaseEvidence = isWon || msgsToDisplay.some(m => m.content.toLowerCase().includes('carrito') || m.content.toLowerCase().includes('compra'));
 
-                  return (
+                    return (
                     <div key={conv.id} className="relative flex group">
                       
                       {/* Vertical Line */}
@@ -271,36 +308,58 @@ export default function ClientProfile() {
                         
                         {/* Left Side: Metadata & Messages */}
                         <div className={`flex-1 p-5 ${hasPurchaseEvidence ? 'border-b md:border-b-0 md:border-r border-white/5' : ''}`}>
-                          <div className="flex justify-between items-start mb-3">
-                            <div className="flex flex-wrap gap-2 items-center">
-                              <span className={`text-xs font-bold px-2 py-1 rounded-md tracking-wide ${conv.isOutbound ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30' : 'bg-sales-cyan-500/20 text-sales-cyan-400 border border-cyan-500/30'}`}>
-                                {conv.isOutbound ? 'SALIENTE' : 'ENTRANTE'}
-                              </span>
-                              <span className="text-xs bg-white/10 border border-white/10 px-2 py-1 rounded-md text-gray-300">
-                                {conv.status}
-                              </span>
-                              {isWon && (
-                                <span className="flex items-center gap-1 text-xs font-bold text-emerald-400 bg-emerald-400/10 border border-emerald-400/20 px-2 py-1 rounded-md">
-                                  <CheckCircle className="w-3 h-3" /> VENTA CERRADA
+                          <div 
+                            className="cursor-pointer select-none group/header"
+                            onClick={() => toggleChatExpand(conv.id)}
+                          >
+                            <div className="flex justify-between items-start mb-3">
+                              <div className="flex flex-wrap gap-2 items-center">
+                                <span className={`text-xs font-bold px-2 py-1 rounded-md tracking-wide ${conv.isOutbound ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30' : 'bg-sales-cyan-500/20 text-sales-cyan-400 border border-cyan-500/30'}`}>
+                                  {conv.isOutbound ? 'SALIENTE' : 'ENTRANTE'}
                                 </span>
-                              )}
+                                <span className="text-xs bg-white/10 border border-white/10 px-2 py-1 rounded-md text-gray-300">
+                                  {conv.status}
+                                </span>
+                                {isWon && (
+                                  <span className="flex items-center gap-1 text-xs font-bold text-emerald-400 bg-emerald-400/10 border border-emerald-400/20 px-2 py-1 rounded-md">
+                                    <CheckCircle className="w-3 h-3" /> VENTA CERRADA
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-3">
+                                <span className="text-xs text-gray-500 flex items-center gap-1 whitespace-nowrap">
+                                  <Clock className="w-3 h-3" />
+                                  {new Intl.DateTimeFormat('es-MX', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(conv.createdAt))}
+                                </span>
+                                <button className="text-gray-400 group-hover/header:text-white transition-colors bg-white/5 p-1 rounded hover:bg-white/10">
+                                  {expandedChats[conv.id] ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                                </button>
+                              </div>
                             </div>
-                            <span className="text-xs text-gray-500 flex items-center gap-1 whitespace-nowrap ml-2">
-                              <Clock className="w-3 h-3" />
-                              {new Intl.DateTimeFormat('es-MX', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(conv.createdAt))}
-                            </span>
-                          </div>
-                          
-                          <div className="text-sm text-gray-300 flex items-center gap-1.5 mb-4">
-                            <User className="w-4 h-4 text-gray-500" />
-                            Atendido por: <span className="font-medium text-white">{conv.vendor?.name || 'Bot (IA)'}</span>
+                            
+                            <div className="text-sm text-gray-300 flex items-center gap-1.5 mb-2">
+                              <User className="w-4 h-4 text-gray-500" />
+                              Atendido por: <span className="font-medium text-white">{conv.vendor?.name || 'Bot (IA)'}</span>
+                            </div>
+
+                            {!expandedChats[conv.id] && msgsToDisplay.length > 0 && (() => {
+                              const snippetMsg = searchQuery.trim() ? msgsToDisplay[0] : msgsToDisplay[msgsToDisplay.length - 1];
+                              const prefix = searchQuery.trim() ? 'Coincidencia:' : 'Último mensaje:';
+                              return (
+                                <div className="text-sm text-gray-400 italic bg-black/20 p-3 rounded-lg border border-white/5 truncate">
+                                  <span className="font-medium text-gray-500 mr-2">{prefix}</span>
+                                  {snippetMsg.content || 'Mensaje con archivo adjunto'}
+                                </div>
+                              );
+                            })()}
                           </div>
                           
                           {/* Full Chat History */}
-                          <div className="space-y-3 mt-2 max-h-96 overflow-y-auto custom-scrollbar pr-2 pb-2">
-                            {msgsToDisplay.slice().sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt)).map(msg => {
-                              // Highlight search term if present
-                              const content = msg.content;
+                          {expandedChats[conv.id] && (
+                            <div className="space-y-3 mt-4 max-h-96 overflow-y-auto custom-scrollbar pr-2 pb-2">
+                              {msgsToDisplay.slice().sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt)).map(msg => {
+                                // Highlight search term if present
+                                const content = msg.content;
                               let displayContent = content;
                               if (searchQuery) {
                                 const escapedQuery = searchQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -349,6 +408,7 @@ export default function ClientProfile() {
                               <p className="text-sm text-gray-500 italic">No hay mensajes legibles.</p>
                             )}
                           </div>
+                          )}
                         </div>
 
                         {/* Right Side: Virtual Cart (Visual representation of purchase) */}
