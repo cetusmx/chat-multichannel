@@ -265,7 +265,7 @@ router.get('/conversations', authenticate, authorize('ADMIN', 'COORDINATOR', 'VE
         { status: { notIn: terminalStates } },
         { 
           status: { in: terminalStates },
-          updatedAt: { gte: twentyFourHoursAgo }
+          lastMessageAt: { gte: twentyFourHoursAgo }
         }
       ];
     }
