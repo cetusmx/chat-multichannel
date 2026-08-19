@@ -83,6 +83,15 @@ export default function ClientProfile() {
     }).filter(Boolean);
   }, [client, searchQuery]);
 
+  const totalMessageMatches = useMemo(() => {
+    if (!searchQuery.trim() || !filteredConversations) return 0;
+    const query = searchQuery.toLowerCase();
+    return filteredConversations.reduce((acc, conv) => {
+      const msgs = conv.messages || [];
+      return acc + msgs.filter(m => m.content.toLowerCase().includes(query)).length;
+    }, 0);
+  }, [filteredConversations, searchQuery]);
+
   if (isLoading) {
     return (
       <div className="flex h-full items-center justify-center">
@@ -204,15 +213,20 @@ export default function ClientProfile() {
           
           {/* Search Bar */}
           <div className="p-6 pb-2 shrink-0">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+            <div className="relative flex items-center">
+              <Search className="absolute left-3 w-5 h-5 text-gray-400" />
               <input 
                 type="text" 
                 placeholder="Buscar en el historial de chats..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-black/20 border border-white/10 rounded-xl py-3 pl-10 pr-4 text-white placeholder-gray-500 focus:outline-none focus:border-sales-cyan-500 transition-colors shadow-inner"
+                className="w-full bg-black/20 border border-white/10 rounded-xl py-3 pl-10 pr-32 text-white placeholder-gray-500 focus:outline-none focus:border-sales-cyan-500 transition-colors shadow-inner"
               />
+              {searchQuery.trim() && (
+                <div className="absolute right-4 text-xs font-medium text-sales-cyan-400 bg-sales-cyan-950/50 px-2 py-1 rounded-md border border-sales-cyan-500/20">
+                  {totalMessageMatches} {totalMessageMatches === 1 ? 'coincidencia' : 'coincidencias'}
+                </div>
+              )}
             </div>
           </div>
 
