@@ -94,10 +94,7 @@ export default function ClientProfile() {
       if (matchesMeta || matchingMessages.length > 0) {
         return {
           ...conv,
-          // Show matching messages, or fallback to the most recent one if we only matched metadata
-          displayMessages: matchingMessages.length > 0 
-            ? matchingMessages 
-            : conv.messages?.slice(0, 1) || []
+          matchingMessages: matchingMessages
         };
       }
       return null;
@@ -304,7 +301,8 @@ export default function ClientProfile() {
             <div className="space-y-6">
               {filteredConversations.length > 0 ? (
                 filteredConversations.map((conv, idx) => {
-                  const msgsToDisplay = conv.displayMessages || conv.messages || [];
+                  const msgsToDisplay = conv.messages || [];
+                  const matchingMessages = conv.matchingMessages || [];
                   const isWon = conv.status === 'CLOSED_WON';
                   const hasPurchaseEvidence = isWon || msgsToDisplay.some(m => m.content.toLowerCase().includes('carrito') || m.content.toLowerCase().includes('compra'));
                   const isChatExpanded = expandedChats[conv.id] ?? Boolean(searchQuery.trim());
@@ -396,8 +394,8 @@ export default function ClientProfile() {
                               </div>
 
                               {!isChatExpanded && msgsToDisplay.length > 0 && (() => {
-                                const snippetMsg = searchQuery.trim() ? msgsToDisplay[0] : msgsToDisplay[msgsToDisplay.length - 1];
-                                const prefix = searchQuery.trim() ? 'Coincidencia:' : 'Último mensaje:';
+                                const snippetMsg = searchQuery.trim() && matchingMessages.length > 0 ? matchingMessages[0] : msgsToDisplay[msgsToDisplay.length - 1];
+                                const prefix = searchQuery.trim() && matchingMessages.length > 0 ? 'Coincidencia:' : 'Último mensaje:';
                                 return (
                                   <div className="text-[13px] text-gray-400 italic bg-black/20 p-2 px-3 rounded-lg border border-white/5 truncate mt-2">
                                     <span className="font-medium text-gray-500 mr-2">{prefix}</span>
