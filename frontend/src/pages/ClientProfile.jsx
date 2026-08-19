@@ -17,7 +17,8 @@ export default function ClientProfile() {
   const [isStartingChat, setIsStartingChat] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedChats, setExpandedChats] = useState({});
-  const [dateFilter, setDateFilter] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
 
   const toggleChatExpand = (chatId) => {
     setExpandedChats(prev => ({ ...prev, [chatId]: !prev[chatId] }));
@@ -58,18 +59,20 @@ export default function ClientProfile() {
     navigate('/chat', { state: { draftClient: client } });
   };
 
-  // Filter conversations and messages based on searchQuery and dateFilter
+  // Filter conversations and messages based on searchQuery and date range
   const filteredConversations = useMemo(() => {
     if (!client?.conversations) return [];
     
     let result = client.conversations;
 
-    if (dateFilter) {
+    if (startDate || endDate) {
       // Create local date string YYYY-MM-DD from the createdAt timestamp to match date picker
       result = result.filter(c => {
         const d = new Date(c.createdAt);
         const localDate = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
-        return localDate === dateFilter;
+        if (startDate && localDate < startDate) return false;
+        if (endDate && localDate > endDate) return false;
+        return true;
       });
     }
 
@@ -240,7 +243,7 @@ export default function ClientProfile() {
         <div className="flex-1 flex flex-col min-w-0 bg-transparent relative">
           
           {/* Search Bar and Filters */}
-          <div className="p-6 pb-2 shrink-0 flex gap-3">
+          <div className="p-6 pb-2 shrink-0 flex flex-col xl:flex-row gap-3">
             <div className="relative flex-1 flex items-center">
               <Search className="absolute left-3 w-5 h-5 text-gray-400" />
               <input 
@@ -250,28 +253,51 @@ export default function ClientProfile() {
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full bg-black/20 border border-white/10 rounded-xl py-3 pl-10 pr-32 text-white placeholder-gray-500 focus:outline-none focus:border-sales-cyan-500 transition-colors shadow-inner"
               />
+              {searchQuery && (
+                <button 
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-32 text-gray-400 hover:text-white transition-colors"
+                  title="Limpiar búsqueda"
+                >
+                  <XCircle className="w-5 h-5" />
+                </button>
+              )}
               {searchQuery.trim() && (
                 <div className="absolute right-4 text-xs font-medium text-sales-cyan-400 bg-sales-cyan-950/50 px-2 py-1 rounded-md border border-sales-cyan-500/20">
                   {totalMessageMatches} {totalMessageMatches === 1 ? 'coincidencia' : 'coincidencias'}
                 </div>
               )}
             </div>
-            <div className="relative w-40">
-              <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <input 
-                type="date"
-                value={dateFilter}
-                onChange={(e) => setDateFilter(e.target.value)}
-                className="w-full bg-black/20 border border-white/10 rounded-xl py-3 pl-9 pr-3 text-white placeholder-gray-500 focus:outline-none focus:border-sales-cyan-500 transition-colors shadow-inner [color-scheme:dark] text-sm"
-              />
-              {dateFilter && (
-                <button 
-                  onClick={() => setDateFilter('')}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white text-xs"
-                >
-                  ✕
-                </button>
-              )}
+            
+            <div className="flex gap-2">
+              <div className="relative w-36">
+                <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input 
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  className="w-full bg-black/20 border border-white/10 rounded-xl py-3 pl-9 pr-2 text-white placeholder-gray-500 focus:outline-none focus:border-sales-cyan-500 transition-colors shadow-inner [color-scheme:dark] text-sm"
+                  title="Fecha inicial"
+                />
+              </div>
+              <div className="relative w-36">
+                <input 
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  className="w-full bg-black/20 border border-white/10 rounded-xl py-3 pl-3 pr-8 text-white placeholder-gray-500 focus:outline-none focus:border-sales-cyan-500 transition-colors shadow-inner [color-scheme:dark] text-sm"
+                  title="Fecha final"
+                />
+                {(startDate || endDate) && (
+                  <button 
+                    onClick={() => { setStartDate(''); setEndDate(''); }}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white text-xs"
+                    title="Limpiar fechas"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 
@@ -283,6 +309,7 @@ export default function ClientProfile() {
                   const msgsToDisplay = conv.displayMessages || conv.messages || [];
                   const isWon = conv.status === 'CLOSED_WON';
                   const hasPurchaseEvidence = isWon || msgsToDisplay.some(m => m.content.toLowerCase().includes('carrito') || m.content.toLowerCase().includes('compra'));
+                  const isChatExpanded = expandedChats[conv.id] ?? Boolean(searchQuery.trim());
 
                   let statusLabel = conv.status;
                   let statusStyles = 'text-gray-300 bg-white/10 border-white/10';
@@ -341,7 +368,7 @@ export default function ClientProfile() {
                       <div className="flex-1 bg-white/5 hover:bg-white/[0.07] border border-white/10 rounded-2xl overflow-hidden transition-colors flex flex-col md:flex-row shadow-xl">
                         
                         {/* Left Side: Metadata & Messages */}
-                        <div className={`flex-1 p-5 ${expandedChats[conv.id] && hasPurchaseEvidence ? 'border-b md:border-b-0 md:border-r border-white/5' : ''}`}>
+                        <div className={`flex-1 p-5 ${isChatExpanded && hasPurchaseEvidence ? 'border-b md:border-b-0 md:border-r border-white/5' : ''}`}>
                           <div 
                             className="cursor-pointer select-none group/header flex justify-between items-center"
                             onClick={() => toggleChatExpand(conv.id)}
@@ -368,7 +395,7 @@ export default function ClientProfile() {
                                 </span>
                               </div>
 
-                              {!expandedChats[conv.id] && msgsToDisplay.length > 0 && (() => {
+                              {!isChatExpanded && msgsToDisplay.length > 0 && (() => {
                                 const snippetMsg = searchQuery.trim() ? msgsToDisplay[0] : msgsToDisplay[msgsToDisplay.length - 1];
                                 const prefix = searchQuery.trim() ? 'Coincidencia:' : 'Último mensaje:';
                                 return (
@@ -381,12 +408,12 @@ export default function ClientProfile() {
                             </div>
                             
                             <div className="shrink-0 flex items-center justify-center p-2 rounded-full bg-white/5 group-hover/header:bg-white/10 transition-colors">
-                              {expandedChats[conv.id] ? <ChevronUp className="w-6 h-6 text-gray-400 group-hover/header:text-white" /> : <ChevronDown className="w-6 h-6 text-gray-400 group-hover/header:text-white" />}
+                              {isChatExpanded ? <ChevronUp className="w-6 h-6 text-gray-400 group-hover/header:text-white" /> : <ChevronDown className="w-6 h-6 text-gray-400 group-hover/header:text-white" />}
                             </div>
                           </div>
 
                           {/* Full Chat History */}
-                          {expandedChats[conv.id] && (
+                          {isChatExpanded && (
                             <div className="space-y-3 mt-4 max-h-96 overflow-y-auto custom-scrollbar pr-2 pb-2">
                               {msgsToDisplay.slice().sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt)).map(msg => {
                                 // Highlight search term if present
@@ -443,7 +470,7 @@ export default function ClientProfile() {
                         </div>
 
                         {/* Right Side: Virtual Cart (Visual representation of purchase) */}
-                        {expandedChats[conv.id] && hasPurchaseEvidence && (
+                        {isChatExpanded && hasPurchaseEvidence && (
                           <div className="w-full md:w-64 bg-black/20 p-5 flex flex-col justify-center relative overflow-hidden">
                             {/* Decorative background element */}
                             <div className="absolute -right-8 -bottom-8 opacity-5">
