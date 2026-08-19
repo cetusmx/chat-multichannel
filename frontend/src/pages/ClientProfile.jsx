@@ -79,8 +79,6 @@ export default function ClientProfile() {
     if (!searchQuery.trim()) return result;
 
     const query = searchQuery.toLowerCase();
-    const escapedQuery = searchQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const regex = new RegExp(escapedQuery, 'gi');
     
     return result.map(conv => {
       // Filter messages that match the query
