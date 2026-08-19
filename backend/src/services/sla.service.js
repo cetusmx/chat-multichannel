@@ -31,7 +31,7 @@ class SlaService extends EventEmitter {
 
     const tenant = await prisma.tenant.findUnique({
       where: { id: tenantId },
-      select: { isSlaEnabled: true }
+      select: { isSlaEnabled: true, autoCloseInactiveHours: true }
     });
 
     const finalConfig = config || {
@@ -41,6 +41,7 @@ class SlaService extends EventEmitter {
     };
     
     finalConfig.isSlaEnabled = tenant ? tenant.isSlaEnabled : true;
+    finalConfig.autoCloseInactiveHours = tenant ? tenant.autoCloseInactiveHours : 48;
 
     while (this.configCache.size > 1000) {
       this.configCache.delete(this.configCache.keys().next().value);
@@ -60,7 +61,7 @@ class SlaService extends EventEmitter {
       throw new ApiError(400, 'Payload is empty or invalid', 'VALIDATION_ERROR');
     }
 
-    const { firstResponseMins, resolutionMins, isSlaEnabled } = data;
+    const { firstResponseMins, resolutionMins, isSlaEnabled, autoCloseInactiveHours } = data;
 
     if (firstResponseMins !== undefined && (!Number.isInteger(firstResponseMins) || firstResponseMins <= 0 || firstResponseMins > 10080)) {
       throw new ApiError(400, 'firstResponseMins must be an integer between 1 and 10080', 'VALIDATION_ERROR');
@@ -68,6 +69,10 @@ class SlaService extends EventEmitter {
 
     if (resolutionMins !== undefined && (!Number.isInteger(resolutionMins) || resolutionMins <= 0 || resolutionMins > 10080)) {
       throw new ApiError(400, 'resolutionMins must be an integer between 1 and 10080', 'VALIDATION_ERROR');
+    }
+
+    if (autoCloseInactiveHours !== undefined && (!Number.isInteger(autoCloseInactiveHours) || autoCloseInactiveHours < 1 || autoCloseInactiveHours > 720)) {
+      throw new ApiError(400, 'autoCloseInactiveHours must be an integer between 1 and 720 (30 days)', 'VALIDATION_ERROR');
     }
 
     let currentConfig = await prisma.slaConfig.findUnique({ where: { tenantId } });
@@ -95,10 +100,14 @@ class SlaService extends EventEmitter {
       }
     });
 
-    if (isSlaEnabled !== undefined) {
+    if (isSlaEnabled !== undefined || autoCloseInactiveHours !== undefined) {
+      const updateData = {};
+      if (isSlaEnabled !== undefined) updateData.isSlaEnabled = Boolean(isSlaEnabled);
+      if (autoCloseInactiveHours !== undefined) updateData.autoCloseInactiveHours = Number(autoCloseInactiveHours);
+      
       await prisma.tenant.update({
         where: { id: tenantId },
-        data: { isSlaEnabled: Boolean(isSlaEnabled) }
+        data: updateData
       });
     }
 

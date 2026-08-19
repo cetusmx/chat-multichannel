@@ -69,6 +69,32 @@ async function runSlaCleanup() {
         });
         
         for (const conv of updatedConversations) {
+          // Clean up cartData items for auto-closed clients
+          if (conv.client && conv.client.cartData) {
+            let newCartData = {};
+            if (typeof conv.client.cartData === 'object' && !Array.isArray(conv.client.cartData)) {
+              newCartData = { ...conv.client.cartData };
+              delete newCartData.items;
+            } else {
+              newCartData = [];
+            }
+            
+            await prisma.$transaction([
+              prisma.conversation.update({
+                where: { id: conv.id },
+                data: { cartSnapshot: conv.client.cartData }
+              }),
+              prisma.client.update({
+                where: { id: conv.clientId },
+                data: { cartData: newCartData }
+              })
+            ]);
+            
+            // Sync the local object so socket broadcast has the latest state
+            conv.cartSnapshot = conv.client.cartData;
+            conv.client.cartData = newCartData;
+          }
+
           try {
             socket.getIo().of('/chat').to(`tenant_${conv.tenantId}_coordinators`).emit('conversation_updated', conv);
             if (conv.vendorId) {

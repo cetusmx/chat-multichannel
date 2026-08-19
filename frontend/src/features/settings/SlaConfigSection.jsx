@@ -4,6 +4,7 @@ import { getSlaConfig, updateSlaConfig } from '../../services/api.js';
 export default function SlaConfigSection() {
   const [firstResponseMins, setFirstResponseMins] = useState(15);
   const [resolutionMins, setResolutionMins] = useState(60);
+  const [autoCloseInactiveHours, setAutoCloseInactiveHours] = useState(48);
   const [isSlaEnabled, setIsSlaEnabled] = useState(true);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -18,6 +19,7 @@ export default function SlaConfigSection() {
           if (config.firstResponseMins !== undefined) setFirstResponseMins(config.firstResponseMins);
           if (config.resolutionMins !== undefined) setResolutionMins(config.resolutionMins);
           if (config.isSlaEnabled !== undefined) setIsSlaEnabled(config.isSlaEnabled);
+          if (config.autoCloseInactiveHours !== undefined) setAutoCloseInactiveHours(config.autoCloseInactiveHours);
         }
       } catch (err) {
         setError(err.message || 'Error al cargar la configuración SLA');
@@ -38,6 +40,7 @@ export default function SlaConfigSection() {
       await updateSlaConfig({
         firstResponseMins: Number(firstResponseMins),
         resolutionMins: Number(resolutionMins),
+        autoCloseInactiveHours: Number(autoCloseInactiveHours),
         isSlaEnabled: Boolean(isSlaEnabled)
       });
       setSuccess('Configuración SLA guardada exitosamente.');
@@ -128,6 +131,25 @@ export default function SlaConfigSection() {
           />
           <p className="mt-1 text-xs text-sales-slate-400">
             Tiempo máximo estimado para cerrar la conversación.
+          </p>
+        </div>
+
+        <div>
+          <label htmlFor="autoCloseInactiveHours" className={`mb-2 block text-sm font-medium ${!isSlaEnabled ? 'text-sales-slate-500' : 'text-sales-slate-300'}`}>
+            Auto-Cierre por Inactividad (horas)
+          </label>
+          <input
+            id="autoCloseInactiveHours"
+            type="number"
+            min="1"
+            disabled={!isSlaEnabled}
+            value={autoCloseInactiveHours}
+            onChange={(e) => setAutoCloseInactiveHours(e.target.value)}
+            className={`w-full rounded-md border border-slate-700 bg-slate-800 px-3 py-2 ${!isSlaEnabled ? 'opacity-50 cursor-not-allowed' : 'text-sales-slate-200 focus:border-sales-coral focus:outline-none'}`}
+            required={isSlaEnabled}
+          />
+          <p className="mt-1 text-xs text-sales-slate-400">
+            Horas límite para mantener un chat en "Esperando al Cliente" antes de cerrarlo automáticamente.
           </p>
         </div>
 
