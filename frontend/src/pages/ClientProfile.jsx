@@ -4,7 +4,7 @@ import { get, post } from '../services/api';
 import { 
   ChevronLeft, MessageSquare, ShoppingCart, User, 
   Phone, CheckCircle, ArrowRight, Clock, Search,
-  Paperclip, Image as ImageIcon, ChevronDown, ChevronUp, Calendar
+  Paperclip, Image as ImageIcon, ChevronDown, ChevronUp, Calendar, XCircle
 } from 'lucide-react';
 import SecureMedia from '../components/SecureMedia';
 
@@ -284,7 +284,41 @@ export default function ClientProfile() {
                   const isWon = conv.status === 'CLOSED_WON';
                   const hasPurchaseEvidence = isWon || msgsToDisplay.some(m => m.content.toLowerCase().includes('carrito') || m.content.toLowerCase().includes('compra'));
 
-                    return (
+                  let statusLabel = conv.status;
+                  let statusStyles = 'text-gray-300 bg-white/10 border-white/10';
+                  let StatusIcon = null;
+
+                  switch(conv.status) {
+                    case 'CLOSED_WON':
+                      statusLabel = 'VENTA CERRADA';
+                      statusStyles = 'text-emerald-400 bg-emerald-400/10 border-emerald-400/20';
+                      StatusIcon = CheckCircle;
+                      break;
+                    case 'DISCARDED':
+                      statusLabel = 'DESCARTADO';
+                      statusStyles = 'text-rose-400 bg-rose-400/10 border-rose-400/20';
+                      StatusIcon = XCircle;
+                      break;
+                    case 'CLOSED':
+                    case 'CLOSED_INACTIVE':
+                      statusLabel = 'CERRADO';
+                      statusStyles = 'text-gray-400 bg-gray-400/10 border-gray-400/20';
+                      break;
+                    case 'ON_HOLD':
+                      statusLabel = 'EN SEGUIMIENTO';
+                      statusStyles = 'text-purple-400 bg-purple-400/10 border-purple-400/20';
+                      break;
+                    case 'WAITING_CUSTOMER':
+                      statusLabel = 'ESPERANDO CLIENTE';
+                      statusStyles = 'text-yellow-400 bg-yellow-400/10 border-yellow-400/20';
+                      break;
+                    case 'ACTIVE':
+                      statusLabel = 'ACTIVO';
+                      statusStyles = 'text-blue-400 bg-blue-400/10 border-blue-400/20';
+                      break;
+                  }
+
+                  return (
                     <div key={conv.id} className="relative flex group">
                       
                       {/* Vertical Line */}
@@ -307,53 +341,50 @@ export default function ClientProfile() {
                       <div className="flex-1 bg-white/5 hover:bg-white/[0.07] border border-white/10 rounded-2xl overflow-hidden transition-colors flex flex-col md:flex-row shadow-xl">
                         
                         {/* Left Side: Metadata & Messages */}
-                        <div className={`flex-1 p-5 ${hasPurchaseEvidence ? 'border-b md:border-b-0 md:border-r border-white/5' : ''}`}>
+                        <div className={`flex-1 p-5 ${expandedChats[conv.id] && hasPurchaseEvidence ? 'border-b md:border-b-0 md:border-r border-white/5' : ''}`}>
                           <div 
-                            className="cursor-pointer select-none group/header"
+                            className="cursor-pointer select-none group/header flex justify-between items-center"
                             onClick={() => toggleChatExpand(conv.id)}
                           >
-                            <div className="flex justify-between items-start mb-3">
-                              <div className="flex flex-wrap gap-2 items-center">
+                            <div className="flex-1 pr-4">
+                              <div className="flex flex-wrap gap-2 items-center mb-3">
                                 <span className={`text-xs font-bold px-2 py-1 rounded-md tracking-wide ${conv.isOutbound ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30' : 'bg-sales-cyan-500/20 text-sales-cyan-400 border border-cyan-500/30'}`}>
                                   {conv.isOutbound ? 'SALIENTE' : 'ENTRANTE'}
                                 </span>
-                                <span className="text-xs bg-white/10 border border-white/10 px-2 py-1 rounded-md text-gray-300">
-                                  {conv.status}
+                                <span className={`flex items-center gap-1 text-xs font-bold px-2 py-1 rounded-md border ${statusStyles}`}>
+                                  {StatusIcon && <StatusIcon className="w-3 h-3" />}
+                                  {statusLabel}
                                 </span>
-                                {isWon && (
-                                  <span className="flex items-center gap-1 text-xs font-bold text-emerald-400 bg-emerald-400/10 border border-emerald-400/20 px-2 py-1 rounded-md">
-                                    <CheckCircle className="w-3 h-3" /> VENTA CERRADA
-                                  </span>
-                                )}
                               </div>
-                              <div className="flex items-center gap-3">
-                                <span className="text-xs text-gray-500 flex items-center gap-1 whitespace-nowrap">
+                              
+                              <div className="text-sm text-gray-300 flex flex-wrap items-center gap-3 mb-2">
+                                <span className="flex items-center gap-1.5">
+                                  <User className="w-4 h-4 text-gray-500" />
+                                  <span className="font-medium text-white">{conv.vendor?.name || 'Bot (IA)'}</span>
+                                </span>
+                                <span className="text-xs text-gray-500 flex items-center gap-1">
                                   <Clock className="w-3 h-3" />
                                   {new Intl.DateTimeFormat('es-MX', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(conv.createdAt))}
                                 </span>
-                                <button className="text-gray-400 group-hover/header:text-white transition-colors bg-white/5 p-1 rounded hover:bg-white/10">
-                                  {expandedChats[conv.id] ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                                </button>
                               </div>
+
+                              {!expandedChats[conv.id] && msgsToDisplay.length > 0 && (() => {
+                                const snippetMsg = searchQuery.trim() ? msgsToDisplay[0] : msgsToDisplay[msgsToDisplay.length - 1];
+                                const prefix = searchQuery.trim() ? 'Coincidencia:' : 'Último mensaje:';
+                                return (
+                                  <div className="text-sm text-gray-400 italic bg-black/20 p-3 rounded-lg border border-white/5 truncate mt-2">
+                                    <span className="font-medium text-gray-500 mr-2">{prefix}</span>
+                                    {snippetMsg.content || 'Mensaje con archivo adjunto'}
+                                  </div>
+                                );
+                              })()}
                             </div>
                             
-                            <div className="text-sm text-gray-300 flex items-center gap-1.5 mb-2">
-                              <User className="w-4 h-4 text-gray-500" />
-                              Atendido por: <span className="font-medium text-white">{conv.vendor?.name || 'Bot (IA)'}</span>
+                            <div className="shrink-0 flex items-center justify-center p-2 rounded-full bg-white/5 group-hover/header:bg-white/10 transition-colors">
+                              {expandedChats[conv.id] ? <ChevronUp className="w-6 h-6 text-gray-400 group-hover/header:text-white" /> : <ChevronDown className="w-6 h-6 text-gray-400 group-hover/header:text-white" />}
                             </div>
-
-                            {!expandedChats[conv.id] && msgsToDisplay.length > 0 && (() => {
-                              const snippetMsg = searchQuery.trim() ? msgsToDisplay[0] : msgsToDisplay[msgsToDisplay.length - 1];
-                              const prefix = searchQuery.trim() ? 'Coincidencia:' : 'Último mensaje:';
-                              return (
-                                <div className="text-sm text-gray-400 italic bg-black/20 p-3 rounded-lg border border-white/5 truncate">
-                                  <span className="font-medium text-gray-500 mr-2">{prefix}</span>
-                                  {snippetMsg.content || 'Mensaje con archivo adjunto'}
-                                </div>
-                              );
-                            })()}
                           </div>
-                          
+
                           {/* Full Chat History */}
                           {expandedChats[conv.id] && (
                             <div className="space-y-3 mt-4 max-h-96 overflow-y-auto custom-scrollbar pr-2 pb-2">
@@ -412,7 +443,7 @@ export default function ClientProfile() {
                         </div>
 
                         {/* Right Side: Virtual Cart (Visual representation of purchase) */}
-                        {hasPurchaseEvidence && (
+                        {expandedChats[conv.id] && hasPurchaseEvidence && (
                           <div className="w-full md:w-64 bg-black/20 p-5 flex flex-col justify-center relative overflow-hidden">
                             {/* Decorative background element */}
                             <div className="absolute -right-8 -bottom-8 opacity-5">
