@@ -364,12 +364,12 @@ export default function ClientProfile() {
                       <div className="flex-1 bg-white/5 hover:bg-white/[0.07] border border-white/10 rounded-2xl overflow-hidden transition-colors flex flex-col md:flex-row shadow-xl">
                         
                         {/* Left Side: Metadata & Messages */}
-                        <div className={`flex-1 p-3 px-4 ${isChatExpanded && hasPurchaseEvidence ? 'border-b md:border-b-0 md:border-r border-white/5' : ''}`}>
+                        <div className={`flex-1 min-w-0 p-3 px-4 ${isChatExpanded && hasPurchaseEvidence ? 'border-b md:border-b-0 md:border-r border-white/5' : ''}`}>
                           <div 
                             className="cursor-pointer select-none group/header flex justify-between items-center"
                             onClick={() => toggleChatExpand(conv.id)}
                           >
-                            <div className="flex-1 pr-4">
+                            <div className="flex-1 min-w-0 pr-4">
                               <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
                                 <div className="flex gap-2 items-center">
                                   <span className={`text-[10px] font-bold px-2 py-0.5 rounded tracking-wide ${conv.isOutbound ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30' : 'bg-sales-cyan-500/20 text-sales-cyan-400 border border-cyan-500/30'}`}>
