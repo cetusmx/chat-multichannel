@@ -85,10 +85,18 @@ export default function ClientProfile() {
 
   const totalMessageMatches = useMemo(() => {
     if (!searchQuery.trim() || !filteredConversations) return 0;
-    const query = searchQuery.toLowerCase();
+    
+    // Escape special characters to prevent regex errors
+    const escapedQuery = searchQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(escapedQuery, 'gi');
+    
     return filteredConversations.reduce((acc, conv) => {
       const msgs = conv.messages || [];
-      return acc + msgs.filter(m => m.content.toLowerCase().includes(query)).length;
+      const matchesInConv = msgs.reduce((sum, m) => {
+        const found = m.content.match(regex);
+        return sum + (found ? found.length : 0);
+      }, 0);
+      return acc + matchesInConv;
     }, 0);
   }, [filteredConversations, searchQuery]);
 
@@ -295,7 +303,8 @@ export default function ClientProfile() {
                               const content = msg.content;
                               let displayContent = content;
                               if (searchQuery) {
-                                const parts = content.split(new RegExp(`(${searchQuery})`, 'gi'));
+                                const escapedQuery = searchQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                                const parts = content.split(new RegExp(`(${escapedQuery})`, 'gi'));
                                 displayContent = parts.map((part, i) => 
                                   part.toLowerCase() === searchQuery.toLowerCase() ? 
                                   <mark key={i} className="bg-yellow-300 text-black rounded px-0.5">{part}</mark> : part
