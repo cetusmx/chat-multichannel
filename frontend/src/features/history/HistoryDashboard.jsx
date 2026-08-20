@@ -331,10 +331,6 @@ export default function HistoryDashboard() {
                   const isClient = msg.senderType === 'CLIENT';
                   const textContent = msg.content || msg.text || '';
 
-                  if (localSearch && !textContent.toLowerCase().includes(localSearch.toLowerCase())) {
-                    return null;
-                  }
-
                   let senderLabel = 'Asesor';
                   if (isClient) senderLabel = 'Cliente';
                   else if (msg.senderType === 'IA') senderLabel = '🤖 Bot (IA)';
@@ -342,12 +338,16 @@ export default function HistoryDashboard() {
                   else senderLabel = selectedChat?.vendor?.name ? `👨‍💼 ${selectedChat.vendor.name}` : '👨‍💼 Asesor';
 
                   return (
-                    <div key={msg.id || msg._id || idx} className={`flex flex-col max-w-[85%] ${!isClient ? 'ml-auto items-end' : 'mr-auto items-start'}`}>
-                      <span className="text-[10px] text-slate-400 mb-1 px-1">
+                    <div key={msg.id || msg._id || idx} className={`flex flex-col ${isClient ? 'items-start' : 'items-end'}`}>
+                      <span className="text-[10px] text-gray-500 mb-1 ml-1 mr-1">
                         {senderLabel} • {new Date(msg.createdAt || Date.now()).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
                       </span>
-                      <div className={`px-4 py-2 rounded-2xl ${!isClient ? 'bg-blue-600 text-white rounded-tr-sm' : 'bg-slate-800 text-slate-200 rounded-tl-sm'} shadow-sm`}>
-                        <p className="text-sm whitespace-pre-wrap break-words">
+                      <div className={`text-sm p-3 rounded-2xl max-w-[85%] border relative ${
+                        isClient 
+                          ? 'bg-black/30 border-white/5 rounded-tl-sm' 
+                          : 'bg-sales-cyan-900/20 border-sales-cyan-500/20 rounded-tr-sm text-sales-cyan-50'
+                      }`}>
+                        <p className="whitespace-pre-wrap break-words">
                           {highlightText(textContent, localSearch)}
                         </p>
                       </div>
