@@ -20,11 +20,27 @@ router.get('/', authenticate, async (req, res, next) => {
     };
 
     if (search && typeof search === 'string') {
+      const formattedQuery = search.trim().split(/\s+/).filter(Boolean).join(' | ');
+      
       where.OR = [
         { name: { contains: search, mode: 'insensitive' } },
         { phoneNumber: { contains: search } },
-        { cartData: { string_contains: search } }
+        { cartData: { path: ['rfc'], string_contains: search } }
       ];
+
+      if (formattedQuery) {
+        where.OR.push({
+          conversations: {
+            some: {
+              messages: {
+                some: {
+                  content: { search: formattedQuery }
+                }
+              }
+            }
+          }
+        });
+      }
     }
 
     const [clients, total] = await Promise.all([
