@@ -18,6 +18,28 @@ export default function HistoryDashboard() {
   const [selectedChat, setSelectedChat] = useState(null);
   const [isPanelOpen, setIsPanelOpen] = useState(false);
   const [localSearch, setLocalSearch] = useState('');
+  
+  const chatContainerRef = React.useRef(null);
+
+  const matchCount = React.useMemo(() => {
+    if (!localSearch || !selectedChat?.messages) return 0;
+    const term = localSearch.toLowerCase();
+    return selectedChat.messages.reduce((count, msg) => {
+      const text = (msg.content || msg.text || '').toLowerCase();
+      return count + (text.split(term).length - 1);
+    }, 0);
+  }, [localSearch, selectedChat]);
+
+  useEffect(() => {
+    if (localSearch && chatContainerRef.current) {
+      setTimeout(() => {
+        const firstMark = chatContainerRef.current.querySelector('mark');
+        if (firstMark) {
+          firstMark.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 50);
+    }
+  }, [localSearch, selectedChat]);
 
   const limit = 15;
 
@@ -310,22 +332,27 @@ export default function HistoryDashboard() {
                 <input
                   type="text"
                   placeholder="Buscar en esta conversación..."
-                  className="w-full bg-slate-900 border border-slate-700 rounded-full pl-10 pr-10 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                  className="w-full bg-slate-900 border border-slate-700 rounded-full pl-10 pr-[100px] py-1.5 text-sm text-slate-200 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                   value={localSearch}
                   onChange={e => setLocalSearch(e.target.value)}
                 />
                 {localSearch && (
-                  <button
-                    onClick={() => setLocalSearch('')}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"
-                  >
-                    <XCircle size={14} />
-                  </button>
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
+                    <span className="text-[10px] text-slate-400 font-medium">
+                      {matchCount} {matchCount === 1 ? 'coincidencia' : 'coincidencias'}
+                    </span>
+                    <button
+                      onClick={() => setLocalSearch('')}
+                      className="text-slate-500 hover:text-slate-300 transition-colors"
+                    >
+                      <XCircle size={16} />
+                    </button>
+                  </div>
                 )}
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-950">
+            <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-900 custom-scrollbar">
               {selectedChat?.messages?.length > 0 ? (
                 selectedChat.messages.map((msg, idx) => {
                   const isClient = msg.senderType === 'CLIENT';
