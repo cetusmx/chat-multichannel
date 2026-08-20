@@ -11,12 +11,10 @@ export default function ClientDirectory() {
   
   // Filtering and Pagination State
   const [page, setPage] = useState(1);
-  const [rfcInput, setRfcInput] = useState('');
-  const [phoneInput, setPhoneInput] = useState('');
+  const [searchInput, setSearchInput] = useState('');
   
   // Debounced filters
-  const debouncedRfc = useDebounce(rfcInput, 500);
-  const debouncedPhone = useDebounce(phoneInput, 500);
+  const debouncedSearch = useDebounce(searchInput, 500);
 
   // Async states
   const [isLoading, setIsLoading] = useState(true);
@@ -26,7 +24,7 @@ export default function ClientDirectory() {
   useEffect(() => {
     // Reset page to 1 whenever filters change, except on initial render
     setPage(1);
-  }, [debouncedRfc, debouncedPhone]);
+  }, [debouncedSearch]);
 
   useEffect(() => {
     const abortController = new AbortController();
@@ -40,8 +38,7 @@ export default function ClientDirectory() {
           page,
           limit: 10,
         });
-        if (debouncedRfc) params.append('rfc', debouncedRfc);
-        if (debouncedPhone) params.append('phoneNumber', debouncedPhone);
+        if (debouncedSearch) params.append('search', debouncedSearch);
 
         const response = await get(`/clients?${params.toString()}`, {
           signal: abortController.signal,
@@ -69,17 +66,16 @@ export default function ClientDirectory() {
     return () => {
       abortController.abort();
     };
-  }, [page, debouncedRfc, debouncedPhone]);
+  }, [page, debouncedSearch]);
 
   // Derived states
   const isInitialLoad = isLoading && clients.length === 0;
   const isRefetching = isLoading && clients.length > 0;
   const isEmpty = !isLoading && !isError && clients.length === 0;
-  const hasActiveFilters = Boolean(debouncedRfc || debouncedPhone);
+  const hasActiveFilters = Boolean(debouncedSearch);
 
   const clearFilters = () => {
-    setRfcInput('');
-    setPhoneInput('');
+    setSearchInput('');
     setPage(1);
   };
 
@@ -115,22 +111,10 @@ export default function ClientDirectory() {
             </div>
             <input
               type="text"
-              placeholder="Buscar por RFC..."
-              className="pl-10 pr-4 py-2 w-full sm:w-64 rounded-xl bg-white/10 backdrop-blur-md border border-white/20 focus:outline-none focus:ring-2 focus:ring-orange-400 text-white placeholder-gray-400 transition-all"
-              value={rfcInput}
-              onChange={(e) => setRfcInput(e.target.value)}
-            />
-          </div>
-          <div className="relative">
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <Search className="h-4 w-4 text-gray-400" />
-            </div>
-            <input
-              type="text"
-              placeholder="Buscar por Teléfono..."
-              className="pl-10 pr-4 py-2 w-full sm:w-64 rounded-xl bg-white/10 backdrop-blur-md border border-white/20 focus:outline-none focus:ring-2 focus:ring-orange-400 text-white placeholder-gray-400 transition-all"
-              value={phoneInput}
-              onChange={(e) => setPhoneInput(e.target.value)}
+              placeholder="Buscar por Nombre, Teléfono o RFC..."
+              className="pl-10 pr-4 py-2 w-full sm:w-80 rounded-xl bg-white/10 backdrop-blur-md border border-white/20 focus:outline-none focus:ring-2 focus:ring-orange-400 text-white placeholder-gray-400 transition-all"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
             />
           </div>
         </div>

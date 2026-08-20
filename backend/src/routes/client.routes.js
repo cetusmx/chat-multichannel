@@ -13,18 +13,18 @@ router.get('/', authenticate, async (req, res, next) => {
     const limit = Math.min(parseInt(req.query.limit, 10) || 10, 100);
     const skip = (page - 1) * limit;
 
-    const { phoneNumber, rfc } = req.query;
+    const { search } = req.query;
 
     const where = {
       tenantId: req.user.tenantId,
     };
 
-    if (phoneNumber && typeof phoneNumber === 'string') {
-      where.phoneNumber = { contains: phoneNumber };
-    }
-
-    if (rfc && typeof rfc === 'string') {
-      where.cartData = { path: ['rfc'], string_contains: rfc };
+    if (search && typeof search === 'string') {
+      where.OR = [
+        { name: { contains: search, mode: 'insensitive' } },
+        { phoneNumber: { contains: search } },
+        { cartData: { string_contains: search } }
+      ];
     }
 
     const [clients, total] = await Promise.all([
