@@ -15,7 +15,7 @@ import ProfileScreen from './src/screens/ProfileScreen';
 
 // Shared Stores Config
 import useAuthStore, { configureAuthStorage } from '@shared/stores/useAuthStore';
-import { configureChatStore } from '@shared/stores/useChatStore';
+import useChatStore, { configureChatStore } from '@shared/stores/useChatStore';
 import * as keychainStorage from './src/utils/keychainStorage';
 import * as api from './src/services/api';
 import Config from 'react-native-config';
@@ -54,6 +54,18 @@ export default function App() {
     }
     if (token) {
       registerFcmToken().catch(err => console.error('[PUSH] Failed to register token', err));
+      
+      // Conectar sockets en tiempo real cuando hay sesión
+      const initializeSocket = useChatStore.getState().initializeSocket;
+      if (initializeSocket) {
+        initializeSocket();
+      }
+    } else {
+      // Desconectar al cerrar sesión
+      const disconnectSocket = useChatStore.getState().disconnectSocket;
+      if (disconnectSocket) {
+        disconnectSocket();
+      }
     }
   }, [token]);
 
