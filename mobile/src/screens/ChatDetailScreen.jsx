@@ -78,30 +78,19 @@ export default function ChatDetailScreen() {
 
   const fetchMessages = async (cursor = null) => {
     if (!chatId) {
-      setLoading(false);
-      return;
-    }
+    if (isLoadingMoreRef.current) return;
     try {
-      if (!cursor) {
-        setLoading(true);
-      } else {
+      if (cursor) {
         setLoadingMore(true);
         isLoadingMoreRef.current = true;
+      } else {
+        setLoading(true);
       }
-
-      let url = `/chat/${encodeURIComponent(chatId)}/messages?limit=50`;
-      if (cursor) url += `&cursor=${encodeURIComponent(cursor)}`;
-
-      const res = await get(url);
+      const res = await get(`/chat/${encodeURIComponent(chatId)}/messages${cursor ? `?cursor=${cursor}` : ''}`);
       const data = await res.json();
 
       if (res.ok && data.data) {
-        if (!Array.isArray(data.data)) {
-           Toast.show({ type: 'error', text1: 'Error', text2: 'Datos corruptos del servidor' });
-           return;
-        }
         const payload = data.data;
-        
         setMessages((prev) => {
           if (!cursor) return payload.filter(item => item && item.id);
           const prevIds = new Set(prev.map(m => m.id));
@@ -110,12 +99,9 @@ export default function ChatDetailScreen() {
         });
         setHasMore(data.meta?.hasMore || false);
         setNextCursor(data.meta?.nextCursor || null);
-      } else {
-        Toast.show({ type: 'error', text1: 'Error', text2: 'No se pudieron cargar los mensajes' });
       }
     } catch (error) {
       console.error('Failed to fetch messages:', error);
-      Toast.show({ type: 'error', text1: 'Error de red', text2: 'Comprueba tu conexión' });
     } finally {
       setLoading(false);
       setLoadingMore(false);
@@ -125,156 +111,88 @@ export default function ChatDetailScreen() {
 
   useEffect(() => {
     fetchMessages();
+    return () => { mounted.current = false; };
   }, [chatId]);
-
-  const handleEndReached = () => {
-    if (hasMore && !isLoadingMoreRef.current && nextCursor) {
-      fetchMessages(nextCursor);
-    }
-  };
 
   const handleSendText = async (text) => {
     if (!chatId || !text.trim()) return;
-    const tempId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+    const tempId = `temp-${Date.now()}`;
     try {
-      // Optimistic UI
+      const isWhisper = text.startsWith('/whisper ');
+      const content = isWhisper ? text.replace(/^\/whisper\s*/, '') : text;
+      
       const tempMsg = {
         id: tempId,
-        content: text,
+        content: content,
         senderType: 'VENDOR',
         status: 'sending',
+        metadata: isWhisper ? { isWhisper: true } : {},
         createdAt: new Date().toISOString()
       };
-      
       setMessages(prev => [tempMsg, ...prev]);
 
       const res = await post(`/chat/${encodeURIComponent(chatId)}/messages`, { content: text });
       const data = await res.json();
-
+      
       if (res.ok && data.data) {
-        // Update temp to real, or remove if socket beat us to it
-        setMessages(prev => {
-          if (prev.some(m => m.id === data.data.id)) {
-            return prev.filter(m => m.id !== tempId);
-          }
-          return prev.map(m => m.id === tempId ? data.data : m);
-        });
+        setMessages(prev => prev.map(m => m.id === tempId ? data.data : m));
       } else {
-        // Handle error, remove temp
         setMessages(prev => prev.filter(m => m.id !== tempId));
-        Toast.show({ type: 'error', text1: 'Error', text2: 'No se pudo enviar el mensaje' });
-        throw new Error('Backend rejection');
       }
     } catch (error) {
-      console.error('Send message error', error);
-      setMessages(prev => prev.filter(m => m.id !== tempId)); // Ensure it's removed on crash
-      Toast.show({ type: 'error', text1: 'Error', text2: 'Error de red al enviar mensaje' });
-      throw error;
+      setMessages(prev => prev.filter(m => m.id !== tempId));
     }
   };
 
-  const handleSendMedia = async (file, caption = '') => {
-    if (!chatId || !file?.uri) return;
-    const tempId = `temp-media-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
-    try {
-      // Optimistic UI for Media
-      const tempMsg = {
-        id: tempId,
-        content: caption ? `[MEDIA] ${caption}` : '[MEDIA]',
-        senderType: 'VENDOR',
-        status: 'sending',
-        createdAt: new Date().toISOString(),
-        attachments: [{ type: 'IMAGE', url: file.uri }] // Local preview
-      };
-      setMessages(prev => [tempMsg, ...prev]);
-
+  const handlePickImage = async () => {
+    setActionMenuVisible(false);
+    const result = await launchImageLibrary({ mediaType: 'photo', quality: 0.8 });
+    if (!result.didCancel && result.assets?.[0]) {
+      const asset = result.assets[0];
       const formData = new FormData();
       formData.append('file', {
-        uri: file.uri,
-        type: file.type || 'image/jpeg',
-        name: file.fileName || `upload-${Date.now()}.jpg`
+        uri: asset.uri,
+        type: asset.type || 'image/jpeg',
+        name: asset.fileName || `upload.jpg`
       });
-      if (caption) {
-        formData.append('caption', caption);
+      try {
+        await postFormData(`/chat/${encodeURIComponent(chatId)}/media`, formData);
+      } catch (e) {
+        Toast.show({ type: 'error', text1: 'Error al subir imagen' });
       }
-
-      const res = await postFormData(`/chat/${encodeURIComponent(chatId)}/media`, formData);
-      const data = await res.json();
-
-      if (res.ok && data.data) {
-        // Update temp to real, or remove if socket beat us to it
-        setMessages(prev => {
-          if (prev.some(m => m.id === data.data.id)) {
-            return prev.filter(m => m.id !== tempId);
-          }
-          return prev.map(m => m.id === tempId ? data.data : m);
-        });
-      } else {
-        setMessages(prev => prev.filter(m => m.id !== tempId));
-        Toast.show({ type: 'error', text1: 'Error', text2: 'No se pudo subir la imagen' });
-        throw new Error('Backend rejection');
-      }
-    } catch (error) {
-      console.error('Send media error', error);
-      setMessages(prev => prev.filter(m => m.id !== tempId));
-      Toast.show({ type: 'error', text1: 'Error', text2: 'Error de red al subir imagen' });
-      throw error;
     }
   };
 
-  const handleRequestAi = async (prompt) => {
-    if (!chatId) return;
-    const cleanPrompt = prompt ? prompt.trim() : '';
-    const controller = new AbortController();
-    aiAbortControllerRef.current = controller;
-    const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 seconds
+  const handleRequestAi = async () => {
+    setActionMenuVisible(false);
+    Toast.show({ type: 'info', text1: 'Sugerencia AI', text2: 'Analizando conversacin...' });
+    // AI Mock Logic for MVP
+    setTimeout(() => {
+      if (chatInputRef.current) {
+        chatInputRef.current.injectText("¡Hola! Claro que sí, ¿en qué más te puedo ayudar?");
+      }
+    }, 1500);
+  };
+
+  const updateChatStatus = async (newStatus) => {
+    setStatusMenuVisible(false);
     try {
-      setIsAiLoading(true);
-      const res = await post(`/conversations/${encodeURIComponent(chatId)}/ai-assist`, { prompt: cleanPrompt }, { signal: controller.signal });
-      clearTimeout(timeoutId);
-      const data = await res.json();
-
-      if (res.ok && data.draft != null) {
-        if (!mounted.current) return;
-        if (chatInputRef.current && data.draft) {
-          chatInputRef.current.injectText(data.draft);
-        } else if (!data.draft) {
-          Toast.show({ type: 'info', text1: 'IA', text2: 'No se generó ninguna sugerencia' });
-        }
-      } else {
-        if (!mounted.current) return;
-        const errMessage = typeof data.error === 'string' ? data.error : (data.error?.message || 'No se pudo obtener sugerencia');
-        Toast.show({ type: 'error', text1: 'Error AI', text2: errMessage });
+      const res = await post(`/chat/${encodeURIComponent(chatId)}/status`, { status: newStatus });
+      if (res.ok) {
+        setChat(chatId, { ...chat, status: newStatus });
+        Toast.show({ type: 'success', text1: 'Estado actualizado' });
       }
-    } catch (error) {
-      clearTimeout(timeoutId);
-      if (!mounted.current) return;
-      console.error('AI Request Error:', error);
-      const isTimeout = error.name === 'AbortError';
-      Toast.show({ type: 'error', text1: 'Error AI', text2: isTimeout ? 'La petición tardó demasiado' : 'Fallo de red al contactar asistente' });
-    } finally {
-      if (mounted.current) setIsAiLoading(false);
+    } catch (e) {
+      Toast.show({ type: 'error', text1: 'Error al actualizar estado' });
     }
   };
 
-  const renderItem = useCallback(({ item }) => {
-    return <MessageItem message={item} />;
-  }, []);
-
-  const ListEmptyComponent = useCallback(() => (
-    <View style={styles.emptyContainer}>
-      {loading ? (
-        <ActivityIndicator size="large" color={theme.colors.primary} />
-      ) : (
-        <Text style={styles.emptyText}>No hay mensajes en esta conversación.</Text>
-      )}
-    </View>
-  ), [loading]);
+  const renderItem = useCallback(({ item }) => <MessageItem message={item} />, []);
 
   return (
     <SafeAreaView style={styles.container} edges={['right', 'bottom', 'left']}>
       <KeyboardAvoidingView 
-        style={styles.keyboardView} 
+        style={{ flex: 1 }} 
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
       >
@@ -285,48 +203,150 @@ export default function ChatDetailScreen() {
           inverted
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
-          ListEmptyComponent={ListEmptyComponent}
-          contentContainerStyle={styles.flexGrow}
-          onEndReached={handleEndReached}
+          onEndReached={() => { if (hasMore && nextCursor) fetchMessages(nextCursor); }}
           onEndReachedThreshold={0.5}
-          initialNumToRender={20}
-          maxToRenderPerBatch={10}
-          windowSize={5}
         />
+        
         <ChatInput 
           ref={chatInputRef}
           onSendText={handleSendText}
-          onSendMedia={handleSendMedia}
-          onRequestAi={handleRequestAi}
+          onOpenActionMenu={() => setActionMenuVisible(true)}
           isAiLoading={isAiLoading}
         />
       </KeyboardAvoidingView>
+
+      {/* Action Menu Bottom Sheet Modal */}
+      <Modal visible={actionMenuVisible} transparent animationType="slide">
+        <TouchableOpacity style={styles.modalOverlay} onPress={() => setActionMenuVisible(false)}>
+          <View style={styles.bottomSheet}>
+            <Text style={styles.sheetTitle}>Acciones</Text>
+            
+            <TouchableOpacity style={styles.sheetButton} onPress={handlePickImage}>
+              <Text style={styles.sheetButtonIcon}>📷</Text>
+              <Text style={styles.sheetButtonText}>Enviar Foto / Galería</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.sheetButton} onPress={handleRequestAi}>
+              <Text style={styles.sheetButtonIcon}>✨</Text>
+              <Text style={styles.sheetButtonText}>Sugerencia IA</Text>
+            </TouchableOpacity>
+
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Status Menu Bottom Sheet Modal */}
+      <Modal visible={statusMenuVisible} transparent animationType="fade">
+        <TouchableOpacity style={styles.modalOverlay} onPress={() => setStatusMenuVisible(false)}>
+          <View style={styles.bottomSheet}>
+            <Text style={styles.sheetTitle}>Estado de la Conversación</Text>
+            
+            <TouchableOpacity style={styles.sheetButton} onPress={() => updateChatStatus('CLOSED')}>
+              <Text style={styles.sheetButtonIcon}>✅</Text>
+              <Text style={styles.sheetButtonText}>Marcar como Resuelto</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.sheetButton} onPress={() => updateChatStatus('ON_HOLD')}>
+              <Text style={styles.sheetButtonIcon}>⏸️</Text>
+              <Text style={styles.sheetButtonText}>Poner en Espera</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.sheetButton} onPress={() => Toast.show({type: 'info', text1: 'Próximamente'})}>
+              <Text style={styles.sheetButtonIcon}>🔄</Text>
+              <Text style={styles.sheetButtonText}>Reasignar</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.sheetButton} onPress={() => updateChatStatus('SPAM')}>
+              <Text style={styles.sheetButtonIcon}>🚫</Text>
+              <Text style={[styles.sheetButtonText, { color: '#ef4444' }]}>Marcar como Spam</Text>
+            </TouchableOpacity>
+
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: theme.colors.background,
-  },
-  keyboardView: {
-    flex: 1,
-  },
-  flexGrow: {
-    flexGrow: 1,
-  },
-  listContent: {
-    padding: 10,
-  },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
+  container: { flex: 1, backgroundColor: theme.colors.background },
+  headerTitleContainer: {
     alignItems: 'center',
-    transform: [{ scaleY: -1 }] // Because FlatList is inverted, we need to flip the empty component back
+    justifyContent: 'center',
+    paddingHorizontal: 10,
   },
-  emptyText: {
-    color: '#aaa',
+  headerTitleName: {
     fontSize: 16,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
+  headerTitleStatus: {
+    fontSize: 12,
+    color: '#94a3b8',
+    marginTop: 2,
+  },
+  headerRightContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginRight: 10,
+  },
+  headerIcon: {
+    marginLeft: 15,
+    padding: 5,
+    position: 'relative',
+  },
+  badge: {
+    position: 'absolute',
+    top: -2,
+    right: -5,
+    backgroundColor: '#ef4444',
+    borderRadius: 10,
+    minWidth: 18,
+    height: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  badgeText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: 'bold',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  bottomSheet: {
+    backgroundColor: '#1e293b',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+    paddingBottom: 40, // Safe area bottom
+  },
+  sheetTitle: {
+    color: '#94a3b8',
+    fontSize: 14,
+    fontWeight: 'bold',
+    marginBottom: 15,
+    textAlign: 'center',
+  },
+  sheetButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#334155',
+  },
+  sheetButtonIcon: {
+    fontSize: 22,
+    marginRight: 15,
+    width: 30,
+    textAlign: 'center',
+  },
+  sheetButtonText: {
+    color: '#f8fafc',
+    fontSize: 16,
+    fontWeight: '500',
   }
 });
