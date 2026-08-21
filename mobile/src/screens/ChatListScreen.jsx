@@ -43,7 +43,7 @@ export default function ChatListScreen() {
 
   const navigateToChat = (chatId, clientName) => {
     if (!chatId) return;
-    navigation.navigate('ChatDetailScreen', { chatId, clientName });
+    navigation.navigate('ChatDetail', { chatId, clientName });
   };
 
   const renderItem = ({ item }) => {
