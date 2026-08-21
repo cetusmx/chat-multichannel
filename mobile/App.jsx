@@ -48,8 +48,6 @@ export default function App() {
     }
   }, []);
 
-  if (!isHydrated) return null; // Prevent UI flicker
-
   useEffect(() => {
     if (Platform.OS === 'ios') {
       messaging().setBadge(0);
@@ -126,6 +124,8 @@ export default function App() {
       unsubscribeTokenRefresh();
     };
   }, [token]);
+
+  if (!isHydrated) return null; // Prevent UI flicker
 
   return (
     <SafeAreaProvider>
