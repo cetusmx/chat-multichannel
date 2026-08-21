@@ -80,12 +80,6 @@ android {
     compileSdk rootProject.ext.compileSdkVersion
 
     namespace "com.mobile"
-    externalNativeBuild {
-        cmake {
-            version "3.30.3"
-            buildStagingDirectory "C:/tmp/cxx_bmad"
-        }
-    }
     defaultConfig {
         applicationId "com.mobile"
         minSdkVersion rootProject.ext.minSdkVersion
