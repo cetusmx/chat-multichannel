@@ -7,13 +7,17 @@ import {
   Platform,
   Text,
   ActivityIndicator,
-  Keyboard
+  Keyboard,
+  Modal,
+  TouchableOpacity
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRoute, useNavigation } from '@react-navigation/native';
+import { launchImageLibrary } from 'react-native-image-picker';
 import Toast from 'react-native-toast-message';
 import { get, post, postFormData } from '../services/api';
 import { theme } from '../utils/theme';
+import useChatStore from '@shared/stores/useChatStore';
 import ChatInput from '../components/ChatInput';
 import MessageItem from '../components/MessageItem';
 import useMobileSocket from '../hooks/useMobileSocket';
@@ -29,6 +33,8 @@ export default function ChatDetailScreen() {
   const [hasMore, setHasMore] = useState(false);
   const [nextCursor, setNextCursor] = useState(null);
   const [isAiLoading, setIsAiLoading] = useState(false);
+  const [actionMenuVisible, setActionMenuVisible] = useState(false);
+  const [statusMenuVisible, setStatusMenuVisible] = useState(false);
   const chatInputRef = useRef(null);
   const isLoadingMoreRef = useRef(false);
   const aiAbortControllerRef = useRef(null);
