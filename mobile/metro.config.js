@@ -10,6 +10,10 @@ const path = require('path');
 const config = {
   watchFolders: [path.resolve(__dirname, '../frontend')],
   resolver: {
+    disableHierarchicalLookup: true,
+    nodeModulesPaths: [
+      path.resolve(__dirname, 'node_modules'),
+    ],
     extraNodeModules: {
       'react': path.resolve(__dirname, 'node_modules/react'),
       'react-native': path.resolve(__dirname, 'node_modules/react-native'),
