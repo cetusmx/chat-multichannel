@@ -9,6 +9,8 @@ const BASE_URL = Config.BACKEND_URL || (Platform.OS === 'android' ? 'http://10.0
 const MessageItem = memo(({ message }) => {
   const isVendor = message.senderType === 'VENDOR';
   const attachments = message.attachments || [];
+  const [imageLoading, setImageLoading] = useState(true);
+  const [imageError, setImageError] = useState(false);
 
   // Handle status feedback (Task 4.2)
   const renderStatus = () => {

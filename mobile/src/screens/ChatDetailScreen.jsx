@@ -27,6 +27,9 @@ export default function ChatDetailScreen() {
   const navigation = useNavigation();
   const { chatId, clientName } = route.params || {};
 
+  const chat = useChatStore((state) => state.chats[chatId] || {});
+  const setChat = useChatStore((state) => state.setChat);
+
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -76,14 +79,10 @@ export default function ChatDetailScreen() {
     setHasMore(false);
     return () => {
       mounted.current = false;
-      if (aiAbortControllerRef.current) {
-        aiAbortControllerRef.current.abort();
-      }
     };
   }, [chatId]);
 
-  const fetchMessages = async (cursor = null) => {
-    if (!chatId) {
+  const fetchMessages = useCallback(async (cursor = null) => {
     if (isLoadingMoreRef.current) return;
     try {
       if (cursor) {
@@ -113,12 +112,18 @@ export default function ChatDetailScreen() {
       setLoadingMore(false);
       isLoadingMoreRef.current = false;
     }
-  };
+  }, [chatId]);
 
   useEffect(() => {
     fetchMessages();
-    return () => { mounted.current = false; };
-  }, [chatId]);
+    const abortController = aiAbortControllerRef.current;
+    return () => { 
+      mounted.current = false; 
+      if (abortController) {
+        abortController.abort();
+      }
+    };
+  }, [chatId, fetchMessages]);
 
   const handleSendText = async (text) => {
     if (!chatId || !text.trim()) return;
