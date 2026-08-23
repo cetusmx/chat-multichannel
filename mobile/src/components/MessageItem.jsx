@@ -7,7 +7,7 @@ import { theme } from '../utils/theme';
 const BASE_URL = Config.BACKEND_URL || (Platform.OS === 'android' ? 'http://10.0.2.2:4000' : 'http://localhost:4000');
 
 const MessageItem = memo(({ message }) => {
-  const isVendor = message.senderType === 'VENDOR';
+  const isVendor = ['VENDOR', 'SYSTEM', 'COORDINATOR', 'ADMIN', 'IA'].includes(message.senderType);
   const attachments = message.attachments || [];
   const [imageLoading, setImageLoading] = useState(true);
   const [imageError, setImageError] = useState(false);
@@ -17,14 +17,24 @@ const MessageItem = memo(({ message }) => {
     if (!isVendor) return null;
     let statusText = '✓';
     if (message.status === 'sending') statusText = '...';
-    if (message.status === 'error' || message.status === 'failed') statusText = '✗';
+    if (message.status === 'error' || message.status === 'failed') statusText = '❌';
     if (message.status === 'READ') statusText = '✓✓';
     return <Text style={[styles.statusText, message.status === 'error' && styles.statusError]}>{statusText}</Text>;
   };
 
+  const isWhisper = message.isInternal || (message.metadata && message.metadata.isWhisper);
+  const authorName = isVendor ? (message.sender?.name || message.senderType) : null;
+
   return (
     <View style={[styles.container, isVendor ? styles.containerRight : styles.containerLeft]}>
-      <View style={[styles.bubble, isVendor ? styles.bubbleRight : styles.bubbleLeft]}>
+      <View style={[
+        styles.bubble, 
+        isVendor ? styles.bubbleRight : styles.bubbleLeft,
+        isWhisper && styles.bubbleWhisper
+      ]}>
+        {isVendor && authorName && (
+          <Text style={[styles.authorText, isWhisper && styles.authorTextWhisper]}>{authorName}</Text>
+        )}
         
         {attachments.map((att, idx) => {
           if (att.type === 'IMAGE' && att.url) {
@@ -63,10 +73,18 @@ const MessageItem = memo(({ message }) => {
           );
         })}
 
-        {message.content && <Text style={[styles.text, isVendor ? styles.textRight : styles.textLeft]}>{message.content}</Text>}
+        {message.content && (
+          <Text style={[
+            styles.text, 
+            isVendor ? styles.textRight : styles.textLeft,
+            isWhisper && styles.textWhisper
+          ]}>
+            {message.content}
+          </Text>
+        )}
         
         <View style={styles.metaContainer}>
-          <Text style={styles.timeText}>
+          <Text style={[styles.timeText, isWhisper && styles.timeTextWhisper]}>
             {new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
           </Text>
           {renderStatus()}
@@ -154,5 +172,25 @@ const styles = StyleSheet.create({
   attachmentFallback: {
     fontStyle: 'italic',
     color: '#aaa',
+  },
+  bubbleWhisper: {
+    backgroundColor: '#fef3c7',
+    borderWidth: 1,
+    borderColor: '#fde68a',
+  },
+  textWhisper: {
+    color: '#92400e',
+  },
+  timeTextWhisper: {
+    color: 'rgba(146, 64, 14, 0.6)',
+  },
+  authorText: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#e2e8f0',
+    marginBottom: 4,
+  },
+  authorTextWhisper: {
+    color: '#b45309',
   }
 });

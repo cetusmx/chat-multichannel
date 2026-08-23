@@ -44,10 +44,30 @@ export default function ChatDetailScreen() {
 
   // Set Header Title
   useEffect(() => {
-    if (clientName) {
-      navigation.setOptions({ title: clientName });
-    }
-  }, [clientName, navigation]);
+    navigation.setOptions({
+      headerTitle: () => (
+        <TouchableOpacity style={styles.headerTitleContainer} onPress={() => setStatusMenuVisible(true)}>
+          <View style={styles.headerTitleRow}>
+            <View style={styles.avatarPlaceholder}>
+              <Text style={styles.avatarText}>{clientName ? clientName.charAt(0).toUpperCase() : 'C'}</Text>
+            </View>
+            <View>
+              <Text style={styles.headerTitleName} numberOfLines={1}>{clientName} ▾</Text>
+              <Text style={styles.headerTitleStatus}>{chat?.status || 'OPEN'}</Text>
+            </View>
+          </View>
+        </TouchableOpacity>
+      ),
+      headerRight: () => (
+        <View style={styles.headerRightContainer}>
+          <TouchableOpacity style={styles.headerIcon}>
+            <Text style={{ fontSize: 20 }}>🛒</Text>
+            <View style={styles.badge}><Text style={styles.badgeText}>0</Text></View>
+          </TouchableOpacity>
+        </View>
+      )
+    });
+  }, [clientName, chat?.status, navigation]);
 
   // Hook to handle socket connection and new messages
   const handleNewMessage = useCallback((newMessage) => {
@@ -58,29 +78,25 @@ export default function ChatDetailScreen() {
       if (prevMessages.some(m => m.id === newMessage.id)) {
         return prevMessages.map(m => m.id === newMessage.id ? { ...m, ...newMessage } : m);
       }
-      const duplicateIndex = prevMessages.findIndex(m => m.status === 'sending' && m.content === newMessage.content);
-      if (duplicateIndex >= 0) {
-        const filtered = [...prevMessages];
-        filtered.splice(duplicateIndex, 1);
-        return [newMessage, ...filtered];
-      }
       return [newMessage, ...prevMessages];
     });
   }, [chatId]);
 
   useMobileSocket(chatId, handleNewMessage);
 
-  const mounted = useRef(true);
-
   useEffect(() => {
-    mounted.current = true;
-    setMessages([]);
-    setNextCursor(null);
-    setHasMore(false);
-    return () => {
-      mounted.current = false;
-    };
-  }, [chatId]);
+    if (chat.messages) {
+      setMessages((prev) => {
+        const prevIds = new Set(prev.map(m => m.id));
+        const newMsgs = chat.messages.filter(m => !prevIds.has(m.id));
+        if (newMsgs.length > 0) {
+          const combined = [...newMsgs, ...prev];
+          return combined.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+        }
+        return prev;
+      });
+    }
+  }, [chat.messages]);
 
   const fetchMessages = useCallback(async (cursor = null) => {
     if (isLoadingMoreRef.current) return;
@@ -118,7 +134,6 @@ export default function ChatDetailScreen() {
     fetchMessages();
     const abortController = aiAbortControllerRef.current;
     return () => { 
-      mounted.current = false; 
       if (abortController) {
         abortController.abort();
       }
@@ -138,11 +153,12 @@ export default function ChatDetailScreen() {
         senderType: 'VENDOR',
         status: 'sending',
         metadata: isWhisper ? { isWhisper: true } : {},
+        isInternal: isWhisper,
         createdAt: new Date().toISOString()
       };
       setMessages(prev => [tempMsg, ...prev]);
 
-      const res = await post(`/chat/${encodeURIComponent(chatId)}/messages`, { content: text });
+      const res = await post(`/chat/${encodeURIComponent(chatId)}/messages`, { content, isInternal: isWhisper });
       const data = await res.json();
       
       if (res.ok && data.data) {
@@ -203,8 +219,8 @@ export default function ChatDetailScreen() {
     <SafeAreaView style={styles.container} edges={['right', 'bottom', 'left']}>
       <KeyboardAvoidingView 
         style={{ flex: 1 }} 
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+        behavior="padding"
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 90}
       >
         <FlatList
           data={messages}
@@ -281,6 +297,14 @@ export default function ChatDetailScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.colors.background },
+  headerTitleRow: { flexDirection: 'row', alignItems: 'center' },
+  avatarPlaceholder: {
+    width: 32, height: 32, borderRadius: 16,
+    backgroundColor: '#3b82f6',
+    justifyContent: 'center', alignItems: 'center',
+    marginRight: 10
+  },
+  avatarText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
   headerTitleContainer: {
     alignItems: 'center',
     justifyContent: 'center',
