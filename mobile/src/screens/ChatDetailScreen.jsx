@@ -191,18 +191,8 @@ export default function ChatDetailScreen() {
 
   const updateChatStatus = async (newStatus) => {
     setStatusMenuVisible(false);
-    let payload = { status: newStatus };
-    if (newStatus === 'ON_HOLD') {
-      payload.reason = '[Móvil] Puesto en espera';
-      payload.timebombHours = 24;
-    } else if (newStatus === 'SCHEDULED') {
-      const tomorrow = new Date();
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      payload.scheduledAt = tomorrow.toISOString();
-    }
-    
     try {
-      await updateChatStatusInStore(chatId, payload);
+      await updateChatStatusInStore(chatId, { status: newStatus });
       Toast.show({ type: 'success', text1: 'Estado actualizado' });
     } catch (e) {
       console.error("[DEBUG] updateChatStatus error:", e);
@@ -288,14 +278,14 @@ export default function ChatDetailScreen() {
             
             <TouchableOpacity style={styles.sheetButton} onPress={handlePickImage}>
               <View style={styles.sheetIconWrapper}>
-                <ImageIcon size={22} color="#f8fafc" />
+                <ImageIcon size={22} color="#f8fafc" strokeWidth={1.5} />
               </View>
               <Text style={styles.sheetButtonText}>Enviar Foto / Galería</Text>
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.sheetButton} onPress={handleRequestAi}>
               <View style={styles.sheetIconWrapper}>
-                <Sparkles size={22} color="#f59e0b" />
+                <Sparkles size={22} color="#f8fafc" strokeWidth={1.5} />
               </View>
               <Text style={styles.sheetButtonText}>Sugerencia IA</Text>
             </TouchableOpacity>
@@ -312,28 +302,28 @@ export default function ChatDetailScreen() {
             
             <TouchableOpacity style={styles.sheetButton} onPress={() => updateChatStatus('CLOSED')}>
               <View style={styles.sheetIconWrapper}>
-                <CheckCircle size={22} color="#10b981" />
+                <CheckCircle size={22} color="#f8fafc" strokeWidth={1.5} />
               </View>
               <Text style={styles.sheetButtonText}>Marcar como Resuelto</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.sheetButton} onPress={() => updateChatStatus('ON_HOLD')}>
+            <TouchableOpacity style={styles.sheetButton} onPress={() => Toast.show({type: 'info', text1: 'Próximamente', text2: 'Módulo en desarrollo'})}>
               <View style={styles.sheetIconWrapper}>
-                <PauseCircle size={22} color="#f59e0b" />
+                <PauseCircle size={22} color="#f8fafc" strokeWidth={1.5} />
               </View>
               <Text style={styles.sheetButtonText}>Poner en Espera</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.sheetButton} onPress={() => updateChatStatus('SCHEDULED')}>
+            <TouchableOpacity style={styles.sheetButton} onPress={() => Toast.show({type: 'info', text1: 'Próximamente', text2: 'Módulo en desarrollo'})}>
               <View style={styles.sheetIconWrapper}>
-                <Calendar size={22} color="#3b82f6" />
+                <Calendar size={22} color="#f8fafc" strokeWidth={1.5} />
               </View>
               <Text style={styles.sheetButtonText}>Programar</Text>
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.sheetButton} onPress={() => updateChatStatus('DISCARDED')}>
               <View style={styles.sheetIconWrapper}>
-                <Ban size={22} color="#ef4444" />
+                <Ban size={22} color="#ef4444" strokeWidth={1.5} />
               </View>
               <Text style={[styles.sheetButtonText, { color: '#ef4444' }]}>Descartar / Spam</Text>
             </TouchableOpacity>
@@ -485,6 +475,6 @@ const styles = StyleSheet.create({
   sheetButtonText: {
     color: '#f8fafc',
     fontSize: 16,
-    fontWeight: '500',
+    fontWeight: '400',
   }
 });
