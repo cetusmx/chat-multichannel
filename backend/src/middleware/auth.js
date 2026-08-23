@@ -5,12 +5,18 @@ const logger = require('../utils/logger');
 const { getTenantStatusAsync } = require('../utils/tenant-cache.util');
 
 async function authenticate(req, _res, next) {
+  let token;
   const header = req.headers.authorization;
-  if (!header || !header.startsWith('Bearer ')) {
+  if (header && header.startsWith('Bearer ')) {
+    token = header.split(' ')[1];
+  } else if (req.query && req.query.token) {
+    token = req.query.token;
+  }
+
+  if (!token) {
     return next(ApiError.unauthorized('No token provided'));
   }
 
-  const token = header.split(' ')[1];
   try {
     const decoded = jwt.verify(token, env.jwtSecret);
     req.user = decoded;

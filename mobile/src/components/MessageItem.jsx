@@ -45,19 +45,25 @@ const MessageItem = memo(({ message }) => {
               base = base.substring(0, base.length - 4);
             }
             const path = att.url.replace(/^\//, '');
-            const url = att.url.startsWith('http') ? att.url : `${base}/${path}`;
-            console.log(`[DEBUG] Final Image URL: ${url} (Original: ${att.url}, Base: ${base})`);
+            let url = att.url.startsWith('http') ? att.url : `${base}/${path}`;
+            
+            // Bypass React Native Fresco header caching bugs by appending token to URI
+            // The backend auth middleware now supports falling back to req.query.token
+            if (token) {
+              url = url.includes('?') ? `${url}&token=${token}` : `${url}?token=${token}`;
+            }
+
             return (
               <View key={idx} style={styles.imageContainer}>
-                {imageLoading && (
+                {(!token || imageLoading) && (
                   <View style={styles.imagePlaceholder}>
                     <ActivityIndicator size="small" color={isVendor ? '#fff' : theme.colors.primary} />
                   </View>
                 )}
-                {!imageError ? (
+                {token && !imageError ? (
                   <Image 
-                    source={{ uri: url, headers: { Authorization: `Bearer ${token}` } }} 
-                    style={styles.image} 
+                    source={{ uri: url }} 
+                    style={[styles.image, imageLoading && { position: 'absolute', opacity: 0 }]} 
                     onLoad={() => setImageLoading(false)}
                     onError={(e) => {
                       setImageLoading(false);
