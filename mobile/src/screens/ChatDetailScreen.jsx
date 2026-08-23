@@ -23,6 +23,16 @@ import ChatInput from '../components/ChatInput';
 import MessageItem from '../components/MessageItem';
 import useMobileSocket from '../hooks/useMobileSocket';
 
+const getStatusText = (status) => {
+  switch (status) {
+    case 'ON_HOLD': return 'En espera';
+    case 'CLOSED': return 'Cerrado';
+    case 'SCHEDULED': return 'Agendado';
+    case 'OPEN':
+    default: return 'Activo';
+  }
+};
+
 export default function ChatDetailScreen() {
   const route = useRoute();
   const navigation = useNavigation();
@@ -53,16 +63,18 @@ export default function ChatDetailScreen() {
               <Text style={styles.avatarText}>{clientName ? clientName.charAt(0).toUpperCase() : 'C'}</Text>
             </View>
             <View style={styles.headerTextContainer}>
-              <Text style={styles.headerTitleName} numberOfLines={1}>{clientName} ▾</Text>
-              <Text style={styles.headerTitleStatus}>{chat?.status || 'OPEN'}</Text>
+              <Text style={styles.headerTitleName} numberOfLines={1}>{clientName || 'Cliente'}</Text>
             </View>
           </View>
         </TouchableOpacity>
       ),
       headerRight: () => (
         <View style={styles.headerRightContainer}>
+          <View style={styles.statusBadge}>
+            <Text style={styles.statusBadgeText}>{getStatusText(chat?.status)}</Text>
+          </View>
           <TouchableOpacity style={styles.headerIcon}>
-            <ShoppingCart size={24} color="#fff" strokeWidth={2} />
+            <ShoppingCart size={24} color="#111827" strokeWidth={2} />
             <View style={styles.badge}><Text style={styles.badgeText}>0</Text></View>
           </TouchableOpacity>
         </View>
@@ -357,12 +369,12 @@ const styles = StyleSheet.create({
   },
   headerTitleRow: { flexDirection: 'row', alignItems: 'center' },
   avatarPlaceholder: {
-    width: 32, height: 32, borderRadius: 16,
+    width: 40, height: 40, borderRadius: 20,
     backgroundColor: '#3b82f6',
     justifyContent: 'center', alignItems: 'center',
     marginRight: 10
   },
-  avatarText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
+  avatarText: { color: '#fff', fontWeight: 'bold', fontSize: 18 },
   headerTitleContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -376,34 +388,43 @@ const styles = StyleSheet.create({
   },
   headerTitleName: {
     fontSize: 16,
-    fontWeight: 'bold',
-    color: '#fff',
-  },
-  headerTitleStatus: {
-    fontSize: 12,
-    color: '#34d399',
-    marginTop: -2,
+    fontWeight: '600',
+    color: '#111827',
   },
   headerRightContainer: {
     flexDirection: 'row',
     alignItems: 'center',
+    marginRight: 5,
+  },
+  statusBadge: {
+    backgroundColor: '#e6f4ea',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
     marginRight: 10,
   },
+  statusBadgeText: {
+    fontSize: 10,
+    color: '#137333',
+    fontWeight: 'bold',
+    textTransform: 'uppercase',
+  },
   headerIcon: {
-    marginLeft: 15,
     padding: 5,
     position: 'relative',
   },
   badge: {
     position: 'absolute',
     top: -2,
-    right: -5,
+    right: -2,
     backgroundColor: '#ef4444',
     borderRadius: 10,
     minWidth: 18,
     height: 18,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: '#fff',
   },
   badgeText: {
     color: '#fff',
