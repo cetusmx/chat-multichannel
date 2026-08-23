@@ -15,7 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { launchImageLibrary } from 'react-native-image-picker';
 import Toast from 'react-native-toast-message';
-import { ShoppingCart, MoreVertical, CheckCircle, PauseCircle, Users, Ban, Image as ImageIcon, Sparkles } from 'lucide-react-native';
+import { ShoppingCart, MoreVertical, CheckCircle, PauseCircle, Users, Ban, Image as ImageIcon, Sparkles, Calendar } from 'lucide-react-native';
 import { get, post, postFormData } from '../services/api';
 import { theme } from '../utils/theme';
 import useChatStore from '@shared/stores/useChatStore';
@@ -27,7 +27,7 @@ const getStatusText = (status) => {
   switch (status) {
     case 'ON_HOLD': return 'En espera';
     case 'CLOSED': return 'Cerrado';
-    case 'SCHEDULED': return 'Agendado';
+    case 'SCHEDULED': return 'Programado';
     case 'DISCARDED': return 'Descartado / Spam';
     case 'OPEN':
     default: return 'Activo';
@@ -88,121 +88,85 @@ export default function ChatDetailScreen() {
 
   // Hook to handle socket connection and new messages
   const handleNewMessage = useCallback((newMessage) => {
-    if (!newMessage || !newMessage.id) return;
-    if (newMessage.conversationId && newMessage.conversationId !== chatId) return;
-    
-    setMessages((prevMessages) => {
-      if (prevMessages.some(m => m.id === newMessage.id)) {
-        return prevMessages.map(m => m.id === newMessage.id ? { ...m, ...newMessage } : m);
-      }
-      return [newMessage, ...prevMessages];
-    });
+    if (newMessage.conversationId === chatId) {
+      setMessages(prev => {
+        if (prev.some(m => m.id === newMessage.id)) return prev;
+        const newArr = [newMessage, ...prev];
+        return newArr.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      });
+    }
   }, [chatId]);
 
   useMobileSocket(chatId, handleNewMessage);
 
-  useEffect(() => {
-    if (chat.messages) {
-      setMessages((prev) => {
-        const prevIds = new Set(prev.map(m => m.id));
-        const newMsgs = chat.messages.filter(m => !prevIds.has(m.id));
-        if (newMsgs.length > 0) {
-          const combined = [...newMsgs, ...prev];
-          return combined.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-        }
-        return prev;
-      });
-    }
-  }, [chat.messages]);
-
-  const fetchMessages = useCallback(async (cursor = null) => {
+  const fetchMessages = async (cursor = null) => {
     if (isLoadingMoreRef.current) return;
-    try {
-      if (cursor) {
-        setLoadingMore(true);
-        isLoadingMoreRef.current = true;
-      } else {
-        setLoading(true);
-      }
-      const res = await get(`/chat/${encodeURIComponent(chatId)}/messages${cursor ? `?cursor=${cursor}` : ''}`);
-      const data = await res.json();
+    isLoadingMoreRef.current = true;
+    if (cursor) setLoadingMore(true);
 
+    try {
+      const url = cursor 
+        ? `/chat/${encodeURIComponent(chatId)}/messages?cursor=${encodeURIComponent(cursor)}`
+        : `/chat/${encodeURIComponent(chatId)}/messages`;
+      
+      const res = await get(url);
+      const data = await res.json();
+      
       if (res.ok && data.data) {
-        const payload = data.data;
-        setMessages((prev) => {
-          let nextMessages = [];
-          if (!cursor) {
-            nextMessages = payload.filter(item => item && item.id);
-          } else {
-            const prevIds = new Set(prev.map(m => m.id));
-            const newUnique = payload.filter(item => item && item.id && !prevIds.has(item.id));
-            nextMessages = [...prev, ...newUnique];
-          }
-          return nextMessages.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-        });
-        setHasMore(data.meta?.hasMore || false);
+        const sorted = data.data.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+        if (cursor) {
+          setMessages(prev => {
+            const merged = [...prev, ...sorted];
+            const unique = Array.from(new Map(merged.map(item => [item.id, item])).values());
+            return unique.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+          });
+        } else {
+          setMessages(sorted);
+        }
         setNextCursor(data.meta?.nextCursor || null);
+        setHasMore(!!data.meta?.nextCursor);
       }
-    } catch (error) {
-      console.error('Failed to fetch messages:', error);
+    } catch (e) {
+      console.error('fetchMessages error:', e);
+      Toast.show({ type: 'error', text1: 'Error al cargar historial' });
     } finally {
       setLoading(false);
       setLoadingMore(false);
       isLoadingMoreRef.current = false;
     }
-  }, [chatId]);
+  };
 
   useEffect(() => {
     fetchMessages();
-    const abortController = aiAbortControllerRef.current;
-    return () => { 
-      if (abortController) {
-        abortController.abort();
+    return () => {
+      if (aiAbortControllerRef.current) {
+        aiAbortControllerRef.current.abort();
       }
     };
-  }, [chatId, fetchMessages]);
+  }, [chatId]);
 
-  const handleSendText = async (text) => {
-    if (!chatId || !text.trim()) return;
-    const tempId = `temp-${Date.now()}`;
+  const handleSendText = async (text, isWhisper = false) => {
     try {
-      const isWhisper = text.startsWith('/whisper ');
-      const content = isWhisper ? text.replace(/^\/whisper\s*/, '') : text;
-      
-      const tempMsg = {
-        id: tempId,
-        content: content,
-        senderType: 'VENDOR',
-        status: 'sending',
-        metadata: isWhisper ? { isWhisper: true } : {},
-        isInternal: isWhisper,
-        createdAt: new Date().toISOString()
-      };
-      setMessages(prev => [tempMsg, ...prev]);
-
-      const res = await post(`/chat/${encodeURIComponent(chatId)}/messages`, { content, isInternal: isWhisper });
-      const data = await res.json();
-      
-      if (res.ok && data.data) {
-        setMessages(prev => prev.map(m => m.id === tempId ? data.data : m));
-      } else {
-        setMessages(prev => prev.filter(m => m.id !== tempId));
-      }
-    } catch (error) {
-      setMessages(prev => prev.filter(m => m.id !== tempId));
+      await post(`/chat/${encodeURIComponent(chatId)}/messages`, {
+        content: text,
+        isInternal: isWhisper
+      });
+    } catch (e) {
+      Toast.show({ type: 'error', text1: 'Error al enviar mensaje' });
+      throw e; // Let ChatInput restore state
     }
   };
 
   const handlePickImage = async () => {
     setActionMenuVisible(false);
     const result = await launchImageLibrary({ mediaType: 'photo', quality: 0.8 });
-    if (!result.didCancel && result.assets?.[0]) {
+    if (result.assets && result.assets.length > 0) {
       const asset = result.assets[0];
       const formData = new FormData();
       formData.append('file', {
         uri: asset.uri,
-        type: asset.type || 'image/jpeg',
-        name: asset.fileName || `upload.jpg`
+        type: asset.type,
+        name: asset.fileName || 'upload.jpg'
       });
       try {
         await postFormData(`/chat/${encodeURIComponent(chatId)}/media`, formData);
@@ -227,8 +191,18 @@ export default function ChatDetailScreen() {
 
   const updateChatStatus = async (newStatus) => {
     setStatusMenuVisible(false);
+    let payload = { status: newStatus };
+    if (newStatus === 'ON_HOLD') {
+      payload.reason = '[Móvil] Puesto en espera';
+      payload.timebombHours = 24;
+    } else if (newStatus === 'SCHEDULED') {
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      payload.scheduledAt = tomorrow.toISOString();
+    }
+    
     try {
-      await updateChatStatusInStore(chatId, { status: newStatus });
+      await updateChatStatusInStore(chatId, payload);
       Toast.show({ type: 'success', text1: 'Estado actualizado' });
     } catch (e) {
       console.error("[DEBUG] updateChatStatus error:", e);
@@ -292,12 +266,18 @@ export default function ChatDetailScreen() {
           onEndReachedThreshold={0.5}
         />
         
-        <ChatInput 
-          ref={chatInputRef}
-          onSendText={handleSendText}
-          onOpenActionMenu={() => setActionMenuVisible(true)}
-          isAiLoading={isAiLoading}
-        />
+        {['CLOSED', 'CLOSED_WON', 'CLOSED_INACTIVE', 'DISCARDED'].includes(chat?.status) ? (
+          <View style={styles.closedContainer}>
+            <Text style={styles.closedText}>Esta conversación ha finalizado.</Text>
+          </View>
+        ) : (
+          <ChatInput 
+            ref={chatInputRef}
+            onSendText={handleSendText}
+            onOpenActionMenu={() => setActionMenuVisible(true)}
+            isAiLoading={isAiLoading}
+          />
+        )}
       </KeyboardAvoidingView>
 
       {/* Action Menu Bottom Sheet Modal */}
@@ -344,11 +324,11 @@ export default function ChatDetailScreen() {
               <Text style={styles.sheetButtonText}>Poner en Espera</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.sheetButton} onPress={() => Toast.show({type: 'info', text1: 'Próximamente'})}>
+            <TouchableOpacity style={styles.sheetButton} onPress={() => updateChatStatus('SCHEDULED')}>
               <View style={styles.sheetIconWrapper}>
-                <Users size={22} color="#3b82f6" />
+                <Calendar size={22} color="#3b82f6" />
               </View>
-              <Text style={styles.sheetButtonText}>Reasignar</Text>
+              <Text style={styles.sheetButtonText}>Programar</Text>
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.sheetButton} onPress={() => updateChatStatus('DISCARDED')}>
@@ -440,6 +420,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     position: 'relative',
     backgroundColor: '#f8fafc',
+  },
+  closedContainer: {
+    padding: 15,
+    backgroundColor: '#e2e8f0',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  closedText: {
+    color: '#64748b',
+    fontWeight: '500',
+    fontSize: 14,
   },
   badge: {
     position: 'absolute',
