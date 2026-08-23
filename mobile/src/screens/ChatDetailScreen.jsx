@@ -15,7 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { launchImageLibrary } from 'react-native-image-picker';
 import Toast from 'react-native-toast-message';
-import { ShoppingCart } from 'lucide-react-native';
+import { ShoppingCart, MoreVertical, CheckCircle, PauseCircle, Users, Ban, Image as ImageIcon, Sparkles } from 'lucide-react-native';
 import { get, post, postFormData } from '../services/api';
 import { theme } from '../utils/theme';
 import useChatStore from '@shared/stores/useChatStore';
@@ -28,6 +28,7 @@ const getStatusText = (status) => {
     case 'ON_HOLD': return 'En espera';
     case 'CLOSED': return 'Cerrado';
     case 'SCHEDULED': return 'Agendado';
+    case 'DISCARDED': return 'Descartado / Spam';
     case 'OPEN':
     default: return 'Activo';
   }
@@ -57,7 +58,7 @@ export default function ChatDetailScreen() {
   useEffect(() => {
     navigation.setOptions({
       headerTitle: () => (
-        <TouchableOpacity style={styles.headerTitleContainer} onPress={() => setStatusMenuVisible(true)}>
+        <View style={styles.headerTitleContainer}>
           <View style={styles.headerTitleRow}>
             <View style={styles.avatarPlaceholder}>
               <Text style={styles.avatarText}>{clientName ? clientName.charAt(0).toUpperCase() : 'C'}</Text>
@@ -66,15 +67,18 @@ export default function ChatDetailScreen() {
               <Text style={styles.headerTitleName} numberOfLines={1}>{clientName || 'Cliente'}</Text>
             </View>
           </View>
-        </TouchableOpacity>
+        </View>
       ),
       headerRight: () => (
         <View style={styles.headerRightContainer}>
           <View style={styles.statusBadge}>
             <Text style={styles.statusBadgeText}>{getStatusText(chat?.status)}</Text>
           </View>
-          <TouchableOpacity style={styles.headerIcon}>
-            <ShoppingCart size={24} color="#111827" strokeWidth={2} />
+          <TouchableOpacity style={styles.moreIcon} onPress={() => setStatusMenuVisible(true)}>
+            <MoreVertical size={24} color="#64748b" />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.cartIconContainer}>
+            <ShoppingCart size={20} color="#334155" strokeWidth={2.5} />
             <View style={styles.badge}><Text style={styles.badgeText}>0</Text></View>
           </TouchableOpacity>
         </View>
@@ -227,7 +231,8 @@ export default function ChatDetailScreen() {
       await updateChatStatusInStore(chatId, { status: newStatus });
       Toast.show({ type: 'success', text1: 'Estado actualizado' });
     } catch (e) {
-      Toast.show({ type: 'error', text1: 'Error al actualizar estado' });
+      console.error("[DEBUG] updateChatStatus error:", e);
+      Toast.show({ type: 'error', text1: 'Error al actualizar estado', text2: e.message || String(e) });
     }
   };
 
@@ -302,12 +307,16 @@ export default function ChatDetailScreen() {
             <Text style={styles.sheetTitle}>Acciones</Text>
             
             <TouchableOpacity style={styles.sheetButton} onPress={handlePickImage}>
-              <Text style={styles.sheetButtonIcon}>📷</Text>
+              <View style={styles.sheetIconWrapper}>
+                <ImageIcon size={22} color="#f8fafc" />
+              </View>
               <Text style={styles.sheetButtonText}>Enviar Foto / Galería</Text>
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.sheetButton} onPress={handleRequestAi}>
-              <Text style={styles.sheetButtonIcon}>✨</Text>
+              <View style={styles.sheetIconWrapper}>
+                <Sparkles size={22} color="#f59e0b" />
+              </View>
               <Text style={styles.sheetButtonText}>Sugerencia IA</Text>
             </TouchableOpacity>
 
@@ -322,23 +331,31 @@ export default function ChatDetailScreen() {
             <Text style={styles.sheetTitle}>Estado de la Conversación</Text>
             
             <TouchableOpacity style={styles.sheetButton} onPress={() => updateChatStatus('CLOSED')}>
-              <Text style={styles.sheetButtonIcon}>✅</Text>
+              <View style={styles.sheetIconWrapper}>
+                <CheckCircle size={22} color="#10b981" />
+              </View>
               <Text style={styles.sheetButtonText}>Marcar como Resuelto</Text>
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.sheetButton} onPress={() => updateChatStatus('ON_HOLD')}>
-              <Text style={styles.sheetButtonIcon}>⏸️</Text>
+              <View style={styles.sheetIconWrapper}>
+                <PauseCircle size={22} color="#f59e0b" />
+              </View>
               <Text style={styles.sheetButtonText}>Poner en Espera</Text>
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.sheetButton} onPress={() => Toast.show({type: 'info', text1: 'Próximamente'})}>
-              <Text style={styles.sheetButtonIcon}>🔄</Text>
+              <View style={styles.sheetIconWrapper}>
+                <Users size={22} color="#3b82f6" />
+              </View>
               <Text style={styles.sheetButtonText}>Reasignar</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.sheetButton} onPress={() => updateChatStatus('SPAM')}>
-              <Text style={styles.sheetButtonIcon}>🚫</Text>
-              <Text style={[styles.sheetButtonText, { color: '#ef4444' }]}>Marcar como Spam</Text>
+            <TouchableOpacity style={styles.sheetButton} onPress={() => updateChatStatus('DISCARDED')}>
+              <View style={styles.sheetIconWrapper}>
+                <Ban size={22} color="#ef4444" />
+              </View>
+              <Text style={[styles.sheetButtonText, { color: '#ef4444' }]}>Descartar / Spam</Text>
             </TouchableOpacity>
 
           </View>
@@ -409,14 +426,25 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     textTransform: 'uppercase',
   },
-  headerIcon: {
+  moreIcon: {
     padding: 5,
+    marginRight: 10,
+  },
+  cartIconContainer: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    justifyContent: 'center',
+    alignItems: 'center',
     position: 'relative',
+    backgroundColor: '#f8fafc',
   },
   badge: {
     position: 'absolute',
-    top: -2,
-    right: -2,
+    top: -4,
+    right: -4,
     backgroundColor: '#ef4444',
     borderRadius: 10,
     minWidth: 18,
@@ -457,11 +485,11 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#334155',
   },
-  sheetButtonIcon: {
-    fontSize: 22,
-    marginRight: 15,
+  sheetIconWrapper: {
     width: 30,
-    textAlign: 'center',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 15,
   },
   sheetButtonText: {
     color: '#f8fafc',
