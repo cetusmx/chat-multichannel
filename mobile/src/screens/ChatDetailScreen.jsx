@@ -27,8 +27,8 @@ export default function ChatDetailScreen() {
   const navigation = useNavigation();
   const { chatId, clientName } = route.params || {};
 
-  const chat = useChatStore((state) => state.chats[chatId] || {});
-  const setChat = useChatStore((state) => state.setChat);
+  const chat = useChatStore((state) => state.conversations?.find(c => c.id === chatId) || {});
+  const updateChatStatusInStore = useChatStore((state) => state.updateChatStatus);
 
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -176,23 +176,22 @@ export default function ChatDetailScreen() {
 
   const handleRequestAi = async () => {
     setActionMenuVisible(false);
-    Toast.show({ type: 'info', text1: 'Sugerencia AI', text2: 'Analizando conversacin...' });
+    setIsAiLoading(true);
+    Toast.show({ type: 'info', text1: 'Sugerencia AI', text2: 'Analizando conversación...' });
     // AI Mock Logic for MVP
     setTimeout(() => {
       if (chatInputRef.current) {
         chatInputRef.current.injectText("¡Hola! Claro que sí, ¿en qué más te puedo ayudar?");
       }
+      setIsAiLoading(false);
     }, 1500);
   };
 
   const updateChatStatus = async (newStatus) => {
     setStatusMenuVisible(false);
     try {
-      const res = await post(`/chat/${encodeURIComponent(chatId)}/status`, { status: newStatus });
-      if (res.ok) {
-        setChat(chatId, { ...chat, status: newStatus });
-        Toast.show({ type: 'success', text1: 'Estado actualizado' });
-      }
+      await updateChatStatusInStore(chatId, { status: newStatus });
+      Toast.show({ type: 'success', text1: 'Estado actualizado' });
     } catch (e) {
       Toast.show({ type: 'error', text1: 'Error al actualizar estado' });
     }
