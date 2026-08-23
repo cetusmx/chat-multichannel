@@ -11,6 +11,7 @@ const MessageItem = memo(({ message }) => {
   const attachments = message.attachments || [];
   const [imageLoading, setImageLoading] = useState(true);
   const [imageError, setImageError] = useState(false);
+  const [imageErrorMsg, setImageErrorMsg] = useState(null);
   const token = useAuthStore(state => state.token);
 
   // Handle status feedback (Task 4.2)
@@ -58,14 +59,23 @@ const MessageItem = memo(({ message }) => {
                     source={{ uri: url, headers: { Authorization: `Bearer ${token}` } }} 
                     style={styles.image} 
                     onLoad={() => setImageLoading(false)}
-                    onError={() => {
+                    onError={(e) => {
                       setImageLoading(false);
                       setImageError(true);
+                      setImageErrorMsg(e.nativeEvent?.error || 'Desconocido');
                     }}
                   />
                 ) : (
                   <View style={styles.imagePlaceholder}>
                     <Text style={styles.errorText}>Error al cargar</Text>
+                    <Text style={{ fontSize: 9, color: '#fca5a5', marginTop: 4, textAlign: 'center', paddingHorizontal: 4 }}>
+                      {url}
+                    </Text>
+                    {imageErrorMsg && (
+                      <Text style={{ fontSize: 10, color: '#ef4444', marginTop: 2, textAlign: 'center', fontWeight: 'bold' }}>
+                        {imageErrorMsg}
+                      </Text>
+                    )}
                   </View>
                 )}
               </View>
