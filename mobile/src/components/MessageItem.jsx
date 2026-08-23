@@ -39,9 +39,13 @@ const MessageItem = memo(({ message }) => {
         
         {attachments.map((att, idx) => {
           if (att.type === 'IMAGE' && att.url) {
-            const base = BASE_URL.replace(/\/$/, '');
+            let base = BASE_URL.replace(/\/$/, '');
+            if (base.endsWith('/api')) {
+              base = base.substring(0, base.length - 4);
+            }
             const path = att.url.replace(/^\//, '');
             const url = att.url.startsWith('http') ? att.url : `${base}/${path}`;
+            console.log(`[DEBUG] Final Image URL: ${url} (Original: ${att.url}, Base: ${base})`);
             return (
               <View key={idx} style={styles.imageContainer}>
                 {imageLoading && (
