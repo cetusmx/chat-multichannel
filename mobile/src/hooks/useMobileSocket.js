@@ -39,7 +39,7 @@ export default function useMobileSocket(chatId, onNewMessage) {
   useEffect(() => {
     if (!socket || !chatId) return;
 
-    const joinRoom = () => socket.emit('join_conversation', chatId);
+    const joinRoom = () => socket.emit('join:conversation', chatId);
     
     if (socket.connected) {
       joinRoom();
@@ -56,6 +56,7 @@ export default function useMobileSocket(chatId, onNewMessage) {
     socket.on('new_message', handleMsg);
 
     return () => {
+      socket.emit('leave:conversation', chatId);
       socket.off('connect', joinRoom);
       socket.off('new_message', handleMsg);
     };

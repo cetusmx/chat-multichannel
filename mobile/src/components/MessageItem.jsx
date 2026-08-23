@@ -1,8 +1,8 @@
 import React, { useState, memo } from 'react';
-import { View, Text, StyleSheet, Image, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, Image, ActivityIndicator, Platform } from 'react-native';
 import Config from 'react-native-config';
-import { Platform } from 'react-native';
 import { theme } from '../utils/theme';
+import useAuthStore from '@shared/stores/useAuthStore';
 
 const BASE_URL = Config.BACKEND_URL || (Platform.OS === 'android' ? 'http://10.0.2.2:4000' : 'http://localhost:4000');
 
@@ -11,6 +11,7 @@ const MessageItem = memo(({ message }) => {
   const attachments = message.attachments || [];
   const [imageLoading, setImageLoading] = useState(true);
   const [imageError, setImageError] = useState(false);
+  const token = useAuthStore(state => state.token);
 
   // Handle status feedback (Task 4.2)
   const renderStatus = () => {
@@ -50,7 +51,7 @@ const MessageItem = memo(({ message }) => {
                 )}
                 {!imageError ? (
                   <Image 
-                    source={{ uri: url }} 
+                    source={{ uri: url, headers: { Authorization: `Bearer ${token}` } }} 
                     style={styles.image} 
                     onLoad={() => setImageLoading(false)}
                     onError={() => {

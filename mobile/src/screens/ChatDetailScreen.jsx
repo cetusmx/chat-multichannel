@@ -15,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { launchImageLibrary } from 'react-native-image-picker';
 import Toast from 'react-native-toast-message';
+import { ShoppingCart } from 'lucide-react-native';
 import { get, post, postFormData } from '../services/api';
 import { theme } from '../utils/theme';
 import useChatStore from '@shared/stores/useChatStore';
@@ -51,7 +52,7 @@ export default function ChatDetailScreen() {
             <View style={styles.avatarPlaceholder}>
               <Text style={styles.avatarText}>{clientName ? clientName.charAt(0).toUpperCase() : 'C'}</Text>
             </View>
-            <View>
+            <View style={styles.headerTextContainer}>
               <Text style={styles.headerTitleName} numberOfLines={1}>{clientName} ▾</Text>
               <Text style={styles.headerTitleStatus}>{chat?.status || 'OPEN'}</Text>
             </View>
@@ -61,7 +62,7 @@ export default function ChatDetailScreen() {
       headerRight: () => (
         <View style={styles.headerRightContainer}>
           <TouchableOpacity style={styles.headerIcon}>
-            <Text style={{ fontSize: 20 }}>🛒</Text>
+            <ShoppingCart size={24} color="#fff" strokeWidth={2} />
             <View style={styles.badge}><Text style={styles.badgeText}>0</Text></View>
           </TouchableOpacity>
         </View>
@@ -113,10 +114,15 @@ export default function ChatDetailScreen() {
       if (res.ok && data.data) {
         const payload = data.data;
         setMessages((prev) => {
-          if (!cursor) return payload.filter(item => item && item.id);
-          const prevIds = new Set(prev.map(m => m.id));
-          const newUnique = payload.filter(item => item && item.id && !prevIds.has(item.id));
-          return [...prev, ...newUnique];
+          let nextMessages = [];
+          if (!cursor) {
+            nextMessages = payload.filter(item => item && item.id);
+          } else {
+            const prevIds = new Set(prev.map(m => m.id));
+            const newUnique = payload.filter(item => item && item.id && !prevIds.has(item.id));
+            nextMessages = [...prev, ...newUnique];
+          }
+          return nextMessages.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
         });
         setHasMore(data.meta?.hasMore || false);
         setNextCursor(data.meta?.nextCursor || null);
@@ -213,7 +219,43 @@ export default function ChatDetailScreen() {
     }
   };
 
-  const renderItem = useCallback(({ item }) => <MessageItem message={item} />, []);
+  const formatDateLabel = (dateString) => {
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return '';
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    
+    if (date.toDateString() === today.toDateString()) return 'Hoy';
+    if (date.toDateString() === yesterday.toDateString()) return 'Ayer';
+    return date.toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' });
+  };
+
+  const renderItem = useCallback(({ item, index }) => {
+    const nextItem = messages[index + 1];
+    let showDateLabel = false;
+    
+    if (!nextItem) {
+      showDateLabel = true;
+    } else {
+      const currentDate = new Date(item.createdAt).toDateString();
+      const prevDate = new Date(nextItem.createdAt).toDateString();
+      if (currentDate !== prevDate) {
+        showDateLabel = true;
+      }
+    }
+
+    return (
+      <View>
+        {showDateLabel && (
+          <View style={styles.dateHeaderContainer}>
+            <Text style={styles.dateHeaderText}>{formatDateLabel(item.createdAt)}</Text>
+          </View>
+        )}
+        <MessageItem message={item} />
+      </View>
+    );
+  }, [messages]);
 
   return (
     <SafeAreaView style={styles.container} edges={['right', 'bottom', 'left']}>
@@ -297,6 +339,22 @@ export default function ChatDetailScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.colors.background },
+  dateHeaderContainer: {
+    alignSelf: 'center',
+    backgroundColor: 'rgba(30, 41, 59, 0.8)', // sales-slate-800/80 equivalent
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    marginVertical: 12,
+    borderColor: 'rgba(51, 65, 85, 0.5)',
+    borderWidth: 1,
+  },
+  dateHeaderText: {
+    color: '#cbd5e1', // sales-slate-300
+    fontSize: 12,
+    textTransform: 'uppercase',
+    fontWeight: 'bold',
+  },
   headerTitleRow: { flexDirection: 'row', alignItems: 'center' },
   avatarPlaceholder: {
     width: 32, height: 32, borderRadius: 16,
@@ -306,9 +364,15 @@ const styles = StyleSheet.create({
   },
   avatarText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
   headerTitleContainer: {
+    flexDirection: 'row',
     alignItems: 'center',
+    paddingHorizontal: 0,
+    marginLeft: Platform.OS === 'ios' ? 0 : -15, // Native back button spacing
+  },
+  headerTextContainer: {
     justifyContent: 'center',
-    paddingHorizontal: 10,
+    alignItems: 'flex-start',
+    maxWidth: 200,
   },
   headerTitleName: {
     fontSize: 16,
@@ -317,8 +381,8 @@ const styles = StyleSheet.create({
   },
   headerTitleStatus: {
     fontSize: 12,
-    color: '#94a3b8',
-    marginTop: 2,
+    color: '#34d399',
+    marginTop: -2,
   },
   headerRightContainer: {
     flexDirection: 'row',
