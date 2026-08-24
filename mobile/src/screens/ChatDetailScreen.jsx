@@ -15,7 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { launchImageLibrary } from 'react-native-image-picker';
 import Toast from 'react-native-toast-message';
-import { ShoppingCart, MoreVertical, CheckCircle, PauseCircle, Users, Ban, Image as ImageIcon, Sparkles, Calendar } from 'lucide-react-native';
+import { ShoppingCart, MoreVertical, CheckCircle, PauseCircle, Users, Ban, Image as ImageIcon, Sparkles, Calendar, ShieldAlert, Clock } from 'lucide-react-native';
 import { get, post, postFormData } from '../services/api';
 import { theme } from '../utils/theme';
 import useChatStore from '@shared/stores/useChatStore';
@@ -50,6 +50,7 @@ export default function ChatDetailScreen() {
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [actionMenuVisible, setActionMenuVisible] = useState(false);
   const [statusMenuVisible, setStatusMenuVisible] = useState(false);
+  const [resolveModalVisible, setResolveModalVisible] = useState(false);
   const chatInputRef = useRef(null);
   const isLoadingMoreRef = useRef(false);
   const aiAbortControllerRef = useRef(null);
@@ -69,20 +70,27 @@ export default function ChatDetailScreen() {
           </View>
         </View>
       ),
-      headerRight: () => (
-        <View style={styles.headerRightContainer}>
-          <View style={styles.statusBadge}>
-            <Text style={styles.statusBadgeText}>{getStatusText(chat?.status)}</Text>
-          </View>
-          <TouchableOpacity style={styles.moreIcon} onPress={() => setStatusMenuVisible(true)}>
-            <MoreVertical size={24} color="#64748b" />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.cartIconContainer}>
-            <ShoppingCart size={20} color="#334155" strokeWidth={2.5} />
-            <View style={styles.badge}><Text style={styles.badgeText}>0</Text></View>
-          </TouchableOpacity>
-        </View>
-      )
+        headerRight: () => {
+          const isClosed = ['CLOSED', 'CLOSED_WON', 'CLOSED_INACTIVE', 'DISCARDED'].includes(chat?.status);
+          return (
+            <View style={styles.headerRightContainer}>
+              <View style={styles.statusBadge}>
+                <Text style={styles.statusBadgeText}>{getStatusText(chat?.status)}</Text>
+              </View>
+              {!isClosed && (
+                <>
+                  <TouchableOpacity style={styles.moreIcon} onPress={() => setStatusMenuVisible(true)}>
+                    <MoreVertical size={24} color="#64748b" />
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.cartIconContainer}>
+                    <ShoppingCart size={20} color="#334155" strokeWidth={2.5} />
+                    <View style={styles.badge}><Text style={styles.badgeText}>0</Text></View>
+                  </TouchableOpacity>
+                </>
+              )}
+            </View>
+          );
+        }
     });
   }, [clientName, chat?.status, navigation]);
 
@@ -191,6 +199,7 @@ export default function ChatDetailScreen() {
 
   const updateChatStatus = async (newStatus) => {
     setStatusMenuVisible(false);
+    setResolveModalVisible(false);
     try {
       await updateChatStatusInStore(chatId, { status: newStatus });
       Toast.show({ type: 'success', text1: 'Estado actualizado' });
@@ -294,40 +303,66 @@ export default function ChatDetailScreen() {
         </TouchableOpacity>
       </Modal>
 
-      {/* Status Menu Bottom Sheet Modal */}
+      {/* Status Dropdown Menu Modal */}
       <Modal visible={statusMenuVisible} transparent animationType="fade">
         <TouchableOpacity style={styles.modalOverlay} onPress={() => setStatusMenuVisible(false)}>
-          <View style={styles.bottomSheet}>
-            <Text style={styles.sheetTitle}>Estado de la Conversación</Text>
+          <View style={styles.dropdownMenu}>
+            <TouchableOpacity style={styles.dropdownItem} onPress={() => { setStatusMenuVisible(false); setResolveModalVisible(true); }}>
+              <CheckCircle size={20} color="#f8fafc" strokeWidth={1.5} />
+              <Text style={styles.dropdownItemText}>Resolver</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.dropdownItem} onPress={() => Toast.show({type: 'info', text1: 'Próximamente', text2: 'Módulo en desarrollo'})}>
+              <ShieldAlert size={20} color="#f8fafc" strokeWidth={1.5} />
+              <Text style={styles.dropdownItemText}>Escalar</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.dropdownItem} onPress={() => Toast.show({type: 'info', text1: 'Próximamente', text2: 'Módulo en desarrollo'})}>
+              <Clock size={20} color="#f8fafc" strokeWidth={1.5} />
+              <Text style={styles.dropdownItemText}>Esperando al Cliente</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.dropdownItem} onPress={() => Toast.show({type: 'info', text1: 'Próximamente', text2: 'Módulo en desarrollo'})}>
+              <PauseCircle size={20} color="#f8fafc" strokeWidth={1.5} />
+              <Text style={styles.dropdownItemText}>Poner en Espera</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.dropdownItem} onPress={() => Toast.show({type: 'info', text1: 'Próximamente', text2: 'Módulo en desarrollo'})}>
+              <Calendar size={20} color="#f8fafc" strokeWidth={1.5} />
+              <Text style={styles.dropdownItemText}>Agendar</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.dropdownItem} onPress={() => updateChatStatus('DISCARDED')}>
+              <Ban size={20} color="#ef4444" strokeWidth={1.5} />
+              <Text style={[styles.dropdownItemText, { color: '#ef4444' }]}>Descartar / Spam</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Resolve Chat Modal */}
+      <Modal visible={resolveModalVisible} transparent animationType="fade">
+        <TouchableOpacity style={styles.resolveOverlay} onPress={() => setResolveModalVisible(false)}>
+          <View style={styles.resolveModalBox} onStartShouldSetResponder={() => true}>
+            <View style={styles.resolveModalHeader}>
+              <Text style={styles.resolveModalTitle}>Finalizar Conversación</Text>
+            </View>
             
-            <TouchableOpacity style={styles.sheetButton} onPress={() => updateChatStatus('CLOSED')}>
-              <View style={styles.sheetIconWrapper}>
-                <CheckCircle size={22} color="#f8fafc" strokeWidth={1.5} />
-              </View>
-              <Text style={styles.sheetButtonText}>Marcar como Resuelto</Text>
-            </TouchableOpacity>
+            <View style={styles.resolveModalBody}>
+              <TouchableOpacity 
+                style={styles.resolveBtnWon} 
+                onPress={() => updateChatStatus('CLOSED_WON')}
+              >
+                <Text style={styles.resolveBtnWonText}>Cierre con Venta</Text>
+              </TouchableOpacity>
 
-            <TouchableOpacity style={styles.sheetButton} onPress={() => Toast.show({type: 'info', text1: 'Próximamente', text2: 'Módulo en desarrollo'})}>
-              <View style={styles.sheetIconWrapper}>
-                <PauseCircle size={22} color="#f8fafc" strokeWidth={1.5} />
-              </View>
-              <Text style={styles.sheetButtonText}>Poner en Espera</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.sheetButton} onPress={() => Toast.show({type: 'info', text1: 'Próximamente', text2: 'Módulo en desarrollo'})}>
-              <View style={styles.sheetIconWrapper}>
-                <Calendar size={22} color="#f8fafc" strokeWidth={1.5} />
-              </View>
-              <Text style={styles.sheetButtonText}>Programar</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.sheetButton} onPress={() => updateChatStatus('DISCARDED')}>
-              <View style={styles.sheetIconWrapper}>
-                <Ban size={22} color="#ef4444" strokeWidth={1.5} />
-              </View>
-              <Text style={[styles.sheetButtonText, { color: '#ef4444' }]}>Descartar / Spam</Text>
-            </TouchableOpacity>
-
+              <TouchableOpacity 
+                style={styles.resolveBtnLost} 
+                onPress={() => updateChatStatus('CLOSED')}
+              >
+                <Text style={styles.resolveBtnLostText}>Cierre sin Venta</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </TouchableOpacity>
       </Modal>
@@ -444,6 +479,87 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'flex-end',
+  },
+  dropdownMenu: {
+    position: 'absolute',
+    top: 60,
+    right: 15,
+    backgroundColor: '#1e293b',
+    borderRadius: 8,
+    paddingVertical: 5,
+    width: 220,
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  dropdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 15,
+  },
+  dropdownItemText: {
+    color: '#f8fafc',
+    fontSize: 15,
+    fontWeight: '400',
+    marginLeft: 15,
+  },
+  resolveOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(2, 6, 23, 0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  resolveModalBox: {
+    width: '85%',
+    backgroundColor: '#0f172a',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#334155',
+    overflow: 'hidden',
+  },
+  resolveModalHeader: {
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#1e293b',
+    alignItems: 'center',
+  },
+  resolveModalTitle: {
+    color: '#f8fafc',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  resolveModalBody: {
+    padding: 20,
+    gap: 12,
+  },
+  resolveBtnWon: {
+    backgroundColor: '#059669',
+    paddingVertical: 14,
+    borderRadius: 8,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#34d399',
+  },
+  resolveBtnWonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  resolveBtnLost: {
+    backgroundColor: '#334155',
+    paddingVertical: 14,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  resolveBtnLostText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '500',
   },
   bottomSheet: {
     backgroundColor: '#1e293b',
