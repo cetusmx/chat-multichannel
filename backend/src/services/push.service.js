@@ -1,9 +1,9 @@
-const admin = require('../config/firebase');
+const { getApps, getMessaging } = require('../config/firebase');
 const prisma = require('../config/database');
 const logger = require('../utils/logger'); // Assuming a logger exists, or just use console
 
 async function sendPushToVendor(vendorId, payload) {
-  if (!admin.apps.length) {
+  if (getApps().length === 0) {
     console.warn('Firebase Admin not initialized, skipping push notification');
     return;
   }
@@ -30,7 +30,7 @@ async function sendPushToVendor(vendorId, payload) {
     };
 
     try {
-      const response = await admin.messaging().sendMulticast(message);
+      const response = await getMessaging().sendMulticast(message);
       
       if (response.failureCount > 0) {
         response.responses.forEach((resp, idx) => {
@@ -53,7 +53,7 @@ async function sendPushToVendor(vendorId, payload) {
 
   if (staleTokens.length > 0) {
     for (const token of staleTokens) {
-      await prisma.$executeRaw`UPDATE "User" SET fcm_tokens = array_remove(fcm_tokens, ${token}) WHERE id = ${vendorId}`;
+      await prisma.$executeRaw`UPDATE "users" SET fcm_tokens = array_remove(fcm_tokens, ${token}) WHERE id = ${vendorId}`;
     }
     console.log(`Removed ${staleTokens.length} stale FCM tokens for user ${vendorId}`);
   }

@@ -592,17 +592,17 @@ async function registerFcmToken(userId, token) {
   if (!token) throw ApiError.badRequest('Token is required');
 
   // CRITICAL SECURITY: prevent "Ghost Push" atomically via PostgreSQL array functions
-  await prisma.$executeRaw`UPDATE "User" SET fcm_tokens = array_remove(fcm_tokens, ${token}) WHERE ${token} = ANY(fcm_tokens) AND id != ${userId}`;
+  await prisma.$executeRaw`UPDATE "users" SET fcm_tokens = array_remove(fcm_tokens, ${token}) WHERE ${token} = ANY(fcm_tokens) AND id != ${userId}`;
 
   // Add to current user if not exists atomically
-  await prisma.$executeRaw`UPDATE "User" SET fcm_tokens = array_append(fcm_tokens, ${token}) WHERE id = ${userId} AND NOT (${token} = ANY(fcm_tokens))`;
+  await prisma.$executeRaw`UPDATE "users" SET fcm_tokens = array_append(fcm_tokens, ${token}) WHERE id = ${userId} AND NOT (${token} = ANY(fcm_tokens))`;
 }
 
 async function removeFcmToken(userId, token) {
   if (!token) throw ApiError.badRequest('Token is required');
 
   // Remove atomically
-  await prisma.$executeRaw`UPDATE "User" SET fcm_tokens = array_remove(fcm_tokens, ${token}) WHERE id = ${userId}`;
+  await prisma.$executeRaw`UPDATE "users" SET fcm_tokens = array_remove(fcm_tokens, ${token}) WHERE id = ${userId}`;
 }
 
 async function testPushNotification(userId) {
