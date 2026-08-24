@@ -696,6 +696,25 @@ router.patch('/:conversationId/assign', authenticate, authorize('ADMIN', 'COORDI
           action: 'added',
           conversation: updatedConversation
         });
+
+        // --- PUSH NOTIFICATION INTEGRATION ---
+        try {
+          const pushService = require('../services/push.service');
+          const pushPayload = {
+            notification: { 
+              title: 'Nueva conversación asignada', 
+              body: `Se te ha asignado un chat con ${updatedConversation.client?.name || updatedConversation.client?.phone || 'un cliente'}.` 
+            },
+            android: { priority: 'high', notification: { channel_id: 'high_priority_chat', sound: 'notification_sound' } },
+            apns: { payload: { aps: { sound: 'notification_sound.wav' } } },
+            data: { chatId: updatedConversation.id, type: 'chat_assigned' }
+          };
+          pushService.sendPushToVendor(vendorId, pushPayload).catch(err => {
+            console.error('[PUSH_SERVICE] Error trigger on assignment:', err.message);
+          });
+        } catch (err) {
+          console.error('[PUSH_SERVICE] Failed to process assignment push notification:', err.message);
+        }
       }
 
       // Notificar a los coordinadores
