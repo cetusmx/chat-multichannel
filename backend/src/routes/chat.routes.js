@@ -705,8 +705,8 @@ router.patch('/:conversationId/assign', authenticate, authorize('ADMIN', 'COORDI
               title: 'Nueva conversación asignada', 
               body: `Se te ha asignado un chat con ${updatedConversation.client?.name || updatedConversation.client?.phone || 'un cliente'}.` 
             },
-            android: { priority: 'high', notification: { channel_id: 'high_priority_chat', sound: 'notification_sound' } },
-            apns: { payload: { aps: { sound: 'notification_sound.wav' } } },
+            android: { priority: 'high', notification: { sound: 'default' } },
+            apns: { payload: { aps: { sound: 'default' } } },
             data: { chatId: updatedConversation.id, type: 'chat_assigned' }
           };
           pushService.sendPushToVendor(vendorId, pushPayload).catch(err => {
