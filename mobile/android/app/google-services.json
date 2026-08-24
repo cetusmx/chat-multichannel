@@ -1,13 +1,13 @@
 {
   "project_info": {
-    "project_number": "123456789012",
-    "project_id": "mock-project-id",
-    "storage_bucket": "mock-project-id.appspot.com"
+    "project_number": "152542098715",
+    "project_id": "salesflow-chat",
+    "storage_bucket": "salesflow-chat.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:123456789012:android:abcdef1234567890",
+        "mobilesdk_app_id": "1:152542098715:android:6f00fbdf90f3f4845c0fbe",
         "android_client_info": {
           "package_name": "com.mobile"
         }
@@ -15,7 +15,7 @@
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "MOCK_API_KEY"
+          "current_key": "AIzaSyAKDSE_LGXYxr7ZMOD3MoWv-2pG1ey9Dfs"
         }
       ],
       "services": {
