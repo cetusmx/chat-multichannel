@@ -30,7 +30,7 @@ async function sendPushToVendor(vendorId, payload) {
     };
 
     try {
-      const response = await getMessaging().sendMulticast(message);
+      const response = await getMessaging().sendEachForMulticast(message);
       
       if (response.failureCount > 0) {
         response.responses.forEach((resp, idx) => {
