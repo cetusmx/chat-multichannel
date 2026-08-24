@@ -44,6 +44,48 @@ export default function ChatListScreen() {
     return clientName.includes(query) || clientPhone.includes(query);
   });
 
+  const getStatusText = (status) => {
+    const map = {
+      PENDING_ASSIGNMENT: 'Sin Asignar',
+      ACTIVE: 'Activo',
+      CLOSED: 'Cierre Sin Venta',
+      CLOSED_WON: 'Cierre Venta',
+      ESCALATED: 'Escalado',
+      WAITING_CUSTOMER: 'Esp. Cliente',
+      SCHEDULED: 'Agendado',
+      ON_HOLD: 'Pausa',
+      DISCARDED: 'Descartado / Spam',
+      CLOSED_INACTIVE: 'Cerrado Inactivo'
+    };
+    return map[status] || status || 'Activo';
+  };
+
+  const getStatusTagStyle = (status) => {
+    switch (status) {
+      case 'CLOSED_WON': return { backgroundColor: 'rgba(5, 150, 105, 0.2)' }; // Emerald
+      case 'WAITING_CUSTOMER': return { backgroundColor: 'rgba(217, 119, 6, 0.2)' }; // Amber
+      case 'SCHEDULED': return { backgroundColor: 'rgba(147, 51, 234, 0.2)' }; // Purple
+      case 'ON_HOLD': return { backgroundColor: 'rgba(37, 99, 235, 0.2)' }; // Blue
+      case 'CLOSED':
+      case 'DISCARDED':
+      case 'CLOSED_INACTIVE': return { backgroundColor: 'rgba(100, 116, 139, 0.2)' }; // Slate
+      default: return {};
+    }
+  };
+
+  const getStatusTagTextStyle = (status) => {
+    switch (status) {
+      case 'CLOSED_WON': return { color: '#34d399' }; // Emerald
+      case 'WAITING_CUSTOMER': return { color: '#fbbf24' }; // Amber
+      case 'SCHEDULED': return { color: '#c084fc' }; // Purple
+      case 'ON_HOLD': return { color: '#60a5fa' }; // Blue
+      case 'CLOSED':
+      case 'DISCARDED':
+      case 'CLOSED_INACTIVE': return { color: '#94a3b8' }; // Slate
+      default: return {};
+    }
+  };
+
   const renderItem = ({ item }) => {
     const clientName = item.client?.name || item.client?.phone || 'Unknown Client';
     
@@ -72,7 +114,12 @@ export default function ChatListScreen() {
           <Text style={styles.avatarText}>{clientName.charAt(0).toUpperCase()}</Text>
         </View>
         <View style={styles.chatItemContent}>
-          <Text style={styles.clientName}>{clientName}</Text>
+          <View style={styles.nameRow}>
+            <Text style={styles.clientName} numberOfLines={1}>{clientName}</Text>
+            <View style={[styles.statusTag, getStatusTagStyle(item.status)]}>
+              <Text style={[styles.statusTagText, getStatusTagTextStyle(item.status)]}>{getStatusText(item.status)}</Text>
+            </View>
+          </View>
           <Text style={styles.lastMessage} numberOfLines={1}>{lastMessage}</Text>
         </View>
         <View style={styles.rightInfo}>
@@ -200,11 +247,29 @@ const styles = StyleSheet.create({
     flex: 1,
     marginRight: 10,
   },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 5,
+  },
   clientName: {
     color: '#f1f5f9',
     fontSize: 17,
     fontWeight: '600',
-    marginBottom: 5,
+    flex: 1,
+    marginRight: 8,
+  },
+  statusTag: {
+    backgroundColor: '#334155',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  statusTagText: {
+    color: '#cbd5e1',
+    fontSize: 11,
+    fontWeight: '500',
   },
   lastMessage: {
     color: '#94a3b8',
