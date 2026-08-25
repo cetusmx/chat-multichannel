@@ -70,6 +70,15 @@ export async function registerFcmToken() {
   }
 
   try {
+    // Create the high importance channel ahead of time for GMS
+    await notifee.createChannel({
+      id: 'high_importance_channel',
+      name: 'High Importance Notifications',
+      importance: AndroidImportance.HIGH,
+      visibility: AndroidVisibility.PUBLIC,
+      sound: 'default',
+    });
+
     const token = await messaging().getToken();
     if (!token) return;
 
