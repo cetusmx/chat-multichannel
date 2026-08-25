@@ -38,7 +38,7 @@
         android:resource="@color/white" />
       <meta-data
         android:name="com.google.firebase.messaging.default_notification_channel_id"
-        android:value="high_importance_channel"
+        android:value="salesflow_urgent_v1"
         tools:replace="android:value" />
     </application>
 </manifest>

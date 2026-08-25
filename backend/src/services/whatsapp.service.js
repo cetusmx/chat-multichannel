@@ -466,7 +466,7 @@ const whatsappService = {
                 }
                 const pushPayload = {
                   notification: { title: pushTitle, body: pushBody },
-                  android: { priority: 'high', notification: { channel_id: 'high_importance_channel', tag: conversation.id, sound: 'default' } },
+                  android: { priority: 'high', notification: { channel_id: 'salesflow_urgent_v1', tag: conversation.id, sound: 'default' } },
                   apns: { payload: { aps: { 'thread-id': conversation.id, sound: 'default' } } },
                   data: { 
                     chatId: conversation.id, 

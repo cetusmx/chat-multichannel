@@ -705,7 +705,7 @@ router.patch('/:conversationId/assign', authenticate, authorize('ADMIN', 'COORDI
               title: 'Nueva conversación asignada', 
               body: `Se te ha asignado un chat con ${updatedConversation.client?.name || updatedConversation.client?.phone || 'un cliente'}.` 
             },
-            android: { priority: 'high', notification: { channel_id: 'high_importance_channel', sound: 'default' } },
+            android: { priority: 'high', notification: { channel_id: 'salesflow_urgent_v1', sound: 'default' } },
             apns: { payload: { aps: { sound: 'default' } } },
             data: { 
               chatId: updatedConversation.id, 
