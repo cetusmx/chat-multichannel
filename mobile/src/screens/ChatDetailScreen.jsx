@@ -46,6 +46,8 @@ export default function ChatDetailScreen() {
 
   const chat = useChatStore((state) => state.conversations?.find(c => c.id === chatId) || {});
   const updateChatStatusInStore = useChatStore((state) => state.updateChatStatus);
+  const setCurrentConversationId = useChatStore((state) => state.setCurrentConversationId);
+  const clearUnreadCount = useChatStore((state) => state.clearUnreadCount);
 
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -60,6 +62,16 @@ export default function ChatDetailScreen() {
   const isLoadingMoreRef = useRef(false);
   const aiAbortControllerRef = useRef(null);
   const prevStatusRef = useRef(chat?.status);
+
+  useEffect(() => {
+    if (chatId) {
+      setCurrentConversationId(chatId);
+      clearUnreadCount(chatId);
+    }
+    return () => {
+      setCurrentConversationId(null);
+    };
+  }, [chatId, setCurrentConversationId, clearUnreadCount]);
 
   useEffect(() => {
     if (prevStatusRef.current === 'WAITING_CUSTOMER' && chat?.status === 'ACTIVE') {
