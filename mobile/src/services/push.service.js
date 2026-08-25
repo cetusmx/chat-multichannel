@@ -17,13 +17,16 @@ export async function displayLocalNotification(remoteMessage) {
 
     // Display a notification
     await notifee.displayNotification({
-      title: remoteMessage.data?.notifee_title || 'Nuevo Mensaje',
+      title: `<b>${remoteMessage.data?.notifee_title || 'Nuevo Mensaje'}</b>`,
       body: remoteMessage.data?.notifee_body || '',
       data: remoteMessage.data,
       android: {
         channelId,
         importance: AndroidImportance.HIGH,
         visibility: AndroidVisibility.PUBLIC,
+        smallIcon: 'ic_notification', // Needs to be a transparent mask icon
+        largeIcon: 'ic_launcher',     // Shows the App Logo / Avatar on the right
+        color: '#1E3A8A',             // Brand color
         pressAction: {
           id: 'default',
         },

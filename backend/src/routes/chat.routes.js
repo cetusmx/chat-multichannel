@@ -710,8 +710,8 @@ router.patch('/:conversationId/assign', authenticate, authorize('ADMIN', 'COORDI
             data: { 
               chatId: updatedConversation.id, 
               type: 'chat_assigned',
-              notifee_title: 'Nueva conversación asignada',
-              notifee_body: `Se te ha asignado un chat con ${updatedConversation.client?.name || updatedConversation.client?.phone || 'un cliente'}.`
+              notifee_title: updatedConversation.client?.name || updatedConversation.client?.phone || 'SalesFlow',
+              notifee_body: `Se te ha asignado este chat.`
             }
           };
           pushService.sendPushToVendor(vendorId, pushPayload).catch(err => {
