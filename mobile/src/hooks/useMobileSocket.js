@@ -4,7 +4,8 @@ import useAuthStore from '@shared/stores/useAuthStore';
 import Config from 'react-native-config';
 import { Platform } from 'react-native';
 
-const BASE_SOCKET_URL = Config.BACKEND_URL || (Platform.OS === 'android' ? 'http://10.0.2.2:4000' : 'http://localhost:4000');
+const RAW_URL = Config.BACKEND_URL || (Platform.OS === 'android' ? 'http://10.0.2.2:4000' : 'http://localhost:4000');
+const BASE_SOCKET_URL = RAW_URL.replace(/\/api\/?$/, '');
 
 export default function useMobileSocket(chatId, onNewMessage) {
   const [socket, setSocket] = useState(null);
