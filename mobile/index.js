@@ -19,10 +19,12 @@ global.ErrorUtils.setGlobalHandler((error, isFatal) => {
 
 import App from './App';
 import { name as appName } from './app.json';
+import { displayLocalNotification } from './src/services/push.service';
 
 // Register background handler
 messaging().setBackgroundMessageHandler(async remoteMessage => {
   console.log('Message handled in the background!', remoteMessage);
+  await displayLocalNotification(remoteMessage);
 });
 
 AppRegistry.registerComponent(appName, () => App);

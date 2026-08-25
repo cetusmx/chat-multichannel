@@ -465,10 +465,12 @@ const whatsappService = {
                   pushBody = segments.slice(0, 253).join('') + '...';
                 }
                 const pushPayload = {
-                  notification: { title: pushTitle, body: pushBody },
-                  android: { priority: 'high', notification: { channel_id: 'high_importance_channel', tag: conversation.id, sound: 'default' } },
-                  apns: { payload: { aps: { 'thread-id': conversation.id, sound: 'default' } } },
-                  data: { chatId: conversation.id, type: 'new_message' }
+                  data: { 
+                    chatId: conversation.id, 
+                    type: 'new_message',
+                    notifee_title: pushTitle,
+                    notifee_body: pushBody
+                  }
                 };
                 pushService.sendPushToVendor(updatedConv.vendorId, pushPayload).catch(err => {
                   logger.error('[PUSH_SERVICE] Error trigger:', err.message);

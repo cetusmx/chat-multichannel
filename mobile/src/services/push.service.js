@@ -1,7 +1,41 @@
 import messaging from '@react-native-firebase/messaging';
+import notifee, { AndroidImportance, AndroidVisibility } from '@notifee/react-native';
 import { post, del } from './api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
+
+export async function displayLocalNotification(remoteMessage) {
+  try {
+    // Request permissions (required for iOS)
+    await notifee.requestPermission();
+
+    // Create a channel (required for Android)
+    const channelId = await notifee.createChannel({
+      id: 'high_importance_channel',
+      name: 'High Importance Notifications',
+      importance: AndroidImportance.HIGH,
+      visibility: AndroidVisibility.PUBLIC,
+      sound: 'default',
+    });
+
+    // Display a notification
+    await notifee.displayNotification({
+      title: remoteMessage.data?.notifee_title || 'Nuevo Mensaje',
+      body: remoteMessage.data?.notifee_body || '',
+      data: remoteMessage.data,
+      android: {
+        channelId,
+        importance: AndroidImportance.HIGH,
+        visibility: AndroidVisibility.PUBLIC,
+        pressAction: {
+          id: 'default',
+        },
+      },
+    });
+  } catch (error) {
+    console.error('[NOTIFEE] Failed to display notification', error);
+  }
+}
 
 export async function requestPushPermission() {
   let authStatus = await messaging().hasPermission();

@@ -72,8 +72,8 @@ export default function App() {
   useEffect(() => {
     const unsubscribeMsg = messaging().onMessage(async remoteMessage => {
       // Foreground handler
-      const title = remoteMessage.notification?.title || 'Nuevo mensaje';
-      const body = remoteMessage.notification?.body || '';
+      const title = remoteMessage.data?.notifee_title || 'Nuevo mensaje';
+      const body = remoteMessage.data?.notifee_body || '';
       
       const currentRoute = navigationRef.isReady() ? navigationRef.getCurrentRoute() : null;
       const isSameChat = currentRoute?.name === 'ChatDetail' && String(currentRoute?.params?.chatId) === String(remoteMessage.data?.chatId);
