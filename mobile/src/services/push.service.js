@@ -2,7 +2,7 @@ import messaging from '@react-native-firebase/messaging';
 import notifee, { AndroidImportance, AndroidVisibility } from '@notifee/react-native';
 import { post, del } from './api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Platform } from 'react-native';
+import { Platform, Alert, Linking } from 'react-native';
 
 export async function displayLocalNotification(remoteMessage) {
   try {
@@ -66,6 +66,14 @@ export async function registerFcmToken() {
   const enabled = await requestPushPermission();
   if (!enabled) {
     console.log('[PUSH] Permission not granted');
+    Alert.alert(
+      'Notificaciones Desactivadas',
+      'Para enterarte al instante cuando un cliente te escribe, necesitas permitir las notificaciones en la configuración de la app.',
+      [
+        { text: 'Ahora no', style: 'cancel' },
+        { text: 'Abrir Ajustes', onPress: () => Linking.openSettings() }
+      ]
+    );
     return;
   }
 
