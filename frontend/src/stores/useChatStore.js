@@ -79,7 +79,7 @@ const useChatStore = create((set, get) => ({
   fetchConversations: async () => {
     try {
       const [res, slaRes] = await Promise.all([
-        config.api.get('/chat/conversations'),
+        config.api.get(`/chat/conversations?_t=${Date.now()}`),
         config.api.get('/metrics/sla').catch(() => null),
       ]);
 
