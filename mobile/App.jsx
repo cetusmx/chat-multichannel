@@ -2,7 +2,9 @@ import React, { useEffect, useState } from 'react';
 import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { Platform } from 'react-native';
+import { Platform, LogBox } from 'react-native';
+
+// Force APK build trigger for shared folder change
 import messaging from '@react-native-firebase/messaging';
 import Toast from 'react-native-toast-message';
 import { registerFcmToken, removeFcmToken } from './src/services/push.service';
