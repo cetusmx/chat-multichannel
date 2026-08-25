@@ -102,7 +102,32 @@ router.post('/:conversationId/messages', authenticate, authorize('ADMIN', 'COORD
         data: { lastMessageAt: new Date() }
       });
       try {
-        socket.getIo().of('/chat').to(`conversation:${conversationId}`).to(`tenant_${conversation.tenantId}_coordinators`).emit('new_message', message);
+        let ioEvent = socket.getIo().of('/chat').to(`conversation:${conversationId}`).to(`tenant_${conversation.tenantId}_coordinators`);
+        if (conversation.vendorId) ioEvent = ioEvent.to(`vendor_${conversation.vendorId}`);
+        ioEvent.emit('new_message', message);
+        
+        // Enviar Push Notification si el remitente no es el propio vendor asignado
+        if (conversation.vendorId && conversation.vendorId !== req.user.id) {
+          const pushService = require('../services/push.service');
+          const senderName = req.user.name || 'El equipo';
+          const pushPayload = {
+            notification: { 
+              title: 'Nuevo susurro interno', 
+              body: `${senderName}: ${content}` 
+            },
+            android: { priority: 'high', notification: { channel_id: 'salesflow_urgent_v1', tag: conversation.id, sound: 'default' } },
+            apns: { payload: { aps: { 'thread-id': conversation.id, sound: 'default' } } },
+            data: { 
+              chatId: conversation.id, 
+              type: 'new_message',
+              notifee_title: 'Susurro interno',
+              notifee_body: `${senderName}: ${content}`
+            }
+          };
+          pushService.sendPushToVendor(conversation.vendorId, pushPayload).catch(err => {
+            console.error('[CHAT_ROUTE] Error enviando push del susurro:', err.message);
+          });
+        }
       } catch (err) {
         console.error('[CHAT_ROUTE] No se pudo emitir mensaje interno por socket:', err.message);
       }
