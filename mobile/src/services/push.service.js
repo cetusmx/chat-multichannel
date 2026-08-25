@@ -8,7 +8,7 @@ export async function displayLocalNotification(remoteMessage) {
   try {
     // Create a channel (required for Android)
     const channelId = await notifee.createChannel({
-      id: 'high_importance_channel',
+      id: 'salesflow_urgent_v1',
       name: 'High Importance Notifications',
       importance: AndroidImportance.HIGH,
       visibility: AndroidVisibility.PUBLIC,
