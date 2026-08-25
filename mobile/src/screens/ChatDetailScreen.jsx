@@ -46,7 +46,6 @@ export default function ChatDetailScreen() {
 
   const chat = useChatStore((state) => state.conversations?.find(c => c.id === chatId) || {});
   const updateChatStatusInStore = useChatStore((state) => state.updateChatStatus);
-  const setCurrentConversationId = useChatStore((state) => state.setCurrentConversationId);
   const clearUnreadCount = useChatStore((state) => state.clearUnreadCount);
 
   const [messages, setMessages] = useState([]);
@@ -65,13 +64,13 @@ export default function ChatDetailScreen() {
 
   useEffect(() => {
     if (chatId) {
-      setCurrentConversationId(chatId);
+      useChatStore.setState({ currentConversationId: chatId });
       clearUnreadCount(chatId);
     }
     return () => {
-      setCurrentConversationId(null);
+      useChatStore.setState({ currentConversationId: null });
     };
-  }, [chatId, setCurrentConversationId, clearUnreadCount]);
+  }, [chatId, clearUnreadCount]);
 
   useEffect(() => {
     if (prevStatusRef.current === 'WAITING_CUSTOMER' && chat?.status === 'ACTIVE') {
