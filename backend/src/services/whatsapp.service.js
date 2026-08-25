@@ -289,7 +289,8 @@ const whatsappService = {
                     status: 'ACTIVE',
                     statusUpdatedAt: now,
                     lastMessageAt: now,
-                    slaPausedMins: { increment: Math.max(0, pausedBusinessMins) }
+                    slaPausedMins: { increment: Math.max(0, pausedBusinessMins) },
+                    unreadCount: { increment: 1 }
                   }
                 });
 
@@ -305,10 +306,13 @@ const whatsappService = {
                   logger.error('[WHATSAPP_SERVICE] No se pudo emitir conversation_updated por socket:', err.message);
                 }
               } else {
-                 // Si no estaba pausada, solo actualizamos lastMessageAt
+                 // Si no estaba pausada, solo actualizamos lastMessageAt y unreadCount
                  await prisma.conversation.update({
                    where: { id: conversation.id },
-                   data: { lastMessageAt: new Date() }
+                   data: { 
+                     lastMessageAt: new Date(),
+                     unreadCount: { increment: 1 }
+                   }
                  });
                }
             
@@ -851,7 +855,6 @@ const whatsappService = {
         include: { attachments: true }
       });
 
-      // 5. Update conversation (outside transaction to prevent deadlocks with incoming webhooks)
       await prisma.conversation.update({
         where: { id: conversationId },
         data: { lastMessageAt: new Date() }

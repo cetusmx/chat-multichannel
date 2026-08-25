@@ -116,11 +116,6 @@ export default function ChatListScreen() {
     }
 
     let unreadCount = unreadCounts[item.id] !== undefined ? unreadCounts[item.id] : (item.unreadCount || 0);
-    
-    // Infer unread if the last message is from the customer and we haven't tracked it in memory yet
-    if (unreadCount === 0 && unreadCounts[item.id] === undefined && item.messages?.[0]?.senderType === 'CLIENT') {
-      unreadCount = 1;
-    }
 
     return (
       <TouchableOpacity 

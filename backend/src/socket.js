@@ -47,13 +47,20 @@ function setupSocket(server) {
       socket.leave(`vendor_${vendorId}`);
     });
 
-    socket.on('mark_as_read', (data) => {
+    socket.on('mark_as_read', async (data) => {
       try {
         const token = socket.handshake.auth?.token;
         if (!token) return;
         const decoded = require('jsonwebtoken').verify(token, process.env.JWT_SECRET);
         const { conversationId } = data;
         if (!conversationId) return;
+
+        // Reset unreadCount in the database
+        const prisma = require('./config/database');
+        await prisma.conversation.update({
+          where: { id: conversationId },
+          data: { unreadCount: 0 }
+        }).catch(() => {}); // ignore if it fails or conversation doesn't exist
 
         // Broadcast to coordinators and the vendor's other devices
         socket.to(`tenant_${decoded.tenantId}_coordinators`).emit('chat:read', { conversationId, readBy: decoded.id });

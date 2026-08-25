@@ -101,6 +101,7 @@ const useChatStore = create((set, get) => ({
       let convs = data?.data || [];
       const now = Date.now();
 
+      const nextUnreadCounts = { ...get().unreadCounts };
       convs = convs.map(c => {
         let isSlaBreached = false;
         let breachType = null;
@@ -120,10 +121,13 @@ const useChatStore = create((set, get) => ({
             breachType = 'resolution';
           }
         }
+        if (c.unreadCount !== undefined) {
+          nextUnreadCounts[c.id] = c.unreadCount;
+        }
         return { ...c, isSlaBreached, breachType };
       });
 
-      set({ conversations: convs, errorMsg: null });
+      set({ conversations: convs, unreadCounts: nextUnreadCounts, errorMsg: null });
     } catch (error) {
       console.error('Error al cargar conversaciones:', error);
       set({ errorMsg: 'Failed to load conversations' });

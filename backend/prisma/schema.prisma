@@ -283,6 +283,7 @@ model Conversation {
   assignedAt          DateTime?          @map("assigned_at")
   cartSnapshot        Json?              @map("cart_snapshot")
   slaPausedMins       Int                @default(0) @map("sla_paused_mins")
+  unreadCount         Int                @default(0) @map("unread_count")
   createdAt           DateTime           @default(now()) @map("created_at")
   updatedAt           DateTime           @updatedAt @map("updated_at")
 
