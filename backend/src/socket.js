@@ -46,6 +46,22 @@ function setupSocket(server) {
     socket.on('leave:vendor', (vendorId) => {
       socket.leave(`vendor_${vendorId}`);
     });
+
+    socket.on('mark_as_read', (data) => {
+      try {
+        const token = socket.handshake.auth?.token;
+        if (!token) return;
+        const decoded = require('jsonwebtoken').verify(token, process.env.JWT_SECRET);
+        const { conversationId } = data;
+        if (!conversationId) return;
+
+        // Broadcast to coordinators and the vendor's other devices
+        socket.to(`tenant_${decoded.tenantId}_coordinators`).emit('chat:read', { conversationId, readBy: decoded.id });
+        socket.to(`vendor_${decoded.id}`).emit('chat:read', { conversationId, readBy: decoded.id });
+      } catch (e) {
+        console.error('[Socket] Error processing mark_as_read:', e.message);
+      }
+    });
   });
 
   setupAlerts(alerts);

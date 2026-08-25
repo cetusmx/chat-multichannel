@@ -39,7 +39,13 @@ const useChatStore = create((set, get) => ({
   highlightedMessageId: null,
   unreadCounts: {},
 
-  clearUnreadCount: (id) => set((state) => ({ unreadCounts: { ...state.unreadCounts, [id]: 0 } })),
+  clearUnreadCount: (id) => set((state) => {
+    const { socket } = get();
+    if (socket && state.unreadCounts[id] !== 0) {
+      socket.emit('mark_as_read', { conversationId: id });
+    }
+    return { unreadCounts: { ...state.unreadCounts, [id]: 0 } };
+  }),
   clearError: () => set({ errorMsg: null }),
   isPatching: false,
   setHighlightedMessageId: (id) => set({ highlightedMessageId: id }),
@@ -140,6 +146,7 @@ const useChatStore = create((set, get) => ({
     // Join room
     if (socket) {
       socket.emit('join:conversation', id);
+      socket.emit('mark_as_read', { conversationId: id });
     }
 
     await get().fetchMessages(id, null, aroundMessageId);
@@ -731,6 +738,14 @@ const useChatStore = create((set, get) => ({
           conversations: state.conversations.map(c =>
             c.id === conversationId ? { ...c, ...chat } : c,
           ),
+        }));
+      }
+    });
+
+    newSocket.on('chat:read', (data) => {
+      if (data && data.conversationId) {
+        set(state => ({
+          unreadCounts: { ...state.unreadCounts, [data.conversationId]: 0 }
         }));
       }
     });

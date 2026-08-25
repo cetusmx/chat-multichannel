@@ -40,7 +40,10 @@ export default function useMobileSocket(chatId, onNewMessage) {
   useEffect(() => {
     if (!socket || !chatId) return;
 
-    const joinRoom = () => socket.emit('join:conversation', chatId);
+    const joinRoom = () => {
+      socket.emit('join:conversation', chatId);
+      socket.emit('mark_as_read', { conversationId: chatId });
+    };
     
     if (socket.connected) {
       joinRoom();
