@@ -6,9 +6,6 @@ import { Platform } from 'react-native';
 
 export async function displayLocalNotification(remoteMessage) {
   try {
-    // Request permissions (required for iOS)
-    await notifee.requestPermission();
-
     // Create a channel (required for Android)
     const channelId = await notifee.createChannel({
       id: 'high_importance_channel',

@@ -701,6 +701,12 @@ router.patch('/:conversationId/assign', authenticate, authorize('ADMIN', 'COORDI
         try {
           const pushService = require('../services/push.service');
           const pushPayload = {
+            notification: { 
+              title: 'Nueva conversación asignada', 
+              body: `Se te ha asignado un chat con ${updatedConversation.client?.name || updatedConversation.client?.phone || 'un cliente'}.` 
+            },
+            android: { priority: 'high', notification: { channel_id: 'high_importance_channel', sound: 'default' } },
+            apns: { payload: { aps: { sound: 'default' } } },
             data: { 
               chatId: updatedConversation.id, 
               type: 'chat_assigned',
