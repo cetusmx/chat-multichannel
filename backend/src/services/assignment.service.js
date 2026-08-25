@@ -177,7 +177,7 @@ class AssignmentService {
 
         const updatedConv = await tx.conversation.findUnique({
           where: { id: conversationId },
-          include: { client: true }
+          include: { client: true, messages: { orderBy: { createdAt: 'desc' }, take: 1 } }
         });
 
         return { vendor, conversation: updatedConv };
@@ -195,13 +195,40 @@ class AssignmentService {
             conversation: conversation
           });
           
-          // Mantener chat:assigned por si hay algo más que lo escuche (opcional)
+          // Mantener chat:assigned por si hay algo ms que lo escuche (opcional)
           io.of('/chat').to(`vendor_${vendor.id}`).emit('chat:assigned', {
             type: 'chat:assigned',
             payload: { conversationId },
             timestamp: new Date().toISOString(),
             correlationId: conversationId
           });
+
+          // Notificar a los coordinadores para actualizar su vista en vivo
+          io.of('/chat').to(`tenant_${conversation.tenantId}_coordinators`).emit('conversation_updated', conversation);
+
+          // Enviar Push Notification al vendedor
+          try {
+            const pushService = require('./push.service');
+            const pushPayload = {
+              notification: { 
+                title: 'Nueva conversación asignada', 
+                body: `Se te ha asignado un chat con ${conversation.client?.name || conversation.client?.phone || 'un cliente'}.` 
+              },
+              android: { priority: 'high', notification: { channel_id: 'salesflow_urgent_v1', sound: 'default' } },
+              apns: { payload: { aps: { sound: 'default' } } },
+              data: { 
+                chatId: conversation.id, 
+                type: 'chat_assigned',
+                notifee_title: conversation.client?.name || conversation.client?.phone || 'SalesFlow',
+                notifee_body: `Se te ha asignado este chat.`
+              }
+            };
+            pushService.sendPushToVendor(vendor.id, pushPayload).catch(err => {
+              console.error('[PUSH_SERVICE] Error sending autoAssign push:', err.message);
+            });
+          } catch (err) {
+            console.error('[PUSH_SERVICE] Failed to process autoAssign push notification:', err.message);
+          }
         } catch (socketErr) {
           console.error(`[AssignmentService] Error emitting socket event:`, socketErr);
         }
