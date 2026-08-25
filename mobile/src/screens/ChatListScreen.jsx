@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, Tex
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import useChatStore from '@shared/stores/useChatStore';
+import { clearAllNotifications } from '../services/push.service';
 import { theme } from '../utils/theme';
 
 export default function ChatListScreen() {
@@ -23,10 +24,12 @@ export default function ChatListScreen() {
   // Initial load & AppState foreground reload
   useEffect(() => {
     fetchConversations();
+    clearAllNotifications();
     
     const subscription = AppState.addEventListener('change', nextAppState => {
       if (appState.current.match(/inactive|background/) && nextAppState === 'active') {
         fetchConversations();
+        clearAllNotifications();
       }
       appState.current = nextAppState;
     });
@@ -39,6 +42,7 @@ export default function ChatListScreen() {
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await fetchConversations();
+    clearAllNotifications();
     setRefreshing(false);
   }, [fetchConversations]);
 

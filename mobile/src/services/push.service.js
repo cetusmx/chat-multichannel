@@ -104,9 +104,18 @@ export async function registerFcmToken() {
       }
     }
   } catch (error) {
-    console.error('[PUSH] Error registering FCM token:', error);
+    console.error('Failed to register FCM Token:', error);
   }
 }
+
+export const clearAllNotifications = async () => {
+  try {
+    await notifee.cancelAllNotifications();
+    await notifee.setBadgeCount(0).catch(() => {});
+  } catch (error) {
+    console.error('[NOTIFEE] Failed to clear notifications', error);
+  }
+};
 
 export async function removeFcmToken() {
   try {
