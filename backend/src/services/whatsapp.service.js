@@ -665,27 +665,49 @@ const whatsappService = {
         throw new Error('Configuración de WhatsApp incompleta');
       }
 
-      // We still send the text via WhatsApp if possible. We might format the text differently for product cards.
+      // Build WhatsApp Payload dynamically
       let textToSend = content;
-      if (type === 'PRODUCT_CARD' && metadata) {
-        // Render a nice text version for WhatsApp since it might not support interactive cards natively here yet.
-        const priceNet = metadata.priceNet || '0.00';
-        textToSend = `Tengo esta opción:\n*${metadata.clave}* - ${metadata.description}\nPrecio: $${priceNet} Neto (IVA Inc.)\n\nVer imagen: ${metadata.imageUrl}`;
-      }
-
+      let payload = null;
+      
       let cleanPhoneNumber = conversation.client.phoneNumber.replace(/\D/g, '');
       if (cleanPhoneNumber.startsWith('521') && cleanPhoneNumber.length === 13) {
         cleanPhoneNumber = '52' + cleanPhoneNumber.substring(3);
       }
-      
-      const url = `https://graph.facebook.com/${env.metaApiVersion}/${config.phoneNumberId}/messages`;
-      const payload = {
-        messaging_product: 'whatsapp',
-        recipient_type: 'individual',
-        to: cleanPhoneNumber,
-        type: 'text',
-        text: { preview_url: true, body: textToSend }
-      };
+
+      if (type === 'PRODUCT_CARD' && metadata) {
+        const priceNet = metadata.priceNet || '0.00';
+        textToSend = `Tengo esta opción:\n*${metadata.clave}* - ${metadata.description}\nPrecio: ${priceNet} Neto (IVA Inc.)`;
+        
+        try {
+          const headRes = await fetch(metadata.imageUrl, { method: 'HEAD' });
+          const contentType = headRes.headers.get('content-type') || '';
+          if (headRes.ok && contentType.startsWith('image/')) {
+            payload = {
+              messaging_product: 'whatsapp',
+              recipient_type: 'individual',
+              to: cleanPhoneNumber,
+              type: 'image',
+              image: { link: metadata.imageUrl, caption: textToSend }
+            };
+          }
+        } catch (e) {
+          console.error('[WHATSAPP_SERVICE] Failed to verify image URL', e.message);
+        }
+
+        if (!payload) {
+          textToSend += `\n\nVer imagen: ${metadata.imageUrl}`;
+        }
+      }
+
+      if (!payload) {
+        payload = {
+          messaging_product: 'whatsapp',
+          recipient_type: 'individual',
+          to: cleanPhoneNumber,
+          type: 'text',
+          text: { preview_url: true, body: textToSend }
+        };
+      }
 
       logger.info('[WHATSAPP_SERVICE] Payload to Meta API (sendMessage):', JSON.stringify(payload, null, 2));
 
