@@ -7,7 +7,7 @@ import useAuthStore from '@shared/stores/useAuthStore';
 import ChatListScreen from './ChatListScreen';
 import DashboardScreen from './DashboardScreen';
 import ClientesScreen from './ClientesScreen';
-import { View } from 'react-native';
+import { View, Platform } from 'react-native';
 
 const Tab = createBottomTabNavigator();
 
@@ -24,12 +24,14 @@ export default function MainTabs() {
         tabBarStyle: {
           backgroundColor: '#1e293b',
           borderTopColor: '#0f172a',
+          paddingTop: 10,
+          paddingBottom: 10,
+          height: Platform.OS === 'ios' ? 90 : 70,
         },
-        tabBarActiveTintColor: '#06b6d4',
+        tabBarActiveTintColor: '#ffffff',
         tabBarInactiveTintColor: '#64748b',
         tabBarLabelStyle: {
           fontSize: 12,
-          marginTop: -5,
         }
       }}
     >

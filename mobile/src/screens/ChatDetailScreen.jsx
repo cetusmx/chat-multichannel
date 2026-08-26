@@ -23,6 +23,7 @@ import useChatStore from '@shared/stores/useChatStore';
 import ChatInput from '../components/ChatInput';
 import MessageItem from '../components/MessageItem';
 import useMobileSocket from '../hooks/useMobileSocket';
+import CartModal from './CartModal';
 
 const getStatusText = (status) => {
   const map = {
@@ -47,6 +48,15 @@ export default function ChatDetailScreen() {
 
   const chat = useChatStore((state) => state.conversations?.find(c => c.id === chatId) || {});
   const displayClientName = clientName || chat?.client?.name || 'Cliente';
+  
+  const cartData = chat?.client?.cartData || {};
+  let cartItemsCount = 0;
+  if (Array.isArray(cartData)) {
+    cartItemsCount = cartData.length;
+  } else if (cartData?.items) {
+    cartItemsCount = cartData.items.length;
+  }
+
   const updateChatStatusInStore = useChatStore((state) => state.updateChatStatus);
   const clearUnreadCount = useChatStore((state) => state.clearUnreadCount);
 
@@ -60,6 +70,7 @@ export default function ChatDetailScreen() {
   const [statusMenuVisible, setStatusMenuVisible] = useState(false);
   const [resolveModalVisible, setResolveModalVisible] = useState(false);
   const [onHoldModalVisible, setOnHoldModalVisible] = useState(false);
+  const [cartModalVisible, setCartModalVisible] = useState(false);
   const [onHoldReason, setOnHoldReason] = useState('');
   const [onHoldNote, setOnHoldNote] = useState('');
   const [onHoldHours, setOnHoldHours] = useState('24');
@@ -112,9 +123,9 @@ export default function ChatDetailScreen() {
                   <TouchableOpacity style={styles.moreIcon} onPress={() => setStatusMenuVisible(true)}>
                     <MoreVertical size={24} color="#64748b" />
                   </TouchableOpacity>
-                  <TouchableOpacity style={styles.cartIconContainer}>
-                    <ShoppingCart size={20} color="#334155" strokeWidth={2.5} />
-                    <View style={styles.badge}><Text style={styles.badgeText}>0</Text></View>
+                  <TouchableOpacity style={styles.cartIconContainer} onPress={() => setCartModalVisible(true)}>
+                    <ShoppingCart size={25} color="#334155" strokeWidth={2.5} />
+                    <View style={styles.badge}><Text style={styles.badgeText}>{cartItemsCount}</Text></View>
                   </TouchableOpacity>
                 </>
               )}
@@ -521,7 +532,13 @@ export default function ChatDetailScreen() {
             </View>
           </View>
         </TouchableOpacity>
-      </Modal>
+        </Modal>
+
+      <CartModal 
+        visible={cartModalVisible} 
+        onClose={() => setCartModalVisible(false)} 
+        chat={chat} 
+      />
 
     </SafeAreaView>
   );
