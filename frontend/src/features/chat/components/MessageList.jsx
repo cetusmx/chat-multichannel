@@ -417,23 +417,220 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
             <h3 className="mb-4 text-lg font-semibold text-sales-slate-100">Añadir al Carrito</h3>
             <div className="mb-4 flex items-center gap-4">
               <div className="h-16 w-16 bg-white rounded flex items-center justify-center overflow-hidden flex-shrink-0">
-                {addToCartModal.metadata.imageUrl ? (
+                {addToCartModal.metadata?.imageUrl ? (
                   <img src={addToCartModal.metadata.imageUrl} alt={addToCartModal.metadata.clave} className="max-h-full max-w-full object-contain" />
                 ) : (
                   <ShoppingCart className="text-slate-400" />
                 )}
               </div>
               <div className="flex-1">
-                <p className="font-semibold text-sales-cyan-400">{addToCartModal.metadata.clave}</p>
-                <p className="text-xs text-sales-slate-400 line-clamp-2">{addToCartModal.metadata.description}</p>
-                <p className="text-sm font-bold mt-1 text-white">${(parseFloat(addToCartModal.metadata.priceNet)).toFixed(2)} Neto</p>
+                <p className="font-semibold text-sales-cyan-400">{addToCartModal.metadata?.clave}</p>
+                <p className="text-xs text-sales-slate-400 line-clamp-2">{addToCartModal.metadata?.description}</p>
+                <p className="text-sm font-bold mt-1 text-white">${(parseFloat(addToCartModal.metadata?.priceNet || 0)).toFixed(2)} Neto</p>
               </div>
             </div>
             
             <div className="mb-6">
               <label className="block text-sm text-sales-slate-400 mb-2">Cantidad</label>
               <div className="flex items-center gap-3">
-                <button
+                <button 
+                  onClick={() => setCartQty(Math.max(1, cartQty - 1))}
+                  className="w-10 h-10 rounded-lg bg-sales-slate-800 border border-sales-slate-700 flex items-center justify-center text-white hover:bg-sales-slate-700 transition-colors"
+                >
+                  -
+                </button>
+                <input 
+                  type="number" 
+                  min="1" 
+                  value={cartQty} 
+                  onChange={(e) => setCartQty(Math.max(1, parseInt(e.target.value) || 1))}
+                  className="w-20 h-10 bg-sales-slate-800 border border-sales-slate-700 text-center text-white rounded-lg focus:outline-none focus:border-sales-cyan-500"
+                />
+                <button 
+                  onClick={() => setCartQty(cartQty + 1)}
+                  className="w-10 h-10 rounded-lg bg-sales-slate-800 border border-sales-slate-700 flex items-center justify-center text-white hover:bg-sales-slate-700 transition-colors"
+                >
+                  +
+                </button>
+              </div>
+            </div>
+
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setAddToCartModal(null)}
+                className="rounded-lg border border-slate-700 px-4 py-2 text-sm text-sales-slate-400 hover:bg-slate-800 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={async () => {
+                  if (activeConversation && activeConversation.client) {
+                    try {
+                      const cartData = typeof activeConversation.client.cart === 'string' 
+                        ? JSON.parse(activeConversation.client.cart || '[]') 
+                        : (activeConversation.client.cart || []);
+                      
+                      const currentItems = Array.isArray(cartData) ? cartData : (cartData.items || []);
+                      
+                      const newItems = [...currentItems, { 
+                          clave: addToCartModal.metadata.clave, 
+                          descripcion: addToCartModal.metadata.description, 
+                          precio: parseFloat(addToCartModal.metadata.priceNet || 0),
+                          cantidad: cartQty 
+                      }];
+                      
+                      let newCartData = newItems;
+                      if (cartData && !Array.isArray(cartData)) {
+                        newCartData = { ...cartData, items: newItems };
+                      }
+                      
+                      await updateClientCart(activeConversation.client.id, newCartData);
+                      setAddToCartModal(null);
+                    } catch (err) {
+                      console.error('Error adding to cart', err);
+                      alert('Error al añadir al carrito');
+                    }
+                  }
+                }}
+                className="rounded-lg px-4 py-2 text-sm font-medium text-white bg-sales-cyan-600 hover:bg-sales-cyan-700 transition-colors"
+              >
+                Añadir al carrito
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+
+        </div>
+      )}
+
+      {isDragging && !isUploading && (
+        <div className="absolute inset-0 bg-sales-slate-900/80 z-50 flex items-center justify-center backdrop-blur-sm pointer-events-none">
+          <div className="text-sales-cyan-400 flex flex-col items-center">
+            <span className="text-6xl mb-4">📥</span>
+            <span className="text-xl font-bold">Suelta el archivo aquí para enviar</span>
+          </div>
+        </div>
+      )}
+
+      {/* Chat Header */}
+      <div className="p-4 border-b border-sales-slate-800 bg-sales-slate-900 flex items-center justify-between">
+        <h2 className="text-lg font-semibold text-sales-slate-100">{clientName || 'Conversación Activa'}</h2>
+        {headerActions && (
+          <div className="flex items-center gap-2">
+            {headerActions}
+          </div>
+        )}
+      </div>
+
+      {/* Messages */}
+      <div
+        ref={scrollContainerRef}
+        className="flex-1 overflow-y-auto overflow-x-hidden w-full p-4 space-y-4 custom-scrollbar"
+      >
+        <div ref={observerTargetRef} className="h-4 w-full"></div>
+        {isLoadingMore && (
+          <div className="flex justify-center py-2">
+            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-sales-cyan-400"></div>
+          </div>
+        )}
+        {(errorMsg || localError) && (
+          <div className="bg-red-500/10 border border-red-500/50 text-red-400 px-4 py-2 rounded-lg flex justify-between items-center mb-4">
+            <span className="text-sm font-medium">{errorMsg || localError}</span>
+            <button onClick={() => { if(clearError) clearError(); setLocalError(null); }} className="text-red-400 hover:text-red-300 font-bold px-2">&times;</button>
+          </div>
+        )}
+
+        {messages.length === 0 && (
+          <div className="text-center text-sales-slate-500 mt-10">Envía un mensaje para comenzar a chatear.</div>
+        )}
+
+        {useMemo(() => messages.map((msg, index) => {
+          const isMyTeam = ['VENDOR', 'SYSTEM', 'COORDINATOR', 'ADMIN', 'IA'].includes(msg.senderType);
+          const isHighlighted = msg.id === highlightedMessageId;
+
+          let showDateLabel = false;
+          if (index === 0) {
+            showDateLabel = true;
+          } else {
+            const prevMsg = messages[index - 1];
+            const currentDate = new Date(msg.createdAt).toDateString();
+            const prevDate = new Date(prevMsg.createdAt).toDateString();
+            if (currentDate !== prevDate) {
+              showDateLabel = true;
+            }
+          }
+
+          return (
+            <React.Fragment key={msg.id}>
+              {showDateLabel && (
+                <div className="flex justify-center w-full my-2">
+                  <span className="bg-sales-slate-800/80 text-sales-slate-300 text-xs px-3 py-1 rounded-md shadow-sm border border-sales-slate-700/50 uppercase tracking-wide font-medium">
+                    {formatDateLabel(msg.createdAt)}
+                  </span>
+                </div>
+              )}
+              <div
+                className={`flex w-full ${isMyTeam ? 'justify-end' : 'justify-start'} transition-all duration-1000 ${isHighlighted ? 'ring-4 ring-sales-cyan-500 rounded-lg bg-sales-cyan-500/20 p-2' : ''}`}
+                ref={isHighlighted ? highlightedRef : null}
+              >
+              <div
+                className={`group max-w-[70%] min-w-0 rounded-lg p-3 shadow-sm ${
+                  isMyTeam
+                    ? msg.isInternal
+                      ? 'bg-sales-orange-500/20 text-sales-orange-100 rounded-br-none border-l-4 border-sales-orange-500 backdrop-blur-md'
+                      : ['COORDINATOR', 'ADMIN'].includes(msg.senderType)
+                        ? 'bg-sales-coral-600/90 text-white rounded-br-none border-r-4 border-sales-coral-400 backdrop-blur-md shadow-md'
+                        : 'bg-sales-cyan-600 text-white rounded-br-none'
+                    : 'bg-sales-slate-800 text-sales-slate-200 rounded-bl-none'
+                }`}
+              >
+                {msg.isInternal && (
+                  <div className="text-[10px] uppercase font-bold text-sales-orange-400 mb-1 flex items-center gap-1">
+                    <span>🔒</span> Comentario Interno
+                  </div>
+                )}
+                {!msg.isInternal && ['COORDINATOR', 'ADMIN'].includes(msg.senderType) && (
+                  <div className="text-[10px] uppercase font-bold text-sales-coral-200 mb-1 flex items-center gap-1">
+                    <span>🛡️</span> Intervención de Coordinador
+                  </div>
+                )}
+                {msg.attachments && msg.attachments.length > 0 && (
+                  <div className="mb-2 relative">
+                    <SecureMedia
+                      url={msg.attachments[0].url}
+                      type={msg.attachments[0].type}
+                      alt="Attachment"
+                      className="max-w-full rounded-md"
+                      fallbackText={msg.attachments[0].name}
+                    />
+                    {['ADMIN', 'COORDINATOR', 'VENDOR'].includes(user?.role) && (
+                      <button
+                        onClick={() => forwardMedia(msg.id)}
+                        disabled={uploadingIds[msg.id]}
+                        className={`absolute -top-3 -right-3 z-10 bg-black/60 hover:bg-sales-cyan-600 text-white text-[10px] font-semibold px-2 py-1 rounded-full shadow-lg backdrop-blur-md border border-white/30 transition-all duration-300 flex items-center gap-1 transform hover:scale-105 ${uploadingIds[msg.id] ? 'opacity-100 cursor-wait bg-sales-cyan-600' : 'opacity-0 group-hover:opacity-100 cursor-pointer'}`}
+                        title="Compartir con cliente"
+                        type="button"
+                      >
+                        <span className="text-xs">📤</span> {uploadingIds[msg.id] ? 'Enviando...' : 'Compartir con cliente'}
+                      </button>
+                    )}
+                  </div>
+                )}
+                {msg.type === 'PRODUCT_CARD' && msg.metadata ? (
+                  <div className="mt-1 bg-sales-slate-800 rounded-lg p-3 border border-sales-slate-700/50 shadow-sm flex flex-col gap-2">
+                    <div className="flex gap-3">
+                      <div className="w-16 h-16 bg-white rounded flex items-center justify-center p-1 overflow-hidden shrink-0">
+                        <img src={msg.metadata.imageUrl} alt={msg.metadata.clave} className="max-w-full max-h-full object-contain" onError={(e) => { if (e.target.src.endsWith('.jpg')) { e.target.src = e.target.src.replace('.jpg', '.png'); } else { e.target.onerror = null; e.target.style.display = 'none'; } }} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-bold text-sm text-sales-cyan-400 truncate">{msg.metadata.clave}</div>
+                        <div className="text-xs text-sales-slate-300 line-clamp-2 mt-0.5">{msg.metadata.description}</div>
+                        <div className="text-sm font-semibold text-white mt-1">${msg.metadata.priceNet} Neto</div>
+                      </div>
+                    </div>
+                    <button
                         onClick={(e) => {
                           e.preventDefault();
                           setCartQty(1);
