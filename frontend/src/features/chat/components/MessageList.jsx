@@ -685,12 +685,12 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
                                 newCartData = { ...cartData, items: newItems };
                               }
                               
+                              const btn = e.currentTarget;
+                              const originalText = btn.innerHTML;
                               await updateClientCart(conv.client.id, newCartData);
-                              
-                              const originalText = e.currentTarget.innerHTML;
-                              e.currentTarget.innerHTML = '<span class="text-green-400">¡Añadido!</span>';
+                              btn.innerHTML = '<span class="text-green-400">¡Añadido!</span>';
                               setTimeout(() => {
-                                if(e.currentTarget) e.currentTarget.innerHTML = originalText;
+                                if(btn) btn.innerHTML = originalText;
                               }, 2000);
                             } catch (err) {
                               console.error('Error adding to cart', err);
