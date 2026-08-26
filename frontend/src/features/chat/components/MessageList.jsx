@@ -530,7 +530,7 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
                   <div className="mt-1 bg-sales-slate-800 rounded-lg p-3 border border-sales-slate-700/50 shadow-sm flex flex-col gap-2">
                     <div className="flex gap-3">
                       <div className="w-16 h-16 bg-white rounded flex items-center justify-center p-1 overflow-hidden shrink-0">
-                        <img src={msg.metadata.imageUrl} alt={msg.metadata.clave} className="max-w-full max-h-full object-contain" onError={(e) => { e.target.src = 'https://via.placeholder.com/64?text=Img'; }} />
+                        <img src={msg.metadata.imageUrl} alt={msg.metadata.clave} className="max-w-full max-h-full object-contain" onError={(e) => { e.target.onerror = null; e.target.style.display = 'none'; }} />
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="font-bold text-sm text-sales-cyan-400 truncate">{msg.metadata.clave}</div>
