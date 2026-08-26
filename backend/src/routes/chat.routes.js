@@ -68,9 +68,9 @@ const upload = multer({
 router.post('/:conversationId/messages', authenticate, authorize('ADMIN', 'COORDINATOR', 'VENDOR'), async (req, res, next) => {
   try {
     const { conversationId } = req.params;
-    const { content, isInternal = false } = req.body;
+    const { content, isInternal = false, type = 'TEXT', metadata = null } = req.body;
     
-    if (!content) {
+    if (!content && type === 'TEXT') {
       const error = new Error('Content is required');
       error.status = 400;
       throw error;
@@ -93,6 +93,8 @@ router.post('/:conversationId/messages', authenticate, authorize('ADMIN', 'COORD
           senderType: req.user.role,
           senderId: req.user.id,
           content,
+          type,
+          metadata: metadata ? metadata : undefined,
           status: 'SENT',
           isInternal: true
         }
@@ -132,7 +134,7 @@ router.post('/:conversationId/messages', authenticate, authorize('ADMIN', 'COORD
         console.error('[CHAT_ROUTE] No se pudo emitir mensaje interno por socket:', err.message);
       }
     } else {
-      message = await whatsappService.sendMessage(conversationId, content, req.user.id, req.user.role);
+      message = await whatsappService.sendMessage(conversationId, content, req.user.id, req.user.role, type, metadata);
     }
     res.status(201).json({ data: message });
   } catch (error) {

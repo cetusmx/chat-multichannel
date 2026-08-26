@@ -27,7 +27,7 @@ app.use(helmet({
     useDefaults: true,
     directives: {
       "upgrade-insecure-requests": null,
-      "img-src": ["'self'", "data:", "blob:"],
+      "img-src": ["'self'", "data:", "blob:", "https://sistemahidraulico.mx"],
       "media-src": ["'self'", "blob:"],
     },
   },
