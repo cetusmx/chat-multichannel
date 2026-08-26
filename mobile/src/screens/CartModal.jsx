@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { X, Send, Download, Mail, Edit2 } from 'lucide-react-native';
+import { X, Send, Download, Mail, Edit2, Search } from 'lucide-react-native';
 import Toast from 'react-native-toast-message';
 import useAuthStore from '@shared/stores/useAuthStore';
 import useChatStore from '@shared/stores/useChatStore';
+import { get } from '../services/api';
 
 export default function CartModal({ visible, onClose, chat }) {
   const insets = useSafeAreaInsets();
@@ -74,6 +75,7 @@ export default function CartModal({ visible, onClose, chat }) {
   
   const [isEditingBilling, setIsEditingBilling] = useState(false);
   const [tempBilling, setTempBilling] = useState({ razonSocial: '', rfc: '', billingAddress: '' });
+  const [isSearchingRfc, setIsSearchingRfc] = useState(false);
 
   // Update effect to populate default values when opening edit mode
   React.useEffect(() => {
@@ -88,6 +90,40 @@ export default function CartModal({ visible, onClose, chat }) {
       setIsEditingBilling(false);
     }
   }, [visible]);
+
+  const handleSearchRfc = async () => {
+    if (!tempBilling.rfc) return;
+    setIsSearchingRfc(true);
+    try {
+      const res = await get(`/sealmarket/clientes/rfc/${tempBilling.rfc}`);
+      if (!res.ok) throw new Error('RFC no encontrado');
+      const response = await res.json();
+      const cliente = Array.isArray(response.data) ? response.data[0] : response.data;
+      if (cliente) {
+        const calle = cliente.CALLE || '';
+        const num = cliente.NUMEXT || '';
+        const col = cliente.COLONIA ? `Col. ${cliente.COLONIA}` : '';
+        const cp = cliente.CODIGO ? `C.P. ${cliente.CODIGO}` : '';
+        const mun = cliente.MUNICIPIO || '';
+        const est = cliente.ESTADO || '';
+        const direccion = `${calle} ${num}, ${col}, ${cp}, ${mun}, ${est}`.trim().replace(/,\s*,/g, ',');
+
+        setTempBilling(prev => ({
+          ...prev,
+          razonSocial: cliente.NOMBRE || prev.razonSocial,
+          billingAddress: direccion || prev.billingAddress,
+          rfc: cliente.RFC || prev.rfc
+        }));
+        Toast.show({ type: 'success', text1: 'Datos fiscales encontrados' });
+      } else {
+        Toast.show({ type: 'error', text1: 'RFC no encontrado' });
+      }
+    } catch (err) {
+      Toast.show({ type: 'error', text1: 'Error al buscar RFC' });
+    } finally {
+      setIsSearchingRfc(false);
+    }
+  };
 
   const handleSaveBilling = () => {
     setIsEditingBilling(false);
@@ -144,7 +180,12 @@ export default function CartModal({ visible, onClose, chat }) {
                 {isEditingBilling ? (
                   <View>
                     <TextInput style={styles.input} value={tempBilling.razonSocial} onChangeText={t => setTempBilling({...tempBilling, razonSocial: t})} placeholder="Razón Social" placeholderTextColor="#64748b" />
-                    <TextInput style={styles.input} value={tempBilling.rfc} onChangeText={t => setTempBilling({...tempBilling, rfc: t})} placeholder="RFC" placeholderTextColor="#64748b" />
+                    <View style={{flexDirection: 'row', gap: 10, marginBottom: 10}}>
+                      <TextInput style={[styles.input, {flex: 1, marginBottom: 0}]} value={tempBilling.rfc} onChangeText={t => setTempBilling({...tempBilling, rfc: t})} placeholder="RFC" placeholderTextColor="#64748b" />
+                      <TouchableOpacity onPress={handleSearchRfc} disabled={!tempBilling.rfc || isSearchingRfc} style={styles.searchBtn}>
+                        {isSearchingRfc ? <ActivityIndicator size="small" color="#fff" /> : <Search size={16} color="#fff" />}
+                      </TouchableOpacity>
+                    </View>
                     <TextInput style={styles.input} value={tempBilling.billingAddress} onChangeText={t => setTempBilling({...tempBilling, billingAddress: t})} placeholder="Dirección Fiscal" placeholderTextColor="#64748b" />
                     <TouchableOpacity onPress={askBillingValidation} style={styles.validateBtn}><Send size={14} color="#fff" /><Text style={styles.validateBtnText}>Validar en Chat</Text></TouchableOpacity>
                   </View>
@@ -213,7 +254,7 @@ export default function CartModal({ visible, onClose, chat }) {
           </ScrollView>
 
           {/* Footer Actions */}
-          <View style={[styles.footerActions, { paddingBottom: Math.max(insets.bottom, 15) + 15 }]}>
+          <View style={[styles.footerActions, { paddingBottom: insets.bottom + 25 }]}>
             <TouchableOpacity 
               style={[styles.actionBtn, styles.btnSummary, cartItems.length === 0 && styles.btnDisabled]} 
               disabled={cartItems.length === 0}
@@ -437,5 +478,12 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 12,
     fontWeight: '600',
+  },
+  searchBtn: {
+    backgroundColor: '#0284c7',
+    width: 44,
+    borderRadius: 5,
+    justifyContent: 'center',
+    alignItems: 'center',
   }
 });
