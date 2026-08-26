@@ -252,7 +252,7 @@ const useChatStore = create((set, get) => ({
   },
 
   sendMessage: async (content, isInternal = false, type = 'TEXT', metadata = null) => {
-    if (!content || typeof content !== 'string' || !content.trim()) return;
+    if (type === 'TEXT' && (!content || typeof content !== 'string' || !content.trim())) return;
     const { currentConversationId } = get();
     if (!currentConversationId) return;
 
