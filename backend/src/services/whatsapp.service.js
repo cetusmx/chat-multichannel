@@ -721,6 +721,7 @@ const whatsappService = {
         };
       }
 
+      const url = `https://graph.facebook.com/${env.metaApiVersion}/${config.phoneNumberId}/messages`;
       logger.info('[WHATSAPP_SERVICE] Payload to Meta API (sendMessage):', JSON.stringify(payload, null, 2));
 
       const response = await fetch(url, {
