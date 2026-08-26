@@ -5,11 +5,11 @@ import { X, Send, Download, Mail, Edit2, Search } from 'lucide-react-native';
 import Toast from 'react-native-toast-message';
 import useAuthStore from '@shared/stores/useAuthStore';
 import useChatStore from '@shared/stores/useChatStore';
-import { get } from '../services/api';
+import { get, patch } from '../services/api';
 
 export default function CartModal({ visible, onClose, chat }) {
   const insets = useSafeAreaInsets();
-  const { sendMessage } = useChatStore();
+  const { sendMessage, updateChat } = useChatStore();
   const token = useAuthStore(s => s.token);
 
   // Client and Cart Data extraction
@@ -43,10 +43,9 @@ export default function CartModal({ visible, onClose, chat }) {
     
     cartItems.forEach(item => {
       const lineTotal = (item.precio || 0) * (item.cantidad || 1);
-      text += `${item.cantidad}x ${item.clave}\n`;
-      text += `_${item.descripcion}_\n`;
-      text += `$${(item.precio || 0).toFixed(2)} c/u  ->  $${lineTotal.toFixed(2)}\n`;
-      text += '----------------------------------------\n';
+      text += `• ${item.cantidad}x ${item.clave}\n`;
+      text += `  ${item.descripcion}\n`;
+      text += `  *$${lineTotal.toFixed(2)}*\n\n`;
     });
 
     text += `*Subtotal:* $${subtotal.toFixed(2)}\n`;
@@ -125,15 +124,41 @@ export default function CartModal({ visible, onClose, chat }) {
     }
   };
 
-  const handleSaveBilling = () => {
-    setIsEditingBilling(false);
-    Toast.show({ type: 'info', text1: 'Datos actualizados localmente', text2: 'Guarde el carrito en la web para persistir.' });
-    // In MVP, we just update local state or send to chat
+  const saveCartData = async () => {
+    try {
+      const newCartData = {
+        ...cartData,
+        items: cartItems,
+        razonSocial: tempBilling.razonSocial,
+        rfc: tempBilling.rfc,
+        billingAddress: tempBilling.billingAddress,
+        shippingAddress: tempAddress
+      };
+      await patch(`/clients/${chat.client.id}/cart`, { cartData: newCartData });
+      updateChat(chat.id, {
+        client: { ...chat.client, cartData: newCartData }
+      });
+      return true;
+    } catch (err) {
+      Toast.show({ type: 'error', text1: 'Error al guardar datos' });
+      return false;
+    }
   };
 
-  const handleSaveAddress = () => {
-    setIsEditingAddress(false);
-    Toast.show({ type: 'info', text1: 'Dirección actualizada localmente' });
+  const handleSaveBilling = async () => {
+    const success = await saveCartData();
+    if (success) {
+      setIsEditingBilling(false);
+      Toast.show({ type: 'success', text1: 'Datos fiscales guardados' });
+    }
+  };
+
+  const handleSaveAddress = async () => {
+    const success = await saveCartData();
+    if (success) {
+      setIsEditingAddress(false);
+      Toast.show({ type: 'success', text1: 'Dirección guardada' });
+    }
   };
 
   const askBillingValidation = () => {

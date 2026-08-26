@@ -107,6 +107,9 @@ export default function ChatDetailScreen() {
             </View>
             <View style={styles.headerTextContainer}>
               <Text style={styles.headerTitleName} numberOfLines={1}>{displayClientName || 'Cliente'}</Text>
+              <View style={[styles.statusBadge, { marginTop: 4, marginRight: 0, paddingHorizontal: 6, paddingVertical: 2 }]}>
+                <Text style={[styles.statusBadgeText, { fontSize: 9 }]}>{getStatusText(chat?.status)}</Text>
+              </View>
             </View>
           </View>
         </View>
@@ -115,9 +118,6 @@ export default function ChatDetailScreen() {
           const isClosed = ['CLOSED', 'CLOSED_WON', 'CLOSED_INACTIVE', 'DISCARDED'].includes(chat?.status);
           return (
             <View style={styles.headerRightContainer}>
-              <View style={styles.statusBadge}>
-                <Text style={styles.statusBadgeText}>{getStatusText(chat?.status)}</Text>
-              </View>
               {!isClosed && (
                 <>
                   <TouchableOpacity style={styles.moreIcon} onPress={() => setStatusMenuVisible(true)}>
