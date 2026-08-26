@@ -1,16 +1,79 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator, FlatList } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { X, Send, Download, Mail, Edit2, Search } from 'lucide-react-native';
+import { X, Send, Download, Mail, Edit2, Search, MessageSquare, ShoppingCart as ShoppingCartIcon, Package } from 'lucide-react-native';
 import Toast from 'react-native-toast-message';
 import useAuthStore from '@shared/stores/useAuthStore';
 import useChatStore from '@shared/stores/useChatStore';
-import { get, patch } from '../services/api';
+import { get, patch, getSealMarketFamilias, searchSealMarketCatalog } from '../services/api';
 
 export default function CartModal({ visible, onClose, chat }) {
   const insets = useSafeAreaInsets();
   const { sendMessage, updateChat } = useChatStore();
   const token = useAuthStore(s => s.token);
+
+  // Tabs state
+  const [activeTab, setActiveTab] = useState('current'); // 'current' | 'catalog'
+
+  // Catalog State
+  const [familias, setFamilias] = useState([]);
+  const [searchForm, setSearchForm] = useState({ query: '', familia: '' });
+  const [isSearchingCatalog, setIsSearchingCatalog] = useState(false);
+  const [searchResults, setSearchResults] = useState([]);
+
+  useEffect(() => {
+    if (activeTab === 'catalog' && familias.length === 0) {
+      getSealMarketFamilias()
+        .then(data => setFamilias([{ FAMILIA: '' }, ...data])) // Add "Todas" option implicitly later if we want a picker, but for chips we can just use the array. We will just set data directly.
+        .catch(err => console.log('Error familias:', err));
+    }
+  }, [activeTab, familias.length]);
+
+  const handleSearchCatalog = async () => {
+    setIsSearchingCatalog(true);
+    try {
+      const res = await searchSealMarketCatalog(searchForm);
+      setSearchResults(res.data || []);
+    } catch (err) {
+      Toast.show({ type: 'error', text1: 'Error buscando en catálogo' });
+    } finally {
+      setIsSearchingCatalog(false);
+    }
+  };
+
+  const handleInjectProduct = async (product) => {
+    const newItems = [...cartItems];
+    const desc = product.DESC_ECOMM || product.DESCR || product.NOMBRE;
+    const existingIdx = newItems.findIndex(i => i.clave === product.CVE_ART);
+    if (existingIdx >= 0) {
+      newItems[existingIdx].cantidad = (newItems[existingIdx].cantidad || 1) + 1;
+    } else {
+      newItems.push({
+        clave: product.CVE_ART,
+        descripcion: desc,
+        precio: (product.PRECIO || 0) * 1.16,
+        cantidad: 1
+      });
+    }
+    
+    // Save to server
+    try {
+      const newCartData = { ...cartData, items: newItems };
+      await patch(`/clients/${chat.client.id}/cart`, { cartData: newCartData });
+      updateChat(chat.id, { client: { ...chat.client, cartData: newCartData } });
+      Toast.show({ type: 'success', text1: 'Artículo añadido al carrito' });
+    } catch (e) {
+      Toast.show({ type: 'error', text1: 'Error al añadir artículo' });
+    }
+  };
+
+  const handleSuggestProduct = (product) => {
+    const desc = product.DESC_ECOMM || product.DESCR || product.NOMBRE;
+    const priceNet = ((product.PRECIO || 0) * 1.16).toFixed(2);
+    const msg = `Tengo esta opción:\n*${product.CVE_ART}* - ${desc}\nPrecio: $${priceNet} Neto (IVA Incluido)`;
+    sendMessage(msg, false);
+    onClose(); // Optional: close modal so user sees chat, this is good UX.
+  };
 
   // Client and Cart Data extraction
   const cartData = chat?.client?.cartData || {};
@@ -183,8 +246,25 @@ export default function CartModal({ visible, onClose, chat }) {
             </TouchableOpacity>
           </View>
 
-          <ScrollView style={styles.scrollContent}>
-            {/* Client Info Section */}
+          {/* Segmented Control */}
+          <View style={styles.tabsContainer}>
+            <TouchableOpacity 
+              style={[styles.tabBtn, activeTab === 'current' && styles.tabBtnActive]} 
+              onPress={() => setActiveTab('current')}
+            >
+              <Text style={[styles.tabBtnText, activeTab === 'current' && styles.tabBtnTextActive]}>Carrito Actual</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={[styles.tabBtn, activeTab === 'catalog' && styles.tabBtnActive]} 
+              onPress={() => setActiveTab('catalog')}
+            >
+              <Text style={[styles.tabBtnText, activeTab === 'catalog' && styles.tabBtnTextActive]}>Catálogo</Text>
+            </TouchableOpacity>
+          </View>
+
+          {activeTab === 'current' ? (
+            <ScrollView style={styles.scrollContent}>
+              {/* Client Info Section */}
             <View style={styles.section}>
               <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10}}>
                 <Text style={styles.sectionTitle}>Datos del Cliente</Text>
@@ -276,15 +356,83 @@ export default function CartModal({ visible, onClose, chat }) {
                 <View style={[styles.totalRow, styles.grandTotalRow]}><Text style={styles.grandTotalLabel}>Total Neto:</Text><Text style={styles.grandTotalValue}>${total.toFixed(2)}</Text></View>
               </View>
             )}
-          </ScrollView>
+            </ScrollView>
+          ) : (
+            <View style={styles.catalogContainer}>
+              <View style={styles.searchSection}>
+                <TextInput
+                  style={styles.catalogSearchInput}
+                  placeholder="Buscar producto..."
+                  placeholderTextColor="#64748b"
+                  value={searchForm.query}
+                  onChangeText={(t) => setSearchForm({ ...searchForm, query: t })}
+                  onSubmitEditing={handleSearchCatalog}
+                />
+                <TouchableOpacity style={styles.catalogSearchBtn} onPress={handleSearchCatalog}>
+                  <Search size={18} color="#fff" />
+                </TouchableOpacity>
+              </View>
+              
+              <View style={styles.chipsContainer}>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  {familias.map((f, idx) => (
+                    <TouchableOpacity
+                      key={idx}
+                      style={[styles.chip, searchForm.familia === f.FAMILIA && styles.chipActive]}
+                      onPress={() => setSearchForm({ ...searchForm, familia: f.FAMILIA })}
+                    >
+                      <Text style={[styles.chipText, searchForm.familia === f.FAMILIA && styles.chipTextActive]}>
+                        {f.FAMILIA || 'Todas'}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
 
-          {/* Footer Actions */}
-          <View style={[styles.footerActions, { paddingBottom: insets.bottom + 25 }]}>
-            <TouchableOpacity 
-              style={[styles.actionBtn, styles.btnSummary, cartItems.length === 0 && styles.btnDisabled]} 
-              disabled={cartItems.length === 0}
-              onPress={handleSendSummary}
-            >
+              {isSearchingCatalog ? (
+                <View style={styles.centerLoad}><ActivityIndicator size="large" color="#3b82f6" /></View>
+              ) : (
+                <FlatList
+                  data={searchResults}
+                  keyExtractor={(item, index) => `${item.CVE_ART}-${index}`}
+                  contentContainerStyle={[styles.catalogList, { paddingBottom: insets.bottom + 20 }]}
+                  ListEmptyComponent={<Text style={styles.emptyText}>No hay resultados</Text>}
+                  renderItem={({ item }) => {
+                    const priceNet = ((item.PRECIO || 0) * 1.16).toFixed(2);
+                    return (
+                      <View style={styles.catalogItem}>
+                        <View style={styles.catalogItemHeader}>
+                          <Package size={16} color="#3b82f6" />
+                          <Text style={styles.catalogItemClave}>{item.CVE_ART}</Text>
+                        </View>
+                        <Text style={styles.catalogItemDesc}>{item.DESC_ECOMM || item.DESCR || item.NOMBRE}</Text>
+                        <Text style={styles.catalogItemPrice}>${priceNet} <Text style={styles.catalogItemTax}>Neto (IVA Inc.)</Text></Text>
+                        
+                        <View style={styles.catalogItemActions}>
+                          <TouchableOpacity style={styles.btnSuggest} onPress={() => handleSuggestProduct(item)}>
+                            <MessageSquare size={14} color="#94a3b8" />
+                            <Text style={styles.btnSuggestText}>Sugerir</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity style={styles.btnInject} onPress={() => handleInjectProduct(item)}>
+                            <ShoppingCartIcon size={14} color="#fff" />
+                            <Text style={styles.btnInjectText}>Añadir</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    );
+                  }}
+                />
+              )}
+            </View>
+          )}
+
+          {activeTab === 'current' && (
+            <View style={[styles.footerActions, { paddingBottom: insets.bottom + 25 }]}>
+              <TouchableOpacity 
+                style={[styles.actionBtn, styles.btnSummary, cartItems.length === 0 && styles.btnDisabled]} 
+                disabled={cartItems.length === 0}
+                onPress={handleSendSummary}
+              >
               <Send size={18} color="#06b6d4" />
               <Text style={styles.btnSummaryText}>Resumen a Chat</Text>
             </TouchableOpacity>
@@ -510,5 +658,160 @@ const styles = StyleSheet.create({
     borderRadius: 5,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  tabsContainer: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: '#1e293b',
+    backgroundColor: '#0f172a',
+  },
+  tabBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  tabBtnActive: {
+    borderBottomWidth: 2,
+    borderBottomColor: '#38bdf8',
+    backgroundColor: '#1e293b',
+  },
+  tabBtnText: {
+    color: '#64748b',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  tabBtnTextActive: {
+    color: '#38bdf8',
+    fontWeight: 'bold',
+  },
+  catalogContainer: {
+    flex: 1,
+  },
+  searchSection: {
+    flexDirection: 'row',
+    padding: 10,
+    gap: 10,
+    backgroundColor: '#0f172a',
+  },
+  catalogSearchInput: {
+    flex: 1,
+    backgroundColor: '#1e293b',
+    color: '#fff',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    height: 40,
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  catalogSearchBtn: {
+    backgroundColor: '#3b82f6',
+    width: 44,
+    height: 40,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  chipsContainer: {
+    paddingHorizontal: 10,
+    paddingBottom: 10,
+  },
+  chip: {
+    paddingHorizontal: 15,
+    paddingVertical: 6,
+    borderRadius: 20,
+    backgroundColor: '#1e293b',
+    marginRight: 10,
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  chipActive: {
+    backgroundColor: '#3b82f6',
+    borderColor: '#2563eb',
+  },
+  chipText: {
+    color: '#94a3b8',
+    fontSize: 12,
+  },
+  chipTextActive: {
+    color: '#fff',
+    fontWeight: '600',
+  },
+  centerLoad: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  catalogList: {
+    padding: 10,
+  },
+  catalogItem: {
+    backgroundColor: '#1e293b',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  catalogItemHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 4,
+  },
+  catalogItemClave: {
+    color: '#3b82f6',
+    fontWeight: 'bold',
+    fontSize: 13,
+  },
+  catalogItemDesc: {
+    color: '#e2e8f0',
+    fontSize: 13,
+    marginBottom: 6,
+  },
+  catalogItemPrice: {
+    color: '#10b981',
+    fontWeight: 'bold',
+    fontSize: 14,
+    marginBottom: 10,
+  },
+  catalogItemTax: {
+    color: '#64748b',
+    fontSize: 10,
+    fontWeight: 'normal',
+  },
+  catalogItemActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 10,
+  },
+  btnSuggest: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: '#334155',
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#475569',
+  },
+  btnSuggestText: {
+    color: '#cbd5e1',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  btnInject: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: '#0284c7',
+    borderRadius: 6,
+  },
+  btnInjectText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '600',
   }
 });
