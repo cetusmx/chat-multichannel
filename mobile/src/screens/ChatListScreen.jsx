@@ -121,9 +121,17 @@ export default function ChatListScreen() {
 
     let unreadCount = unreadCounts[item.id] !== undefined ? unreadCounts[item.id] : (item.unreadCount || 0);
 
+    const isSlaBreached = item.isSlaBreached;
+    const isFirstResponse = item.breachType === 'firstResponse';
+
     return (
       <TouchableOpacity 
-        style={styles.chatItem} 
+        style={[
+          styles.chatItem, 
+          isSlaBreached && !item.status.startsWith('CLOSED') && item.status !== 'DISCARDED'
+            ? { borderLeftWidth: 4, borderLeftColor: isFirstResponse ? '#f97316' : '#ef4444', paddingLeft: 11 }
+            : null
+        ]} 
         onPress={() => navigateToChat(item.id, clientName)}
       >
         <View style={styles.avatarPlaceholder}>
