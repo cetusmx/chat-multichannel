@@ -4,7 +4,7 @@ import { View, Text, StyleSheet } from 'react-native';
 export default function ClientesScreen() {
   return (
     <View style={styles.container}>
-      <Text style={styles.text}>Clientes - Pr\u00f3ximamente</Text>
+      <Text style={styles.text}>Clientes - Próximamente</Text>
     </View>
   );
 }

@@ -257,7 +257,7 @@ export default function ChatDetailScreen() {
     }
     const hours = parseInt(onHoldHours, 10);
     if (isNaN(hours) || hours <= 0 || hours > 168) {
-      Toast.show({ type: 'error', text1: 'Horas inv\u00e1lidas (1-168)' });
+      Toast.show({ type: 'error', text1: 'Horas inválidas (1-168)' });
       return;
     }
     

@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
-import { X, Send, Download, Mail } from 'lucide-react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { X, Send, Download, Mail, Edit2 } from 'lucide-react-native';
 import Toast from 'react-native-toast-message';
 import useAuthStore from '@shared/stores/useAuthStore';
 import useChatStore from '@shared/stores/useChatStore';
 
 export default function CartModal({ visible, onClose, chat }) {
+  const insets = useSafeAreaInsets();
   const { sendMessage } = useChatStore();
   const token = useAuthStore(s => s.token);
 
@@ -36,7 +38,7 @@ export default function CartModal({ visible, onClose, chat }) {
   const iva = total - subtotal;
 
   const handleSendSummary = () => {
-    let text = '*RESUMEN DE COTIZACI\u00d3N*\n\n';
+    let text = '*RESUMEN DE COTIZACIÓN*\n\n';
     
     cartItems.forEach(item => {
       const lineTotal = (item.precio || 0) * (item.cantidad || 1);
@@ -51,7 +53,7 @@ export default function CartModal({ visible, onClose, chat }) {
     text += `*Total Neto:* $${total.toFixed(2)}\n`;
 
     if (shippingAddress) {
-      text += `\n*Direcci\u00f3n de Env\u00edo:*\n${shippingAddress}`;
+      text += `\n*Dirección de Envío:*\n${shippingAddress}`;
     }
 
     if (sendMessage) {
@@ -64,7 +66,48 @@ export default function CartModal({ visible, onClose, chat }) {
   };
 
   const handleDownloadPDF = async () => {
-    Toast.show({ type: 'info', text1: 'Generando PDF', text2: 'Esta funci\u00f3n requiere m\u00f3dulos nativos en m\u00f3vil. Estar\u00e1 disponible pr\u00f3ximamente.' });
+    Toast.show({ type: 'info', text1: 'Cotización PDF', text2: 'Próximamente disponible en la app.' });
+  };
+
+  const [isEditingAddress, setIsEditingAddress] = useState(false);
+  const [tempAddress, setTempAddress] = useState('');
+  
+  const [isEditingBilling, setIsEditingBilling] = useState(false);
+  const [tempBilling, setTempBilling] = useState({ razonSocial: '', rfc: '', billingAddress: '' });
+
+  // Update effect to populate default values when opening edit mode
+  React.useEffect(() => {
+    if (visible) {
+      setTempAddress(shippingAddress || '');
+      setTempBilling({
+        razonSocial: razonSocial || '',
+        rfc: rfc || '',
+        billingAddress: billingAddress || ''
+      });
+      setIsEditingAddress(false);
+      setIsEditingBilling(false);
+    }
+  }, [visible]);
+
+  const handleSaveBilling = () => {
+    setIsEditingBilling(false);
+    Toast.show({ type: 'info', text1: 'Datos actualizados localmente', text2: 'Guarde el carrito en la web para persistir.' });
+    // In MVP, we just update local state or send to chat
+  };
+
+  const handleSaveAddress = () => {
+    setIsEditingAddress(false);
+    Toast.show({ type: 'info', text1: 'Dirección actualizada localmente' });
+  };
+
+  const askBillingValidation = () => {
+    sendMessage(`Por favor valida tus datos de facturación:\n\nRazón Social: ${tempBilling.razonSocial}\nRFC: ${tempBilling.rfc}\nDirección: ${tempBilling.billingAddress}\n\n¿Son correctos?`, false);
+    onClose();
+  };
+
+  const askAddressValidation = () => {
+    sendMessage(`Por favor valida tu dirección de envío:\n\n*${tempAddress}*\n\n¿Es correcta?`, false);
+    onClose();
   };
 
   return (
@@ -73,7 +116,7 @@ export default function CartModal({ visible, onClose, chat }) {
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalContainer}>
           
           <View style={styles.header}>
-            <Text style={styles.headerTitle}>Carrito y Cotizaci\u00f3n</Text>
+            <Text style={styles.headerTitle}>Carrito y Cotización</Text>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
               <X color="#94a3b8" size={24} />
             </TouchableOpacity>
@@ -82,30 +125,66 @@ export default function CartModal({ visible, onClose, chat }) {
           <ScrollView style={styles.scrollContent}>
             {/* Client Info Section */}
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Datos del Cliente</Text>
+              <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10}}>
+                <Text style={styles.sectionTitle}>Datos del Cliente</Text>
+              </View>
               <Text style={styles.textRow}><Text style={styles.bold}>Nombre:</Text> {clientName}</Text>
-              <Text style={styles.textRow}><Text style={styles.bold}>Tel\u00e9fono:</Text> {clientPhone}</Text>
+              <Text style={styles.textRow}><Text style={styles.bold}>Teléfono:</Text> {clientPhone}</Text>
               
-              {(razonSocial || rfc || billingAddress) ? (
-                <View style={styles.billingCard}>
-                  {razonSocial ? <Text style={styles.textRow}><Text style={styles.bold}>Raz\u00f3n Social:</Text> {razonSocial}</Text> : null}
-                  {rfc ? <Text style={styles.textRow}><Text style={styles.bold}>RFC:</Text> {rfc}</Text> : null}
-                  {billingAddress ? <Text style={styles.textRow}><Text style={styles.bold}>Direcci\u00f3n Fisc.:</Text> {billingAddress}</Text> : null}
+              <View style={styles.billingCard}>
+                <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5}}>
+                  <Text style={styles.bold}>Facturación</Text>
+                  {!isEditingBilling ? (
+                    <TouchableOpacity onPress={() => setIsEditingBilling(true)}><Text style={{color: '#06b6d4', fontSize: 12}}>Editar</Text></TouchableOpacity>
+                  ) : (
+                    <TouchableOpacity onPress={handleSaveBilling}><Text style={{color: '#10b981', fontSize: 12}}>Guardar</Text></TouchableOpacity>
+                  )}
                 </View>
-              ) : null}
+                
+                {isEditingBilling ? (
+                  <View>
+                    <TextInput style={styles.input} value={tempBilling.razonSocial} onChangeText={t => setTempBilling({...tempBilling, razonSocial: t})} placeholder="Razón Social" placeholderTextColor="#64748b" />
+                    <TextInput style={styles.input} value={tempBilling.rfc} onChangeText={t => setTempBilling({...tempBilling, rfc: t})} placeholder="RFC" placeholderTextColor="#64748b" />
+                    <TextInput style={styles.input} value={tempBilling.billingAddress} onChangeText={t => setTempBilling({...tempBilling, billingAddress: t})} placeholder="Dirección Fiscal" placeholderTextColor="#64748b" />
+                    <TouchableOpacity onPress={askBillingValidation} style={styles.validateBtn}><Send size={14} color="#fff" /><Text style={styles.validateBtnText}>Validar en Chat</Text></TouchableOpacity>
+                  </View>
+                ) : (
+                  <View>
+                    {tempBilling.razonSocial ? <Text style={styles.textRow}><Text style={styles.bold}>Razón Social:</Text> {tempBilling.razonSocial}</Text> : null}
+                    {tempBilling.rfc ? <Text style={styles.textRow}><Text style={styles.bold}>RFC:</Text> {tempBilling.rfc}</Text> : null}
+                    {tempBilling.billingAddress ? <Text style={styles.textRow}><Text style={styles.bold}>Dirección Fisc.:</Text> {tempBilling.billingAddress}</Text> : null}
+                    {(!tempBilling.razonSocial && !tempBilling.rfc && !tempBilling.billingAddress) && <Text style={styles.emptyText}>No especificados</Text>}
+                  </View>
+                )}
+              </View>
 
-              {shippingAddress ? (
-                <View style={styles.shippingCard}>
-                  <Text style={styles.textRow}><Text style={styles.bold}>Env\u00edo:</Text> {shippingAddress}</Text>
+              <View style={styles.shippingCard}>
+                <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5}}>
+                  <Text style={styles.bold}>Envío</Text>
+                  {!isEditingAddress ? (
+                    <TouchableOpacity onPress={() => setIsEditingAddress(true)}><Text style={{color: '#06b6d4', fontSize: 12}}>Editar</Text></TouchableOpacity>
+                  ) : (
+                    <TouchableOpacity onPress={handleSaveAddress}><Text style={{color: '#10b981', fontSize: 12}}>Guardar</Text></TouchableOpacity>
+                  )}
                 </View>
-              ) : null}
+                {isEditingAddress ? (
+                  <View>
+                    <TextInput style={styles.input} value={tempAddress} onChangeText={setTempAddress} placeholder="Dirección de envío completa" placeholderTextColor="#64748b" multiline />
+                    <TouchableOpacity onPress={askAddressValidation} style={styles.validateBtn}><Send size={14} color="#fff" /><Text style={styles.validateBtnText}>Validar en Chat</Text></TouchableOpacity>
+                  </View>
+                ) : (
+                  <View>
+                    {tempAddress ? <Text style={styles.textRow}>{tempAddress}</Text> : <Text style={styles.emptyText}>No especificada</Text>}
+                  </View>
+                )}
+              </View>
             </View>
 
             {/* Cart Items Section */}
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Partidas del Carrito</Text>
               {cartItems.length === 0 ? (
-                <Text style={styles.emptyText}>El carrito est\u00e1 vac\u00edo</Text>
+                <Text style={styles.emptyText}>El carrito está vacío</Text>
               ) : (
                 cartItems.map((item, idx) => {
                   const lineTotal = (item.precio || 0) * (item.cantidad || 1);
@@ -134,7 +213,7 @@ export default function CartModal({ visible, onClose, chat }) {
           </ScrollView>
 
           {/* Footer Actions */}
-          <View style={styles.footerActions}>
+          <View style={[styles.footerActions, { paddingBottom: Math.max(insets.bottom, 15) }]}>
             <TouchableOpacity 
               style={[styles.actionBtn, styles.btnSummary, cartItems.length === 0 && styles.btnDisabled]} 
               disabled={cartItems.length === 0}
@@ -150,7 +229,7 @@ export default function CartModal({ visible, onClose, chat }) {
               onPress={handleDownloadPDF}
             >
               <Download size={18} color="#ffffff" />
-              <Text style={styles.btnPdfText}>Cotizaci\u00f3n PDF</Text>
+              <Text style={styles.btnPdfText}>Cotización PDF</Text>
             </TouchableOpacity>
           </View>
         </KeyboardAvoidingView>
@@ -334,5 +413,29 @@ const styles = StyleSheet.create({
   },
   btnDisabled: {
     opacity: 0.5,
+  },
+  input: {
+    backgroundColor: '#1e293b',
+    color: 'white',
+    padding: 10,
+    borderRadius: 5,
+    borderWidth: 1,
+    borderColor: '#334155',
+    marginBottom: 10,
+  },
+  validateBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#0284c7',
+    paddingVertical: 8,
+    borderRadius: 5,
+    marginTop: 5,
+    gap: 5,
+  },
+  validateBtnText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '600',
   }
 });

@@ -2,6 +2,7 @@ import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { LayoutDashboard, MessageCircle, Users, LogOut } from 'lucide-react-native';
 import useAuthStore from '@shared/stores/useAuthStore';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // Screens
 import ChatListScreen from './ChatListScreen';
@@ -15,6 +16,7 @@ const LogoutDummy = () => <View />;
 
 export default function MainTabs() {
   const logout = useAuthStore(s => s.logout);
+  const insets = useSafeAreaInsets();
 
   return (
     <Tab.Navigator
@@ -25,8 +27,8 @@ export default function MainTabs() {
           backgroundColor: '#1e293b',
           borderTopColor: '#0f172a',
           paddingTop: 10,
-          paddingBottom: 10,
-          height: Platform.OS === 'ios' ? 90 : 70,
+          paddingBottom: Math.max(insets.bottom, 10),
+          height: Platform.OS === 'ios' ? 70 + insets.bottom : 70,
         },
         tabBarActiveTintColor: '#ffffff',
         tabBarInactiveTintColor: '#64748b',
