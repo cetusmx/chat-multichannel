@@ -119,17 +119,26 @@ export default function App() {
       }
     });
 
+    // Global variable to prevent duplicate handling across remounts or onNewIntent triggers
+    if (!global.lastHandledMessageId) global.lastHandledMessageId = null;
+
     // Handle background notification click
     messaging().onNotificationOpenedApp(remoteMessage => {
-      if (remoteMessage.data?.chatId) {
-        navigateToChat(remoteMessage.data.chatId);
+      if (remoteMessage && remoteMessage.messageId !== global.lastHandledMessageId) {
+        global.lastHandledMessageId = remoteMessage.messageId;
+        if (remoteMessage.data?.chatId) {
+          navigateToChat(remoteMessage.data.chatId);
+        }
       }
     });
 
     // Handle quit state notification click
     messaging().getInitialNotification().then(remoteMessage => {
-      if (remoteMessage && remoteMessage.data?.chatId) {
-        navigateToChat(remoteMessage.data.chatId);
+      if (remoteMessage && remoteMessage.messageId !== global.lastHandledMessageId) {
+        global.lastHandledMessageId = remoteMessage.messageId;
+        if (remoteMessage.data?.chatId) {
+          navigateToChat(remoteMessage.data.chatId);
+        }
       }
     }).catch(err => console.error('[PUSH] getInitialNotification error', err));
 

@@ -45,6 +45,7 @@ export default function ChatDetailScreen() {
   const { chatId, clientName } = route.params || {};
 
   const chat = useChatStore((state) => state.conversations?.find(c => c.id === chatId) || {});
+  const displayClientName = clientName || chat?.client?.name || 'Cliente';
   const updateChatStatusInStore = useChatStore((state) => state.updateChatStatus);
   const clearUnreadCount = useChatStore((state) => state.clearUnreadCount);
 
@@ -86,10 +87,10 @@ export default function ChatDetailScreen() {
         <View style={styles.headerTitleContainer}>
           <View style={styles.headerTitleRow}>
             <View style={styles.avatarPlaceholder}>
-              <Text style={styles.avatarText}>{clientName ? clientName.charAt(0).toUpperCase() : 'C'}</Text>
+              <Text style={styles.avatarText}>{displayClientName ? displayClientName.charAt(0).toUpperCase() : 'C'}</Text>
             </View>
             <View style={styles.headerTextContainer}>
-              <Text style={styles.headerTitleName} numberOfLines={1}>{clientName || 'Cliente'}</Text>
+              <Text style={styles.headerTitleName} numberOfLines={1}>{displayClientName || 'Cliente'}</Text>
             </View>
           </View>
         </View>
