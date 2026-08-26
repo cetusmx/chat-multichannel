@@ -123,10 +123,14 @@ export default function ChatDetailScreen() {
                   <TouchableOpacity style={styles.moreIcon} onPress={() => setStatusMenuVisible(true)}>
                     <MoreVertical size={24} color="#64748b" />
                   </TouchableOpacity>
-                  <TouchableOpacity style={styles.cartIconContainer} onPress={() => setCartModalVisible(true)}>
-                    <ShoppingCart size={28} color="#334155" strokeWidth={2.5} />
-                    <View style={styles.badge}><Text style={styles.badgeText}>{cartItemsCount}</Text></View>
-                  </TouchableOpacity>
+                  <View style={{ position: 'relative' }}>
+                    <TouchableOpacity style={styles.cartIconContainer} onPress={() => setCartModalVisible(true)}>
+                      <ShoppingCart size={28} color="#334155" strokeWidth={2.5} />
+                    </TouchableOpacity>
+                    <View style={styles.badge} pointerEvents="none">
+                      <Text style={styles.badgeText}>{cartItemsCount}</Text>
+                    </View>
+                  </View>
                 </>
               )}
             </View>
