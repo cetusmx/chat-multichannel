@@ -781,6 +781,7 @@ const useChatStore = create((set, get) => ({
               client: {
                 ...c.client,
                 cartData: cartData,
+                  cart: typeof cartData === "string" ? cartData : JSON.stringify(cartData),
               },
             };
           }

@@ -469,9 +469,10 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
                   const conv = useChatStore.getState().conversations.find(c => c.id === conversationId);
                             if (conv && conv.client) {
                     try {
-                      const cartData = typeof conv.client.cart === 'string' 
-                        ? JSON.parse(conv.client.cart || '[]') 
-                        : (conv.client.cart || []);
+                      const rawCart = conv.client.cartData || conv.client.cart;
+                              const cartData = typeof rawCart === 'string' 
+                                ? JSON.parse(rawCart || '[]') 
+                                : (rawCart || []);
                       
                       const currentItems = Array.isArray(cartData) ? cartData : (cartData.items || []);
                       
@@ -667,9 +668,10 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
                           const conv = useChatStore.getState().conversations.find(c => c.id === conversationId);
                             if (conv && conv.client) {
                             try {
-                              const cartData = typeof conv.client.cart === 'string' 
-                                ? JSON.parse(conv.client.cart || '[]') 
-                                : (conv.client.cart || []);
+                              const rawCart = conv.client.cartData || conv.client.cart;
+                              const cartData = typeof rawCart === 'string' 
+                                ? JSON.parse(rawCart || '[]') 
+                                : (rawCart || []);
                               
                               const currentItems = Array.isArray(cartData) ? cartData : (cartData.items || []);
                               
