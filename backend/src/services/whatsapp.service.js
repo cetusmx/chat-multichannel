@@ -698,8 +698,30 @@ const whatsappService = {
               messaging_product: 'whatsapp',
               recipient_type: 'individual',
               to: cleanPhoneNumber,
-              type: 'image',
-              image: { link: metadata.imageUrl, caption: textToSend }
+              type: 'interactive',
+              interactive: {
+                type: 'button',
+                header: {
+                  type: 'image',
+                  image: {
+                    link: metadata.imageUrl
+                  }
+                },
+                body: {
+                  text: textToSend
+                },
+                action: {
+                  buttons: [
+                    {
+                      type: 'reply',
+                      reply: {
+                        id: `ADD_CART_${metadata.clave}`,
+                        title: 'Me interesa'
+                      }
+                    }
+                  ]
+                }
+              }
             };
           }
         } catch (e) {
@@ -712,13 +734,31 @@ const whatsappService = {
       }
 
       if (!payload) {
-        payload = {
-          messaging_product: 'whatsapp',
-          recipient_type: 'individual',
-          to: cleanPhoneNumber,
-          type: 'text',
-          text: { preview_url: true, body: textToSend }
-        };
+        if (type === 'PRODUCT_CARD') {
+            payload = {
+              messaging_product: 'whatsapp',
+              recipient_type: 'individual',
+              to: cleanPhoneNumber,
+              type: 'interactive',
+              interactive: {
+                type: 'button',
+                body: { text: textToSend },
+                action: {
+                  buttons: [
+                    { type: 'reply', reply: { id: `ADD_CART_${metadata?.clave}`, title: 'Me interesa' } }
+                  ]
+                }
+              }
+            };
+          } else {
+            payload = {
+              messaging_product: 'whatsapp',
+              recipient_type: 'individual',
+              to: cleanPhoneNumber,
+              type: 'text',
+              text: { preview_url: true, body: textToSend }
+            };
+          }
       }
 
       const url = `https://graph.facebook.com/${env.metaApiVersion}/${config.phoneNumberId}/messages`;

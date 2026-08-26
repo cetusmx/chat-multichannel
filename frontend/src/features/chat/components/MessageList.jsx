@@ -409,177 +409,40 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
     >
       {isUploading && (
         <div className="absolute inset-0 bg-sales-slate-900/60 z-40 flex items-center justify-center backdrop-blur-sm">
-          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-sales-cyan-400"></div>
-        </div>
-      )}
-
-      {isDragging && !isUploading && (
-        <div className="absolute inset-0 bg-sales-slate-900/80 z-50 flex items-center justify-center backdrop-blur-sm pointer-events-none">
-          <div className="text-sales-cyan-400 flex flex-col items-center">
-            <span className="text-6xl mb-4">📥</span>
-            <span className="text-xl font-bold">Suelta el archivo aquí para enviar</span>
-          </div>
-        </div>
-      )}
-
-      {/* Chat Header */}
-      <div className="p-4 border-b border-sales-slate-800 bg-sales-slate-900 flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-sales-slate-100">{clientName || 'Conversación Activa'}</h2>
-        {headerActions && (
-          <div className="flex items-center gap-2">
-            {headerActions}
-          </div>
-        )}
-      </div>
-
-      {/* Messages */}
-      <div
-        ref={scrollContainerRef}
-        className="flex-1 overflow-y-auto overflow-x-hidden w-full p-4 space-y-4 custom-scrollbar"
-      >
-        <div ref={observerTargetRef} className="h-4 w-full"></div>
-        {isLoadingMore && (
-          <div className="flex justify-center py-2">
-            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-sales-cyan-400"></div>
-          </div>
-        )}
-        {(errorMsg || localError) && (
-          <div className="bg-red-500/10 border border-red-500/50 text-red-400 px-4 py-2 rounded-lg flex justify-between items-center mb-4">
-            <span className="text-sm font-medium">{errorMsg || localError}</span>
-            <button onClick={() => { if(clearError) clearError(); setLocalError(null); }} className="text-red-400 hover:text-red-300 font-bold px-2">&times;</button>
-          </div>
-        )}
-
-        {messages.length === 0 && (
-          <div className="text-center text-sales-slate-500 mt-10">Envía un mensaje para comenzar a chatear.</div>
-        )}
-
-        {useMemo(() => messages.map((msg, index) => {
-          const isMyTeam = ['VENDOR', 'SYSTEM', 'COORDINATOR', 'ADMIN', 'IA'].includes(msg.senderType);
-          const isHighlighted = msg.id === highlightedMessageId;
-
-          let showDateLabel = false;
-          if (index === 0) {
-            showDateLabel = true;
-          } else {
-            const prevMsg = messages[index - 1];
-            const currentDate = new Date(msg.createdAt).toDateString();
-            const prevDate = new Date(prevMsg.createdAt).toDateString();
-            if (currentDate !== prevDate) {
-              showDateLabel = true;
-            }
-          }
-
-          return (
-            <React.Fragment key={msg.id}>
-              {showDateLabel && (
-                <div className="flex justify-center w-full my-2">
-                  <span className="bg-sales-slate-800/80 text-sales-slate-300 text-xs px-3 py-1 rounded-md shadow-sm border border-sales-slate-700/50 uppercase tracking-wide font-medium">
-                    {formatDateLabel(msg.createdAt)}
-                  </span>
-                </div>
-              )}
-              <div
-                className={`flex w-full ${isMyTeam ? 'justify-end' : 'justify-start'} transition-all duration-1000 ${isHighlighted ? 'ring-4 ring-sales-cyan-500 rounded-lg bg-sales-cyan-500/20 p-2' : ''}`}
-                ref={isHighlighted ? highlightedRef : null}
-              >
-              <div
-                className={`group max-w-[70%] min-w-0 rounded-lg p-3 shadow-sm ${
-                  isMyTeam
-                    ? msg.isInternal
-                      ? 'bg-sales-orange-500/20 text-sales-orange-100 rounded-br-none border-l-4 border-sales-orange-500 backdrop-blur-md'
-                      : ['COORDINATOR', 'ADMIN'].includes(msg.senderType)
-                        ? 'bg-sales-coral-600/90 text-white rounded-br-none border-r-4 border-sales-coral-400 backdrop-blur-md shadow-md'
-                        : 'bg-sales-cyan-600 text-white rounded-br-none'
-                    : 'bg-sales-slate-800 text-sales-slate-200 rounded-bl-none'
-                }`}
-              >
-                {msg.isInternal && (
-                  <div className="text-[10px] uppercase font-bold text-sales-orange-400 mb-1 flex items-center gap-1">
-                    <span>🔒</span> Comentario Interno
-                  </div>
+          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-sales-cyan-400">
+      {/* Add To Cart Modal */}
+      {addToCartModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50">
+          <div className="w-full max-w-sm rounded-xl border border-slate-700 bg-slate-900 p-6 shadow-2xl">
+            <h3 className="mb-4 text-lg font-semibold text-sales-slate-100">Añadir al Carrito</h3>
+            <div className="mb-4 flex items-center gap-4">
+              <div className="h-16 w-16 bg-white rounded flex items-center justify-center overflow-hidden flex-shrink-0">
+                {addToCartModal.metadata.imageUrl ? (
+                  <img src={addToCartModal.metadata.imageUrl} alt={addToCartModal.metadata.clave} className="max-h-full max-w-full object-contain" />
+                ) : (
+                  <ShoppingCart className="text-slate-400" />
                 )}
-                {!msg.isInternal && ['COORDINATOR', 'ADMIN'].includes(msg.senderType) && (
-                  <div className="text-[10px] uppercase font-bold text-sales-coral-200 mb-1 flex items-center gap-1">
-                    <span>🛡️</span> Intervención de Coordinador
-                  </div>
-                )}
-                {msg.attachments && msg.attachments.length > 0 && (
-                  <div className="mb-2 relative">
-                    <SecureMedia
-                      url={msg.attachments[0].url}
-                      type={msg.attachments[0].type}
-                      alt="Attachment"
-                      className="max-w-full rounded-md"
-                      fallbackText={msg.attachments[0].name}
-                    />
-                    {['ADMIN', 'COORDINATOR', 'VENDOR'].includes(user?.role) && (
-                      <button
-                        onClick={() => forwardMedia(msg.id)}
-                        disabled={uploadingIds[msg.id]}
-                        className={`absolute -top-3 -right-3 z-10 bg-black/60 hover:bg-sales-cyan-600 text-white text-[10px] font-semibold px-2 py-1 rounded-full shadow-lg backdrop-blur-md border border-white/30 transition-all duration-300 flex items-center gap-1 transform hover:scale-105 ${uploadingIds[msg.id] ? 'opacity-100 cursor-wait bg-sales-cyan-600' : 'opacity-0 group-hover:opacity-100 cursor-pointer'}`}
-                        title="Compartir con cliente"
-                        type="button"
+              </div>
+              <div className="flex-1">
+                <p className="font-semibold text-sales-cyan-400">{addToCartModal.metadata.clave}</p>
+                <p className="text-xs text-sales-slate-400 line-clamp-2">{addToCartModal.metadata.description}</p>
+                <p className="text-sm font-bold mt-1 text-white">${(parseFloat(addToCartModal.metadata.priceNet)).toFixed(2)} Neto</p>
+              </div>
+            </div>
+            
+            <div className="mb-6">
+              <label className="block text-sm text-sales-slate-400 mb-2">Cantidad</label>
+              <div className="flex items-center gap-3">
+                <button
+                        onClick={(e) => {
+                          e.preventDefault();
+                          setCartQty(1);
+                          setAddToCartModal(msg);
+                        }}
+                        className="w-full mt-2 bg-sales-slate-700 border border-sales-slate-600 hover:bg-sales-cyan-600 hover:border-sales-cyan-600 text-white font-medium py-1.5 px-3 rounded text-xs transition-colors flex items-center justify-center gap-2"
                       >
-                        <span className="text-xs">📤</span> {uploadingIds[msg.id] ? 'Enviando...' : 'Compartir con cliente'}
+                        <ShoppingCart className="w-3 h-3" /> Añadir al carrito
                       </button>
-                    )}
-                  </div>
-                )}
-                {msg.type === 'PRODUCT_CARD' && msg.metadata ? (
-                  <div className="mt-1 bg-sales-slate-800 rounded-lg p-3 border border-sales-slate-700/50 shadow-sm flex flex-col gap-2">
-                    <div className="flex gap-3">
-                      <div className="w-16 h-16 bg-white rounded flex items-center justify-center p-1 overflow-hidden shrink-0">
-                        <img src={msg.metadata.imageUrl} alt={msg.metadata.clave} className="max-w-full max-h-full object-contain" onError={(e) => { if (e.target.src.endsWith('.jpg')) { e.target.src = e.target.src.replace('.jpg', '.png'); } else { e.target.onerror = null; e.target.style.display = 'none'; } }} />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="font-bold text-sm text-sales-cyan-400 truncate">{msg.metadata.clave}</div>
-                        <div className="text-xs text-sales-slate-300 line-clamp-2 mt-0.5">{msg.metadata.description}</div>
-                        <div className="text-sm font-semibold text-white mt-1">${msg.metadata.priceNet} Neto</div>
-                      </div>
-                    </div>
-                    <button 
-                      onClick={() => {
-                        const store = useChatStore.getState();
-                        const conv = store.conversations.find(c => c.id === store.currentConversationId);
-                        if (!conv || !conv.client) return;
-                        
-                        // Fallback parsing of existing cart
-                        let currentItems = [];
-                        let cartData = conv.client.cartData;
-                        if (typeof cartData === 'string') {
-                          try { cartData = JSON.parse(cartData); } catch(e) {}
-                        }
-                        if (Array.isArray(cartData)) {
-                          currentItems = cartData;
-                        } else if (cartData && cartData.items) {
-                          currentItems = cartData.items;
-                        }
-                        
-                        const isAlreadyInCart = currentItems.some(i => i.clave === msg.metadata.clave);
-                        if (!isAlreadyInCart) {
-                          const newItems = [...currentItems, { 
-                              clave: msg.metadata.clave, 
-                              descripcion: msg.metadata.description, 
-                              precio: parseFloat(msg.metadata.priceNet)/1.16,
-                              cantidad: 1 
-                          }];
-                          
-                          // Ensure we preserve the rest of the cart structure if it exists
-                          let newCartData = newItems;
-                          if (cartData && !Array.isArray(cartData)) {
-                            newCartData = { ...cartData, items: newItems };
-                          }
-                          
-                          updateClientCart(conv.client.id, newCartData)
-                            .then(() => alert('Añadido al carrito con éxito'))
-                            .catch(() => alert('Error al añadir al carrito'));
-                        }
-                      }}
-                      className="w-full mt-1 bg-sales-cyan-600 hover:bg-sales-cyan-500 text-white font-semibold py-1.5 px-3 rounded text-xs transition-colors flex items-center justify-center gap-1"
-                    >
-                      <ShoppingCart className="w-3 h-3" /> Añadir al carrito
-                    </button>
                   </div>
                 ) : (
                   <p className="text-sm whitespace-pre-wrap break-words break-all">{msg.content}</p>
