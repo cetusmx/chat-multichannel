@@ -9,7 +9,8 @@ import {
   ActivityIndicator,
   Keyboard,
   Modal,
-  TouchableOpacity
+  TouchableOpacity,
+  TextInput
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRoute, useNavigation } from '@react-navigation/native';

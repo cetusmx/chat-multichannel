@@ -166,7 +166,7 @@ export default function ChatListScreen() {
   );
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'right', 'bottom', 'left']}>
+    <SafeAreaView style={styles.container} edges={['top', 'right', 'left']}>
       {/* Custom WhatsApp-style Header */}
       <View style={styles.headerContainer}>
         <Text style={styles.headerTitle}>SalesFlow</Text>

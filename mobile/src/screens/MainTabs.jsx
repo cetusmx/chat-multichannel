@@ -24,9 +24,6 @@ export default function MainTabs() {
         tabBarStyle: {
           backgroundColor: '#1e293b',
           borderTopColor: '#0f172a',
-          paddingBottom: 5,
-          paddingTop: 5,
-          height: 60,
         },
         tabBarActiveTintColor: '#06b6d4',
         tabBarInactiveTintColor: '#64748b',
