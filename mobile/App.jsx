@@ -11,7 +11,7 @@ import { registerFcmToken, removeFcmToken } from './src/services/push.service';
 
 // Screens
 import LoginScreen from './src/screens/LoginScreen';
-import ChatListScreen from './src/screens/ChatListScreen';
+import MainTabs from './src/screens/MainTabs';
 import ChatDetailScreen from './src/screens/ChatDetailScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 
@@ -72,6 +72,21 @@ export default function App() {
   }, [token]);
 
   useEffect(() => {
+    const navigateToChat = (chatId) => {
+      if (!chatId) return;
+      if (Platform.OS === 'ios') messaging().setBadge(0);
+      let retries = 0;
+      const tryNav = () => {
+        if (navigationRef.isReady()) {
+          navigationRef.navigate('ChatDetail', { chatId });
+        } else if (retries < 20) {
+          retries++;
+          setTimeout(tryNav, 100);
+        }
+      };
+      tryNav();
+    };
+
     const unsubscribeMsg = messaging().onMessage(async remoteMessage => {
       // Foreground handler
       const title = remoteMessage.data?.notifee_title || 'Nuevo mensaje';
@@ -90,21 +105,6 @@ export default function App() {
         });
       }
     });
-
-    const navigateToChat = (chatId) => {
-      if (!chatId) return;
-      if (Platform.OS === 'ios') messaging().setBadge(0);
-      let retries = 0;
-      const tryNav = () => {
-        if (navigationRef.isReady()) {
-          navigationRef.navigate('ChatDetail', { chatId });
-        } else if (retries < 20) {
-          retries++;
-          setTimeout(tryNav, 100);
-        }
-      };
-      tryNav();
-    };
 
     const unsubscribeTokenRefresh = messaging().onTokenRefresh(async (newToken) => {
       if (token) {
@@ -156,7 +156,7 @@ export default function App() {
         <Stack.Navigator>
           {token ? (
             <>
-              <Stack.Screen name="ChatList" component={ChatListScreen} />
+              <Stack.Screen name="MainTabs" component={MainTabs} options={{ headerShown: false }} />
               <Stack.Screen name="ChatDetail" component={ChatDetailScreen} />
               <Stack.Screen name="Profile" component={ProfileScreen} />
             </>

@@ -58,6 +58,10 @@ export default function ChatDetailScreen() {
   const [actionMenuVisible, setActionMenuVisible] = useState(false);
   const [statusMenuVisible, setStatusMenuVisible] = useState(false);
   const [resolveModalVisible, setResolveModalVisible] = useState(false);
+  const [onHoldModalVisible, setOnHoldModalVisible] = useState(false);
+  const [onHoldReason, setOnHoldReason] = useState('');
+  const [onHoldNote, setOnHoldNote] = useState('');
+  const [onHoldHours, setOnHoldHours] = useState('24');
   const chatInputRef = useRef(null);
   const isLoadingMoreRef = useRef(false);
   const aiAbortControllerRef = useRef(null);
@@ -234,6 +238,31 @@ export default function ChatDetailScreen() {
     }
   };
 
+  const handleOnHoldSubmit = async () => {
+    if (!onHoldReason || !onHoldNote.trim()) {
+      Toast.show({ type: 'error', text1: 'Por favor completa todos los campos' });
+      return;
+    }
+    const hours = parseInt(onHoldHours, 10);
+    if (isNaN(hours) || hours <= 0 || hours > 168) {
+      Toast.show({ type: 'error', text1: 'Horas inv\u00e1lidas (1-168)' });
+      return;
+    }
+    
+    setOnHoldModalVisible(false);
+    setStatusMenuVisible(false);
+    try {
+      await updateChatStatusInStore(chatId, {
+        status: 'ON_HOLD',
+        reason: `[${onHoldReason}] ${onHoldNote.trim()}`,
+        timebombHours: hours
+      });
+      Toast.show({ type: 'success', text1: 'Chat en espera' });
+    } catch (e) {
+      Toast.show({ type: 'error', text1: 'Error', text2: e.message || String(e) });
+    }
+  };
+
   const formatDateLabel = (dateString) => {
     const date = new Date(dateString);
     if (isNaN(date.getTime())) return '';
@@ -363,7 +392,13 @@ export default function ChatDetailScreen() {
               <Text style={styles.dropdownItemText}>Esperando al Cliente</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.dropdownItem} onPress={() => Toast.show({type: 'info', text1: 'Próximamente', text2: 'Módulo en desarrollo'})}>
+            <TouchableOpacity 
+              style={styles.dropdownItem} 
+              onPress={() => {
+                setStatusMenuVisible(false);
+                setOnHoldModalVisible(true);
+              }}
+            >
               <PauseCircle size={20} color="#f8fafc" strokeWidth={1.5} />
               <Text style={styles.dropdownItemText}>Poner en Espera</Text>
             </TouchableOpacity>
@@ -406,6 +441,81 @@ export default function ChatDetailScreen() {
                 onPress={() => updateChatStatus('CLOSED')}
               >
                 <Text style={styles.resolveBtnLostText}>Cierre sin Venta</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* On Hold Modal */}
+      <Modal visible={onHoldModalVisible} transparent animationType="fade">
+        <TouchableOpacity style={styles.resolveOverlay} onPress={() => setOnHoldModalVisible(false)}>
+          <View style={styles.resolveModalBox} onStartShouldSetResponder={() => true}>
+            <View style={styles.resolveModalHeader}>
+              <Text style={styles.resolveModalTitle}>Poner en Espera</Text>
+            </View>
+            <View style={styles.resolveModalBody}>
+              <Text style={{color:'#cbd5e1', marginBottom: 5}}>Razón</Text>
+              <View style={{flexDirection: 'column', marginBottom: 15}}>
+                {['Esperando proveedor logístico', 'Falla técnica / Soporte', 'Validación de pago', 'Esperando aprobación interna'].map((r) => (
+                  <TouchableOpacity 
+                    key={r}
+                    style={{
+                      padding: 10,
+                      backgroundColor: onHoldReason === r ? 'rgba(6, 182, 212, 0.2)' : '#1e293b',
+                      borderWidth: 1,
+                      borderColor: onHoldReason === r ? '#06b6d4' : '#334155',
+                      borderRadius: 5,
+                      marginBottom: 5
+                    }}
+                    onPress={() => setOnHoldReason(r)}
+                  >
+                    <Text style={{color: onHoldReason === r ? '#06b6d4' : '#94a3b8'}}>{r}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <Text style={{color:'#cbd5e1', marginBottom: 5}}>Nota Explicativa</Text>
+              <TextInput
+                style={{
+                  backgroundColor: '#1e293b',
+                  color: 'white',
+                  padding: 10,
+                  borderRadius: 5,
+                  borderWidth: 1,
+                  borderColor: '#334155',
+                  marginBottom: 15,
+                  textAlignVertical: 'top'
+                }}
+                multiline
+                numberOfLines={2}
+                value={onHoldNote}
+                onChangeText={setOnHoldNote}
+                placeholder="Detalles adicionales..."
+                placeholderTextColor="#64748b"
+              />
+
+              <Text style={{color:'#cbd5e1', marginBottom: 5}}>Horas Límite (1-168)</Text>
+              <TextInput
+                style={{
+                  backgroundColor: '#1e293b',
+                  color: 'white',
+                  padding: 10,
+                  borderRadius: 5,
+                  borderWidth: 1,
+                  borderColor: '#334155',
+                  marginBottom: 20
+                }}
+                keyboardType="number-pad"
+                value={onHoldHours}
+                onChangeText={setOnHoldHours}
+              />
+              
+              <TouchableOpacity 
+                style={styles.resolveBtnWon} 
+                onPress={handleOnHoldSubmit}
+              >
+                <Text style={styles.resolveBtnWonText}>Aceptar</Text>
               </TouchableOpacity>
             </View>
           </View>
