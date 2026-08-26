@@ -110,7 +110,7 @@ export async function del(endpoint, data = null) {
   return request(endpoint, options);
 }
 export async function getSealMarketFamilias() {
-  const res = await get(/sealmarket/catalog/familias);
+  const res = await get(`/sealmarket/catalog/familias`);
   if (!res.ok) {
     throw new Error('Error al obtener familias');
   }
@@ -122,7 +122,7 @@ export async function searchSealMarketCatalog(params) {
     Object.entries(params).filter(([_, v]) => v !== '' && v !== null && v !== undefined),
   );
   const query = new URLSearchParams(filteredParams).toString();
-  const res = await get(/sealmarket/catalog/search?);
+  const res = await get(`/sealmarket/catalog/search?${query}`);
   if (!res.ok) {
     throw new Error('Error buscando en catálogo');
   }
