@@ -446,6 +446,7 @@ export default function CartModal({ visible, onClose, chat }) {
               <Text style={styles.btnPdfText}>Cotización PDF</Text>
             </TouchableOpacity>
           </View>
+          )}
         </KeyboardAvoidingView>
       </View>
     </Modal>
