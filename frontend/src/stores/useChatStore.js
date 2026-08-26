@@ -251,7 +251,7 @@ const useChatStore = create((set, get) => ({
     }
   },
 
-  sendMessage: async (content, isInternal = false) => {
+  sendMessage: async (content, isInternal = false, type = 'TEXT', metadata = null) => {
     if (!content || typeof content !== 'string' || !content.trim()) return;
     const { currentConversationId } = get();
     if (!currentConversationId) return;
@@ -259,13 +259,13 @@ const useChatStore = create((set, get) => ({
     // Optimistic update
     const tempId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Date.now().toString() + '-' + Math.random().toString(36).substring(2);
     const userRole = useAuthStore.getState().user?.role || 'VENDOR';
-    const tempMsg = { id: tempId, content, senderType: userRole, status: 'SENDING', isInternal, createdAt: new Date().toISOString() };
+    const tempMsg = { id: tempId, content, senderType: userRole, type, metadata, status: 'SENDING', isInternal, createdAt: new Date().toISOString() };
     set((state) => ({ messages: [...state.messages, tempMsg] }));
 
     try {
       if (currentConversationId === 'draft') {
         const draftConv = get().conversations.find(c => c.id === 'draft');
-        const res = await config.api.post('/chat/outbound', { clientId: draftConv.clientId, message: content });
+        const res = await config.api.post('/chat/outbound', { clientId: draftConv.clientId, message: content, type, metadata });
         if (!res.ok) throw new Error('Error al iniciar chat saliente');
         const newConvRes = await res.json();
         const realConv = newConvRes.data;
@@ -282,7 +282,7 @@ const useChatStore = create((set, get) => ({
         return;
       }
 
-      const res = await config.api.post(`/chat/${currentConversationId}/messages`, { content, isInternal });
+      const res = await config.api.post(`/chat/${currentConversationId}/messages`, { content, isInternal, type, metadata });
       if (!res.ok) {
         const errText = await res.text();
         throw new Error(`HTTP Error ${res.status}: ${errText}`);

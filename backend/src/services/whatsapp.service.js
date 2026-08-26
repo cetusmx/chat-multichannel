@@ -641,14 +641,13 @@ const whatsappService = {
       throw error;
     }
   },
-
   /**
    * Envía un mensaje al cliente vía Meta Graph API.
    * @param {string} conversationId ID local
    * @param {string} content Texto
    * @param {string} senderId ID del usuario
    */
-  async sendMessage(conversationId, content, senderId = null, senderType = 'VENDOR') {
+  async sendMessage(conversationId, content, senderId = null, senderType = 'VENDOR', type = 'TEXT', metadata = null) {
     try {
       const conversation = await prisma.conversation.findUnique({
         where: { id: conversationId },
@@ -666,6 +665,14 @@ const whatsappService = {
         throw new Error('Configuración de WhatsApp incompleta');
       }
 
+      // We still send the text via WhatsApp if possible. We might format the text differently for product cards.
+      let textToSend = content;
+      if (type === 'PRODUCT_CARD' && metadata) {
+        // Render a nice text version for WhatsApp since it might not support interactive cards natively here yet.
+        const priceNet = metadata.priceNet || '0.00';
+        textToSend = `Tengo esta opción:\n*${metadata.clave}* - ${metadata.description}\nPrecio: $${priceNet} Neto (IVA Inc.)\n\nVer imagen: ${metadata.imageUrl}`;
+      }
+
       let cleanPhoneNumber = conversation.client.phoneNumber.replace(/\D/g, '');
       if (cleanPhoneNumber.startsWith('521') && cleanPhoneNumber.length === 13) {
         cleanPhoneNumber = '52' + cleanPhoneNumber.substring(3);
@@ -677,7 +684,7 @@ const whatsappService = {
         recipient_type: 'individual',
         to: cleanPhoneNumber,
         type: 'text',
-        text: { preview_url: false, body: content }
+        text: { preview_url: true, body: textToSend }
       };
 
       logger.info('[WHATSAPP_SERVICE] Payload to Meta API (sendMessage):', JSON.stringify(payload, null, 2));
@@ -701,7 +708,9 @@ const whatsappService = {
           conversationId,
           senderType: senderType || 'SYSTEM',
           senderId,
-          content,
+          content: textToSend,
+          type,
+          metadata: metadata ? metadata : undefined,
           waMessageId: metaData.messages?.[0]?.id,
           status: 'SENT'
         }

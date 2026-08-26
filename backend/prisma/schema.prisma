@@ -306,7 +306,9 @@ model Message {
   conversationId String         @map("conversation_id")
   senderType     SenderType     @map("sender_type")
   senderId       String?        @map("sender_id") // ID del User si es VENDOR o SYSTEM.
+  type           String         @default("TEXT")
   content        String?        @db.Text
+  metadata       Json?
   waMessageId    String?        @unique @map("wa_message_id")
   tags           String[]       @default([])
   isInternal     Boolean        @default(false) @map("is_internal")

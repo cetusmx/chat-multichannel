@@ -229,11 +229,21 @@ export default function CartViewer({ cartData, client, onClose }) {
     setActiveTab('current');
   };
 
-  const handleSuggestProduct = (product) => {
+    const handleSuggestProduct = (product) => {
     const desc = product.DESC_ECOMM || product.DESCR || product.NOMBRE;
     const priceNet = ((product.PRECIO || 0) * 1.16).toFixed(2);
-    const msg = `Tengo esta opción:\n*${product.CVE_ART}* - ${desc}\nPrecio: $${priceNet} Neto (IVA Incluido)`;
-    sendMessage(msg, false);
+    const linea = product.LIN_PROD || '';
+    const imageUrl = `https://sistemahidraulico.mx/Perfiles/${linea}.png`;
+
+    const metadata = {
+      clave: product.CVE_ART,
+      description: desc,
+      priceNet: priceNet,
+      imageUrl: imageUrl,
+      rawProduct: product
+    };
+
+    useChatStore.getState().sendMessage('', false, 'PRODUCT_CARD', metadata);
   };
 
   const handleSendSummary = () => {

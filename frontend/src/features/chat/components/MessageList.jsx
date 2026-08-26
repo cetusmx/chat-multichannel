@@ -1,9 +1,10 @@
 import React, { useEffect, useLayoutEffect, useRef, useState, useMemo, Fragment } from 'react';
 import useAuthStore from '../../../stores/useAuthStore';
 import useChatStore from '../../../stores/useChatStore';
-import { post } from '../../../services/api';
+import { post, updateClientCart } from '../../../services/api';
 import CannedResponsesPopover from './CannedResponsesPopover';
 import SecureMedia from '../../../components/SecureMedia';
+import { ShoppingCart } from 'lucide-react';
 
 const formatBytes = (bytes, decimals = 1) => {
   if (!+bytes) return '0 Bytes';
@@ -525,7 +526,64 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
                     )}
                   </div>
                 )}
-                <p className="text-sm whitespace-pre-wrap break-words break-all">{msg.content}</p>
+                {msg.type === 'PRODUCT_CARD' && msg.metadata ? (
+                  <div className="mt-1 bg-sales-slate-800 rounded-lg p-3 border border-sales-slate-700/50 shadow-sm flex flex-col gap-2">
+                    <div className="flex gap-3">
+                      <div className="w-16 h-16 bg-white rounded flex items-center justify-center p-1 overflow-hidden shrink-0">
+                        <img src={msg.metadata.imageUrl} alt={msg.metadata.clave} className="max-w-full max-h-full object-contain" onError={(e) => { e.target.src = 'https://via.placeholder.com/64?text=Img'; }} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-bold text-sm text-sales-cyan-400 truncate">{msg.metadata.clave}</div>
+                        <div className="text-xs text-sales-slate-300 line-clamp-2 mt-0.5">{msg.metadata.description}</div>
+                        <div className="text-sm font-semibold text-white mt-1">${msg.metadata.priceNet} Neto</div>
+                      </div>
+                    </div>
+                    <button 
+                      onClick={() => {
+                        const store = useChatStore.getState();
+                        const conv = store.conversations.find(c => c.id === store.currentConversationId);
+                        if (!conv || !conv.client) return;
+                        
+                        // Fallback parsing of existing cart
+                        let currentItems = [];
+                        let cartData = conv.client.cartData;
+                        if (typeof cartData === 'string') {
+                          try { cartData = JSON.parse(cartData); } catch(e) {}
+                        }
+                        if (Array.isArray(cartData)) {
+                          currentItems = cartData;
+                        } else if (cartData && cartData.items) {
+                          currentItems = cartData.items;
+                        }
+                        
+                        const isAlreadyInCart = currentItems.some(i => i.clave === msg.metadata.clave);
+                        if (!isAlreadyInCart) {
+                          const newItems = [...currentItems, { 
+                              clave: msg.metadata.clave, 
+                              descripcion: msg.metadata.description, 
+                              precio: parseFloat(msg.metadata.priceNet)/1.16,
+                              cantidad: 1 
+                          }];
+                          
+                          // Ensure we preserve the rest of the cart structure if it exists
+                          let newCartData = newItems;
+                          if (cartData && !Array.isArray(cartData)) {
+                            newCartData = { ...cartData, items: newItems };
+                          }
+                          
+                          updateClientCart(conv.client.id, newCartData)
+                            .then(() => alert('Añadido al carrito con éxito'))
+                            .catch(() => alert('Error al añadir al carrito'));
+                        }
+                      }}
+                      className="w-full mt-1 bg-sales-cyan-600 hover:bg-sales-cyan-500 text-white font-semibold py-1.5 px-3 rounded text-xs transition-colors flex items-center justify-center gap-1"
+                    >
+                      <ShoppingCart className="w-3 h-3" /> Añadir al carrito
+                    </button>
+                  </div>
+                ) : (
+                  <p className="text-sm whitespace-pre-wrap break-words break-all">{msg.content}</p>
+                )}
                 <span className="text-[10px] opacity-70 mt-1 block text-right">
                   {(() => {
                     const d = new Date(msg.createdAt);
