@@ -233,7 +233,7 @@ export default function CartViewer({ cartData, client, onClose }) {
     const desc = product.DESC_ECOMM || product.DESCR || product.NOMBRE;
     const priceNet = ((product.PRECIO || 0) * 1.16).toFixed(2);
     const linea = product.LIN_PROD || '';
-    const imageUrl = `https://sistemahidraulico.mx/Perfiles/${linea}.png`;
+    const imageUrl = `https://sistemahidraulico.mx/Perfiles/${linea}.jpg`;
 
     const metadata = {
       clave: product.CVE_ART,

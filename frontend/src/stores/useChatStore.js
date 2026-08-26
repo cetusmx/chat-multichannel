@@ -634,7 +634,8 @@ const useChatStore = create((set, get) => ({
           // Evitar duplicados (por si entra por WS y por HTTP simultáneo o update optimista)
           // Look for an optimistic message with the same content sent very recently
           const isOptimisticDuplicate = state.messages.find(m =>
-            m.status === 'SENDING' && m.content === msg.content && m.isInternal === msg.isInternal,
+            m.status === 'SENDING' && m.isInternal === msg.isInternal &&
+            (m.content === msg.content || (m.type === 'PRODUCT_CARD' && m.metadata?.clave === msg.metadata?.clave))
           );
 
           if (isOptimisticDuplicate) {
