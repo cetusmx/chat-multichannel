@@ -679,9 +679,21 @@ const whatsappService = {
         textToSend = `Tengo esta opción:\n*${metadata.clave}* - ${metadata.description}\nPrecio: ${priceNet} Neto (IVA Inc.)`;
         
         try {
-          const headRes = await fetch(metadata.imageUrl, { method: 'HEAD' });
-          const contentType = headRes.headers.get('content-type') || '';
+          let finalImageUrl = metadata.imageUrl;
+          let headRes = await fetch(finalImageUrl, { method: 'HEAD' });
+          let contentType = headRes.headers.get('content-type') || '';
+          
+          // Fallback to .png if .jpg fails
+          if (!headRes.ok || !contentType.startsWith('image/')) {
+            if (finalImageUrl.endsWith('.jpg')) {
+              finalImageUrl = finalImageUrl.replace('.jpg', '.png');
+              headRes = await fetch(finalImageUrl, { method: 'HEAD' });
+              contentType = headRes.headers.get('content-type') || '';
+            }
+          }
+
           if (headRes.ok && contentType.startsWith('image/')) {
+            metadata.imageUrl = finalImageUrl; // Update for the fallback text link too
             payload = {
               messaging_product: 'whatsapp',
               recipient_type: 'individual',
