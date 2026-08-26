@@ -39,6 +39,8 @@ const formatDateLabel = (dateString) => {
  */
 export default function MessageList({ conversationId, messages, onSendMessage, onSendMedia, isUploading, errorMsg, clearError, clientName, hasMore, loadMoreMessages, isLoadingMore, headerActions, disabledInput = false }) {
   const [text, setText] = useState('');
+  const [addToCartModal, setAddToCartModal] = useState(null);
+  const [cartQty, setCartQty] = useState(1);
   const [isInternal, setIsInternal] = useState(false);
   const [aiPopoverOpen, setAiPopoverOpen] = useState(false);
   const [cannedPopoverOpen, setCannedPopoverOpen] = useState(false);
