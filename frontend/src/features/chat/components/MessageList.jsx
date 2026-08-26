@@ -466,11 +466,12 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
               </button>
               <button
                 onClick={async () => {
-                  if (activeConversation && activeConversation.client) {
+                  const conv = useChatStore.getState().conversations.find(c => c.id === conversationId);
+                            if (conv && conv.client) {
                     try {
-                      const cartData = typeof activeConversation.client.cart === 'string' 
-                        ? JSON.parse(activeConversation.client.cart || '[]') 
-                        : (activeConversation.client.cart || []);
+                      const cartData = typeof conv.client.cart === 'string' 
+                        ? JSON.parse(conv.client.cart || '[]') 
+                        : (conv.client.cart || []);
                       
                       const currentItems = Array.isArray(cartData) ? cartData : (cartData.items || []);
                       
@@ -486,7 +487,7 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
                         newCartData = { ...cartData, items: newItems };
                       }
                       
-                      await updateClientCart(activeConversation.client.id, newCartData);
+                      await updateClientCart(conv.client.id, newCartData);
                       setAddToCartModal(null);
                     } catch (err) {
                       console.error('Error adding to cart', err);
@@ -663,11 +664,12 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
                           e.preventDefault();
                           const input = document.getElementById(`qty-card-${msg.id}`);
                           const qty = input ? parseInt(input.value || 1) : 1;
-                          if (activeConversation && activeConversation.client) {
+                          const conv = useChatStore.getState().conversations.find(c => c.id === conversationId);
+                            if (conv && conv.client) {
                             try {
-                              const cartData = typeof activeConversation.client.cart === 'string' 
-                                ? JSON.parse(activeConversation.client.cart || '[]') 
-                                : (activeConversation.client.cart || []);
+                              const cartData = typeof conv.client.cart === 'string' 
+                                ? JSON.parse(conv.client.cart || '[]') 
+                                : (conv.client.cart || []);
                               
                               const currentItems = Array.isArray(cartData) ? cartData : (cartData.items || []);
                               
@@ -683,7 +685,7 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
                                 newCartData = { ...cartData, items: newItems };
                               }
                               
-                              await updateClientCart(activeConversation.client.id, newCartData);
+                              await updateClientCart(conv.client.id, newCartData);
                               
                               const originalText = e.currentTarget.innerHTML;
                               e.currentTarget.innerHTML = '<span class="text-green-400">¡Añadido!</span>';
