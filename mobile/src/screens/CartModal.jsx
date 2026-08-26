@@ -213,7 +213,7 @@ export default function CartModal({ visible, onClose, chat }) {
           </ScrollView>
 
           {/* Footer Actions */}
-          <View style={[styles.footerActions, { paddingBottom: Math.max(insets.bottom, 15) }]}>
+          <View style={[styles.footerActions, { paddingBottom: Math.max(insets.bottom, 15) + 15 }]}>
             <TouchableOpacity 
               style={[styles.actionBtn, styles.btnSummary, cartItems.length === 0 && styles.btnDisabled]} 
               disabled={cartItems.length === 0}

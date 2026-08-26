@@ -124,7 +124,7 @@ export default function ChatDetailScreen() {
                     <MoreVertical size={24} color="#64748b" />
                   </TouchableOpacity>
                   <TouchableOpacity style={styles.cartIconContainer} onPress={() => setCartModalVisible(true)}>
-                    <ShoppingCart size={25} color="#334155" strokeWidth={2.5} />
+                    <ShoppingCart size={28} color="#334155" strokeWidth={2.5} />
                     <View style={styles.badge}><Text style={styles.badgeText}>{cartItemsCount}</Text></View>
                   </TouchableOpacity>
                 </>
@@ -609,9 +609,9 @@ const styles = StyleSheet.create({
     marginRight: 10,
   },
   cartIconContainer: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     borderWidth: 1,
     borderColor: '#e2e8f0',
     justifyContent: 'center',
