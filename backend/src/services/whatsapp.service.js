@@ -185,8 +185,23 @@ const whatsappService = {
             }
 
             let text = '';
-            let mediaData = null;
-            if (message.type === 'text') {
+              let mediaData = null;
+              let isAddToCart = false;
+              let addedClave = null;
+              
+              if (message.type === 'interactive') {
+                const reply = message.interactive.button_reply || message.interactive.list_reply;
+                if (reply) {
+                  text = reply.title;
+                  if (reply.id && reply.id.startsWith('ADD_CART_')) {
+                    isAddToCart = true;
+                    addedClave = reply.id.replace('ADD_CART_', '');
+                    text = `> [Botón]: "${reply.title}" (Clave: ${addedClave})`;
+                  } else {
+                    text = `> [Botón]: "${reply.title}"`;
+                  }
+                }
+              } else if (message.type === 'text') {
               text = message.text.body;
             } else if (['image', 'document', 'audio', 'video'].includes(message.type)) {
               text = `[${message.type.toUpperCase()} adjunto]`;
@@ -453,7 +468,22 @@ const whatsappService = {
               logger.error('[WHATSAPP_SERVICE] No se pudo emitir por socket:', err.message);
             }
 
-            // --- PUSH NOTIFICATION INTEGRATION ---
+            if (isAddToCart && addedClave) {
+                try {
+                  setTimeout(async () => {
+                    await this.sendMessage(
+                      conversation.id,
+                      '¡Excelente! ¿Cuántas piezas vas a requerir de este producto?',
+                      null,
+                      'SYSTEM'
+                    );
+                  }, 1500);
+                } catch(err) {
+                  logger.error('Failed to send auto-reply for cart', err);
+                }
+              }
+
+              // --- PUSH NOTIFICATION INTEGRATION ---
             try {
               const updatedConv = await prisma.conversation.findUnique({
                 where: { id: conversation.id },
