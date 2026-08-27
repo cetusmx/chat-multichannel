@@ -248,28 +248,27 @@ export default function CartViewer({ cartData, client, onClose }) {
 
   const handleSendSummary = () => {
     if (cartItems.length === 0) return;
-
-    let text = '*🛒 RESUMEN DE CARRITO*\n';
-    text += '----------------------------------------\n';
-
+    
+    let text = '🛒 *RESUMEN DE COTIZACIÓN*\n';
     cartItems.forEach(item => {
-      const lineTotal = (item.precio || 0) * (item.cantidad || 1);
-      text += `${item.cantidad}x ${item.clave}\n`;
-      text += `_${item.descripcion}_\n`;
-      text += `$${(item.precio || 0).toFixed(2)} c/u  ->  $${lineTotal.toFixed(2)}\n`;
-      text += '----------------------------------------\n';
+      text += `▫️ ${item.cantidad}x ${item.clave}\n`;
     });
+    text += `\n*Total Neto:* ${total.toFixed(2)}`;
 
-    text += `*Subtotal:* $${subtotal.toFixed(2)}\n`;
-    text += `*IVA (16%):* $${iva.toFixed(2)}\n`;
-    text += `*Total Neto:* $${total.toFixed(2)}\n`;
+    const metadata = {
+      items: cartItems.map(item => ({
+        clave: item.clave,
+        descripcion: item.descripcion,
+        precio: item.precio || 0,
+        cantidad: item.cantidad || 1
+      })),
+      subtotal,
+      iva,
+      total,
+      shippingAddress
+    };
 
-    if (shippingAddress) {
-      text += `\n*Dirección de Envío:*\n${shippingAddress}`;
-    }
-
-    // Enviar el mensaje como el vendedor (isInternal = false)
-    sendMessage(text, false);
+    sendMessage(text, false, 'CART_SUMMARY', metadata);
   };
 
   // Calculate totals for current cart
