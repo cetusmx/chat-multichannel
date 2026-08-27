@@ -1089,9 +1089,40 @@ router.patch('/:conversationId/status', authenticate, authorize('ADMIN', 'COORDI
       }
 
       await tx.conversation.update({
-        where: { id: conversationId },
-        data: dataToUpdate
+          where: { id: conversationId },
+          data: dataToUpdate
+        });
+
+        if (conversation.status !== status) {
+          let textContent = `[Estado cambiado a ${status}]`;
+          if (status === 'ON_HOLD') {
+             textContent = `[Pausado - On Hold] Motivo: ${reason.trim()} | Expira en ${timebombHours} horas`;
+          } else if (status === 'SCHEDULED') {
+             const djs = require('dayjs');
+             textContent = `[Programado] Seguimiento para el ${djs(scheduledAt).format('YYYY-MM-DD HH:mm')}`;
+          } else if (status === 'WAITING_CUSTOMER') {
+             textContent = `[Esperando al Cliente]`;
+          } else if (status === 'ACTIVE') {
+             textContent = `[Activo] Conversación reactivada por el vendedor`;
+          }
+
+          const footprint = await tx.message.create({
+            data: {
+              conversationId: conversation.id,
+              content: textContent,
+              senderType: 'SYSTEM',
+              status: 'SENT',
+              isInternal: true,
+              type: 'TEXT'
+            }
+          });
+          
+          // Attach footprint to request for emitting later
+          req._footprint = footprint;
+        }
+}
       });
+        }
     });
 
     const updated = await prisma.conversation.findUnique({ where: { id: conversationId } });
@@ -1101,6 +1132,7 @@ router.patch('/:conversationId/status', authenticate, authorize('ADMIN', 'COORDI
       let ioEvent = socket.getIo().of('/chat').to(`conversation:${conversationId}`).to(`tenant_${req.user.tenantId}_coordinators`);
       if (updated.vendorId) ioEvent = ioEvent.to(`vendor_${updated.vendorId}`);
       ioEvent.emit('conversation_updated', updated);
+      if (req._footprint) ioEvent.emit('new_message', req._footprint);
     } catch (err) {
       console.error('[CHAT_ROUTE] Error emitting status socket:', err.message);
     }
