@@ -615,6 +615,7 @@ const useChatStore = create((set, get) => ({
     });
 
     newSocket.on('new_message', (msg) => {
+      let shouldClearRead = false;
       set((state) => {
         let nextMessages = state.messages;
         let requiresFetch = false;
@@ -626,7 +627,9 @@ const useChatStore = create((set, get) => ({
         const isMyMessage = ['VENDOR', 'SYSTEM', 'COORDINATOR', 'ADMIN'].includes(msg.senderType);
 
         if (!isActiveMain && !isActiveFocus && !isMyMessage) {
-           nextUnreadCounts[msg.conversationId] = (nextUnreadCounts[msg.conversationId] || 0) + 1;
+          nextUnreadCounts[msg.conversationId] = (nextUnreadCounts[msg.conversationId] || 0) + 1;
+        } else if (!isMyMessage) {
+          shouldClearRead = true;
         }
 
         // Solo lo agregamos si estamos en la conversacion activa
@@ -678,6 +681,10 @@ const useChatStore = create((set, get) => ({
 
         return { messages: nextMessages, conversations: nextConversations, unreadCounts: nextUnreadCounts };
       });
+
+      if (shouldClearRead) {
+        setTimeout(() => get().clearUnreadCount(msg.conversationId), 100);
+      }
     });
 
     newSocket.on('message_updated', (updatedMsg) => {

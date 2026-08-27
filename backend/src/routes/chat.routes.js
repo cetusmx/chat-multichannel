@@ -101,8 +101,13 @@ router.post('/:conversationId/messages', authenticate, authorize('ADMIN', 'COORD
       });
       await prisma.conversation.update({
         where: { id: conversationId },
-        data: { lastMessageAt: new Date() }
+        data: { lastMessageAt: new Date(), unreadCount: 0 }
       });
+      // Also emit chat:read so UI clears badges
+      try {
+        const io = socket.getIo();
+        io.of('/chat').to(`tenant_${conversation.tenantId}_coordinators`).emit('chat:read', { conversationId });
+      } catch (err) {}
       try {
         let ioEvent = socket.getIo().of('/chat').to(`conversation:${conversationId}`).to(`tenant_${conversation.tenantId}_coordinators`);
         if (conversation.vendorId) ioEvent = ioEvent.to(`vendor_${conversation.vendorId}`);
@@ -238,8 +243,13 @@ router.post('/:conversationId/media', authenticate, authorize('ADMIN', 'COORDINA
       
       await prisma.conversation.update({
         where: { id: conversationId },
-        data: { lastMessageAt: new Date() }
+        data: { lastMessageAt: new Date(), unreadCount: 0 }
       });
+      // Also emit chat:read so UI clears badges
+      try {
+        const io = socket.getIo();
+        io.of('/chat').to(`tenant_${conversation.tenantId}_coordinators`).emit('chat:read', { conversationId });
+      } catch (err) {}
       
       try {
         socket.getIo().of('/chat').to(`conversation:${conversationId}`).to(`tenant_${conversation.tenantId}_coordinators`).emit('new_message', result);
