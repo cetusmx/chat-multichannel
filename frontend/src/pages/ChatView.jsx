@@ -109,7 +109,7 @@ const ChatHeaderActions = ({ activeConv, setConfirmClose, setIsCartOpen }) => {
     <button
       onClick={() => setIsCartOpen(true)}
       disabled={isPatching || ['CLOSED', 'CLOSED_INACTIVE', 'DISCARDED', 'CLOSED_WON'].includes(activeConv?.status)}
-      className={`relative z-40 bg-gradient-to-r from-sales-cyan-600 to-sales-blue-600 text-white w-14 h-14 rounded-full shadow-[0_0_12px_rgba(6,182,212,0.6)] border border-sales-cyan-400/50 flex flex-col items-center justify-center gap-0.5 ${
+      className={`relative z-40 bg-gradient-to-r from-sales-cyan-600 to-sales-blue-600 text-white w-12 h-12 rounded-full shadow-[0_0_12px_rgba(6,182,212,0.6)] border border-sales-cyan-400/50 flex flex-col items-center justify-center gap-0.5 ${
         isPatching || ['CLOSED', 'CLOSED_INACTIVE', 'DISCARDED', 'CLOSED_WON'].includes(activeConv?.status) 
         ? 'opacity-50 cursor-not-allowed' 
         : 'cursor-pointer hover:from-sales-cyan-500 hover:to-sales-blue-500 transition-all duration-300 hover:scale-110 active:scale-95'
@@ -121,7 +121,7 @@ const ChatHeaderActions = ({ activeConv, setConfirmClose, setIsCartOpen }) => {
         const items = Array.isArray(cData) ? cData : (cData?.items || []);
         if (items.length > 0) {
           return (
-            <span className="text-[15px] font-black leading-none text-white drop-shadow-md">
+            <span className="text-[15px] font-normal leading-none text-white drop-shadow-md">
               {items.length}
             </span>
           );
@@ -442,6 +442,8 @@ export default function ChatView() {
                 loadMoreMessages={() => loadMoreMessages(currentConversationId)}
                 isLoadingMore={isLoadingMore}
                 disabledInput={['CLOSED', 'CLOSED_INACTIVE', 'CLOSED_WON', 'DISCARDED'].includes(activeConv?.status)}
+                  conversationStatus={activeConv?.status}
+                  vendorId={activeConv?.vendorId}
                 headerActions={
                   <div className="flex items-center gap-3">
                     <ChatHeaderActions

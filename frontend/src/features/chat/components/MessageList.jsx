@@ -37,7 +37,7 @@ const formatDateLabel = (dateString) => {
  *
  * @component
  */
-export default function MessageList({ conversationId, messages, onSendMessage, onSendMedia, isUploading, errorMsg, clearError, clientName, hasMore, loadMoreMessages, isLoadingMore, headerActions, disabledInput = false }) {
+export default function MessageList({ conversationId, messages, onSendMessage, onSendMedia, isUploading, errorMsg, clearError, clientName, hasMore, loadMoreMessages, isLoadingMore, headerActions, disabledInput = false , conversationStatus, vendorId }) {
   const [text, setText] = useState('');
   const [addToCartModal, setAddToCartModal] = useState(null);
   const [cartQty, setCartQty] = useState(1);
@@ -55,6 +55,8 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
   const fileInputRef = useRef(null);
   const token = useAuthStore(state => state.token);
   const user = useAuthStore(state => state.user);
+  
+  const isInternalRestricted = !vendorId && ['ADMIN', 'COORDINATOR'].includes(user?.role);
   const abortControllerRef = useRef(null);
 
   const scrollContainerRef = useRef(null);
@@ -946,14 +948,15 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
           {user && ['ADMIN', 'COORDINATOR', 'VENDOR'].includes(user.role) && (
             <button
               type="button"
-              disabled={isUploading || disabledInput}
+              disabled={isUploading || disabledInput || isInternalRestricted}
               onClick={() => setIsInternal(!isInternal)}
               className={`flex items-center justify-center p-2 rounded-lg transition-colors font-bold text-xs ${
+                isInternalRestricted ? 'opacity-50 cursor-not-allowed bg-sales-slate-800 text-sales-slate-500 border border-sales-slate-700' :
                 isInternal
                   ? 'bg-sales-orange-500 text-white hover:bg-sales-orange-600'
                   : 'bg-sales-slate-800 text-sales-slate-400 hover:text-sales-slate-200 border border-sales-slate-700'
               }`}
-              title={isInternal ? 'Comentario Interno' : 'Respuesta al Cliente'}
+              title={isInternalRestricted ? 'Asigna la conversación para enviar susurros' : (isInternal ? 'Comentario Interno' : 'Respuesta al Cliente')}
             >
               {isInternal ? '🔒 Interno' : '💬 Cliente'}
             </button>
