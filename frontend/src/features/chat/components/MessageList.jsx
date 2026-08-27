@@ -667,8 +667,7 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
                       </div>
                     )}
                   </div>
-                ) : null}
-                {msg.type === 'PRODUCT_CARD' && msg.metadata ? (
+                ) : msg.type === 'PRODUCT_CARD' && msg.metadata ? (
                   <div className="mt-1 bg-sales-slate-800 rounded-lg p-3 border border-sales-slate-700/50 shadow-sm flex flex-col gap-2">
                     <div className="flex gap-3">
                       <div className="w-16 h-16 bg-white rounded flex items-center justify-center p-1 overflow-hidden shrink-0">
