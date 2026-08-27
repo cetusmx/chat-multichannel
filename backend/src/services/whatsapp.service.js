@@ -518,12 +518,13 @@ const whatsappService = {
                           
                           if (pCard) {
                             let currentCart = [];
-                            if (typeof client.cart === 'string') {
-                              try { currentCart = JSON.parse(client.cart || '[]'); } catch(e){}
-                            } else if (Array.isArray(client.cart)) {
-                              currentCart = client.cart;
-                            } else if (client.cart && client.cart.items) {
-                              currentCart = client.cart.items;
+                            const cartField = client.cartData;
+                            if (typeof cartField === 'string') {
+                              try { currentCart = JSON.parse(cartField || '[]'); } catch(e){}
+                            } else if (Array.isArray(cartField)) {
+                              currentCart = cartField;
+                            } else if (cartField && cartField.items) {
+                              currentCart = cartField.items;
                             }
                             
                             if (!Array.isArray(currentCart)) currentCart = [];
@@ -540,10 +541,9 @@ const whatsappService = {
                               });
                             }
                             
-                            const updatedCartJson = JSON.stringify(currentCart);
                             await prisma.client.update({
                               where: { id: client.id },
-                              data: { cart: updatedCartJson }
+                              data: { cartData: currentCart }
                             });
                             
                             const io = require('../socket').getIo();
