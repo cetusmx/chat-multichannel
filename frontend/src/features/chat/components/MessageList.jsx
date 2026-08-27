@@ -56,7 +56,7 @@ export default function MessageList({ conversationId, messages, onSendMessage, o
   const token = useAuthStore(state => state.token);
   const user = useAuthStore(state => state.user);
   
-  const isInternalRestricted = !vendorId && ['ADMIN', 'COORDINATOR'].includes(user?.role);
+  const isInternalRestricted = conversationStatus === 'PENDING_ASSIGNMENT' && ['ADMIN', 'COORDINATOR'].includes(user?.role);
   const abortControllerRef = useRef(null);
 
   const scrollContainerRef = useRef(null);

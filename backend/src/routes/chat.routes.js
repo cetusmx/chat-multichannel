@@ -85,7 +85,7 @@ router.post('/:conversationId/messages', authenticate, authorize('ADMIN', 'COORD
       return res.status(403).json({ error: 'No autorizado' });
     }
 
-    if (isInternal && !conversation.vendorId && ['ADMIN', 'COORDINATOR'].includes(req.user.role)) {
+    if (isInternal && conversation.status === 'PENDING_ASSIGNMENT' && ['ADMIN', 'COORDINATOR'].includes(req.user.role)) {
       return res.status(400).json({ error: 'No se pueden enviar susurros en una conversación sin asignar' });
     }
 
