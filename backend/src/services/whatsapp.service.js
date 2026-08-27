@@ -792,7 +792,7 @@ const whatsappService = {
       }
 
       if (type === 'CART_SUMMARY' && metadata) {
-          let itemsText = (metadata.items || []).map(i => `▫️ ${i.cantidad}x *${i.clave}*\n  ${(i.precio * i.cantidad).toFixed(2)}`).join('\n\n');
+          let itemsText = (metadata.items || []).map(i => `▫️ ${i.cantidad}x *${i.clave}* - ${(i.precio * i.cantidad).toFixed(2)}`).join('\n');
           let summaryText = `*Subtotal:* ${metadata.subtotal.toFixed(2)}\n*IVA (16%):* ${metadata.iva.toFixed(2)}\n*TOTAL NETO: ${metadata.total.toFixed(2)}*`;
           let addressText = metadata.shippingAddress ? `\n\n🚚 *Envío a:*\n_${metadata.shippingAddress}_` : '';
           
