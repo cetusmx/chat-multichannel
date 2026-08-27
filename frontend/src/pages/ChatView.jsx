@@ -109,26 +109,26 @@ const ChatHeaderActions = ({ activeConv, setConfirmClose, setIsCartOpen }) => {
     <button
       onClick={() => setIsCartOpen(true)}
       disabled={isPatching || ['CLOSED', 'CLOSED_INACTIVE', 'DISCARDED', 'CLOSED_WON'].includes(activeConv?.status)}
-      className={`relative z-40 bg-gradient-to-r from-sales-cyan-600 to-sales-blue-600 text-white p-2 rounded-full shadow-[0_0_12px_rgba(6,182,212,0.6)] border border-sales-cyan-400/50 flex items-center justify-center ${
+      className={`relative z-40 bg-gradient-to-r from-sales-cyan-600 to-sales-blue-600 text-white w-14 h-14 rounded-full shadow-[0_0_12px_rgba(6,182,212,0.6)] border border-sales-cyan-400/50 flex flex-col items-center justify-center gap-0.5 ${
         isPatching || ['CLOSED', 'CLOSED_INACTIVE', 'DISCARDED', 'CLOSED_WON'].includes(activeConv?.status) 
         ? 'opacity-50 cursor-not-allowed' 
         : 'cursor-pointer hover:from-sales-cyan-500 hover:to-sales-blue-500 transition-all duration-300 hover:scale-110 active:scale-95'
       }`}
       title={['CLOSED', 'CLOSED_INACTIVE', 'DISCARDED', 'CLOSED_WON'].includes(activeConv?.status) ? "Carrito deshabilitado en chats cerrados" : "Ver Carrito"}
     >
-      <ShoppingCart className="w-4 h-4" />
       {(() => {
         const cData = activeConv?.client?.cartData;
         const items = Array.isArray(cData) ? cData : (cData?.items || []);
         if (items.length > 0) {
           return (
-            <span className="absolute -top-1 -right-1 bg-sales-coral-500 text-[9px] font-bold min-w-[14px] h-[14px] px-1 flex items-center justify-center rounded-full shadow-sm">
+            <span className="text-[15px] font-black leading-none text-white drop-shadow-md">
               {items.length}
             </span>
           );
         }
-        return null;
+        return <span className="h-[15px]"></span>;
       })()}
+      <ShoppingCart className="w-5 h-5 drop-shadow-md" />
     </button>
   );
 
