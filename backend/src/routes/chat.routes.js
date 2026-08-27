@@ -311,11 +311,55 @@ router.get('/conversations', authenticate, authorize('ADMIN', 'COORDINATOR', 'VE
       ];
     }
     const conversations = await prisma.conversation.findMany({
-      where: whereClause,
-      include: { client: true, messages: { orderBy: { createdAt: 'desc' }, take: 1 } },
-      orderBy: { lastMessageAt: 'desc' }
-    });
-    res.json({ data: conversations });
+        where: whereClause,
+        include: { client: true, messages: { orderBy: { createdAt: 'desc' }, take: 1 }, tenant: { select: { businessHours: true, isSlaEnabled: true } } },
+        orderBy: { lastMessageAt: 'desc' }
+      });
+
+      // Calculate SLA on the fly
+      const { getBusinessMinutesElapsed } = require('../utils/date');
+      const slaService = require('../services/sla.service');
+      const slaConfig = await slaService.getSlaConfig(req.user.tenantId);
+      const now = Date.now();
+
+      const enriched = conversations.map(conv => {
+        let isSlaBreached = false;
+        let breachType = null;
+        
+        if (conv.tenant?.isSlaEnabled !== false) {
+          let metric = null;
+          let thresholdMins = 0;
+          let startTime = null;
+
+          if (conv.status === 'PENDING_ASSIGNMENT' || conv.status === 'ESCALATED') {
+            metric = 'firstResponse';
+            thresholdMins = slaConfig.firstResponseMins;
+            startTime = conv.lastMessageAt || conv.createdAt;
+          } else if (conv.status === 'ACTIVE') {
+            metric = 'resolution';
+            thresholdMins = slaConfig.resolutionMins;
+            startTime = conv.createdAt;
+          }
+
+          if (metric && startTime) {
+            const startTimeMs = new Date(startTime).getTime();
+            let elapsedMins = getBusinessMinutesElapsed(startTimeMs, now, conv.tenant.businessHours);
+            if (metric === 'resolution' && conv.slaPausedMins > 0) {
+              elapsedMins = Math.max(0, elapsedMins - conv.slaPausedMins);
+            }
+            if (elapsedMins > thresholdMins) {
+              isSlaBreached = true;
+              breachType = metric;
+            }
+          }
+        }
+        
+        // Remove tenant object to keep payload clean
+        const { tenant, ...convData } = conv;
+        return { ...convData, isSlaBreached, breachType };
+      });
+
+      res.json({ data: enriched });
   } catch (error) {
     next(error);
   }
@@ -1071,7 +1115,7 @@ router.patch('/:conversationId/status', authenticate, authorize('ADMIN', 'COORDI
         } catch(e) {
           console.error('[API] Error calculating paused SLA minutes:', e);
         }
-        dataToUpdate.slaPausedMins = { increment: Math.max(0, pausedMins) };
+        dataToUpdate.slaPausedMins = { increment: Math.floor(Math.max(0, pausedMins)) };
       }
 
       if (status === 'SCHEDULED') {

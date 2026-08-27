@@ -1,11 +1,19 @@
-import React, { useState, forwardRef, useImperativeHandle, useRef } from 'react';
+import React, { useState, useEffect, forwardRef, useImperativeHandle, useRef } from 'react';
 import { View, TextInput, TouchableOpacity, StyleSheet, Text, ActivityIndicator, Platform, Keyboard } from 'react-native';
 import { theme } from '../utils/theme';
+
+const MOCK_QUICK_REPLIES = [
+  { command: '/hola', text: '¡Hola! Gracias por contactarnos, ¿en qué te podemos ayudar?' },
+  { command: '/precio', text: 'Nuestros precios varían según el paquete. ¿Buscas algo en específico?' },
+  { command: '/despedida', text: '¡Gracias por tu preferencia! Quedamos a tus órdenes.' },
+  { command: '/info', text: 'Puedes encontrar toda la información en nuestro sitio web oficial.' },
+];
 
 const ChatInput = forwardRef(({ onSendText, onSendMedia, onRequestAi, onOpenActionMenu, isAiLoading }, ref) => {
   const [text, setText] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [isWhisperMode, setIsWhisperMode] = useState(false);
+  const [filteredReplies, setFilteredReplies] = useState([]);
   const inputRef = useRef(null);
 
   useImperativeHandle(ref, () => ({
@@ -20,12 +28,26 @@ const ChatInput = forwardRef(({ onSendText, onSendMedia, onRequestAi, onOpenActi
     }
   }));
 
+  useEffect(() => {
+    if (text.startsWith('/')) {
+      const q = text.toLowerCase();
+      const matches = MOCK_QUICK_REPLIES.filter(qr => qr.command.startsWith(q));
+      setFilteredReplies(matches);
+    } else {
+      setFilteredReplies([]);
+    }
+  }, [text]);
+
+  const selectQuickReply = (reply) => {
+    setText(reply.text);
+    setFilteredReplies([]);
+  };
+
   const handleSendText = async () => {
     const trimmedText = text.trim();
     if (!trimmedText) return;
 
     try {
-      // If whisper mode is on, we'd prefix or flag it. For now, we simulate whisper prefix.
       const draft = isWhisperMode ? `/whisper ${trimmedText}` : trimmedText;
       setText(''); // Optimistic UX: clear instantly
       setIsSending(true);
@@ -53,16 +75,27 @@ const ChatInput = forwardRef(({ onSendText, onSendMedia, onRequestAi, onOpenActi
   const disableInputs = isSending || isAiLoading;
 
   return (
-    <View style={[styles.container, isWhisperMode && styles.containerWhisper]}>
-      {/* 1. Menu (+) Button */}
-      <TouchableOpacity 
-        style={styles.actionButton} 
-        onPress={onOpenActionMenu}
-        disabled={disableInputs}
-        accessibilityLabel="Abrir Menú"
-      >
-        <Text style={[styles.actionIcon, isWhisperMode && { color: '#854d0e' }]}>+</Text>
-      </TouchableOpacity>
+    <View style={{ width: '100%' }}>
+      {filteredReplies.length > 0 && (
+        <View style={styles.quickRepliesContainer}>
+          {filteredReplies.map((qr) => (
+            <TouchableOpacity key={qr.command} style={styles.quickReplyItem} onPress={() => selectQuickReply(qr)}>
+              <Text style={styles.qrCommand}>{qr.command}</Text>
+              <Text style={styles.qrText} numberOfLines={1}>{qr.text}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+      <View style={[styles.container, isWhisperMode && styles.containerWhisper]}>
+        {/* 1. Menu (+) Button */}
+        <TouchableOpacity 
+          style={styles.actionButton} 
+          onPress={onOpenActionMenu}
+          disabled={disableInputs}
+          accessibilityLabel="Abrir Menú"
+        >
+          <Text style={[styles.actionIcon, isWhisperMode && { color: '#854d0e' }]}>+</Text>
+        </TouchableOpacity>
 
       {/* 2. Text Input Container */}
       <View style={[styles.inputWrapper, isWhisperMode && styles.inputWrapperWhisper]}>
@@ -106,6 +139,7 @@ const ChatInput = forwardRef(({ onSendText, onSendMedia, onRequestAi, onOpenActi
           <Text style={styles.sendIcon}>➤</Text>
         )}
       </TouchableOpacity>
+    </View>
     </View>
   );
 });
@@ -189,5 +223,34 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     marginLeft: 2, // optical alignment
+  },
+  quickRepliesContainer: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 10,
+    borderTopRightRadius: 10,
+    maxHeight: 150,
+    overflow: 'hidden',
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowOffset: { width: 0, height: -2 },
+    shadowRadius: 5,
+  },
+  quickReplyItem: {
+    padding: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#e2e8f0',
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  qrCommand: {
+    fontWeight: 'bold',
+    color: '#2563eb',
+    marginRight: 8,
+    width: 60,
+  },
+  qrText: {
+    color: '#475569',
+    flex: 1,
   }
 });

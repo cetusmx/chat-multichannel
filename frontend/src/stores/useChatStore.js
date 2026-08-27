@@ -103,29 +103,12 @@ const useChatStore = create((set, get) => ({
 
       const nextUnreadCounts = { ...get().unreadCounts };
       convs = convs.map(c => {
-        let isSlaBreached = false;
-        let breachType = null;
-
-        if ((c.status === 'PENDING_ASSIGNMENT' || c.status === 'ESCALATED') && slaConfig.firstResponseMins) {
-          const start = c.lastMessageAt || c.createdAt;
-          const elapsedMins = (now - new Date(start).getTime()) / 60000;
-          if (elapsedMins > slaConfig.firstResponseMins) {
-            isSlaBreached = true;
-            breachType = 'firstResponse';
+          if (c.unreadCount !== undefined) {
+            nextUnreadCounts[c.id] = c.unreadCount;
           }
-        } else if (c.status === 'ACTIVE' && slaConfig.resolutionMins) {
-          const start = c.createdAt;
-          const elapsedMins = (now - new Date(start).getTime()) / 60000;
-          if (elapsedMins > slaConfig.resolutionMins) {
-            isSlaBreached = true;
-            breachType = 'resolution';
-          }
-        }
-        if (c.unreadCount !== undefined) {
-          nextUnreadCounts[c.id] = c.unreadCount;
-        }
-        return { ...c, isSlaBreached, breachType };
-      });
+          // isSlaBreached and breachType are now calculated correctly by the backend
+          return { ...c };
+        });
 
       set({ conversations: convs, unreadCounts: nextUnreadCounts, errorMsg: null });
     } catch (error) {

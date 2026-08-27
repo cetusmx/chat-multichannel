@@ -304,7 +304,7 @@ const whatsappService = {
                     status: 'ACTIVE',
                     statusUpdatedAt: now,
                     lastMessageAt: now,
-                    slaPausedMins: { increment: Math.max(0, pausedBusinessMins) },
+                    slaPausedMins: { increment: Math.floor(Math.max(0, pausedBusinessMins)) },
                     unreadCount: { increment: 1 }
                   }
                 });
