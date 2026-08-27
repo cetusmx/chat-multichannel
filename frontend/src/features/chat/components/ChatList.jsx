@@ -102,20 +102,30 @@ export default function ChatList({ conversations, currentConversationId, current
                 Escalado
               </span>
             )}
-            {(conv.status === 'ON_HOLD' || conv.status === 'SCHEDULED' || conv.status === 'WAITING_CUSTOMER') && (
-              <span
-                className="flex-shrink-0 px-1.5 py-0.5 rounded bg-sales-amber-500/20 text-sales-amber-400 border border-sales-amber-500/30 text-[10px] font-bold uppercase tracking-wider"
-                title="Esperando al cliente"
-              >
-                En Espera
-              </span>
-            )}
-            {isSlaBreached && !conv.status.startsWith('CLOSED') && (
-              <SlaBadge isSlaBreached={isSlaBreached} breachType={breachType} />
-            )}
-          </span>
-          <span className="text-xs text-sales-slate-500 flex-shrink-0 pt-1">
-            {new Date(conv.lastMessageAt || conv.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+            {conv.status === 'WAITING_CUSTOMER' && (
+                <span
+                  className="flex-shrink-0 px-1.5 py-0.5 rounded bg-sales-amber-500/20 text-sales-amber-400 border border-sales-amber-500/30 text-[10px] font-bold uppercase tracking-wider"
+                  title="Esperando al cliente"
+                >
+                  Esp. Cliente
+                </span>
+              )}
+              {conv.status === 'ON_HOLD' && (
+                <span
+                  className="flex-shrink-0 px-1.5 py-0.5 rounded bg-sales-purple-500/20 text-sales-purple-400 border border-sales-purple-500/30 text-[10px] font-bold uppercase tracking-wider"
+                  title="Pausado / En Espera"
+                >
+                  En Espera
+                </span>
+              )}
+              {conv.status === 'SCHEDULED' && (
+                <span
+                  className="flex-shrink-0 px-1.5 py-0.5 rounded bg-sales-cyan-500/20 text-sales-cyan-400 border border-sales-cyan-500/30 text-[10px] font-bold uppercase tracking-wider"
+                  title="Programado"
+                >
+                  Programado
+                </span>
+              )}
           </span>
         </div>
         <div className="flex justify-between items-center gap-2">
