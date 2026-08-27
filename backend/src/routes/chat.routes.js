@@ -1120,10 +1120,7 @@ router.patch('/:conversationId/status', authenticate, authorize('ADMIN', 'COORDI
           // Attach footprint to request for emitting later
           req._footprint = footprint;
         }
-}
       });
-        }
-    });
 
     const updated = await prisma.conversation.findUnique({ where: { id: conversationId } });
 
