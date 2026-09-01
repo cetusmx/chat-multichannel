@@ -273,7 +273,7 @@ export default function CartModal({ visible, onClose, chat }) {
   return (
     <Modal visible={visible} transparent animationType="slide">
       <View style={styles.overlay}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalContainer}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalContainer}>
           
           <View style={styles.header}>
             <Text style={styles.headerTitle}>Carrito y Cotización</Text>
