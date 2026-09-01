@@ -1,19 +1,31 @@
 import React, { useState, useEffect, forwardRef, useImperativeHandle, useRef } from 'react';
-import { View, TextInput, TouchableOpacity, StyleSheet, Text, ActivityIndicator, Platform, Keyboard } from 'react-native';
+import { View, TextInput, TouchableOpacity, StyleSheet, Text, ActivityIndicator, Platform, Keyboard, ScrollView } from 'react-native';
 import { theme } from '../utils/theme';
+import { get, post } from '../services/api';
 
-const MOCK_QUICK_REPLIES = [
-  { command: '/hola', text: '¡Hola! Gracias por contactarnos, ¿en qué te podemos ayudar?' },
-  { command: '/precio', text: 'Nuestros precios varían según el paquete. ¿Buscas algo en específico?' },
-  { command: '/despedida', text: '¡Gracias por tu preferencia! Quedamos a tus órdenes.' },
-  { command: '/info', text: 'Puedes encontrar toda la información en nuestro sitio web oficial.' },
-];
+
 
 const ChatInput = forwardRef(({ onSendText, onSendMedia, onRequestAi, onOpenActionMenu, isAiLoading }, ref) => {
   const [text, setText] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [isWhisperMode, setIsWhisperMode] = useState(false);
   const [filteredReplies, setFilteredReplies] = useState([]);
+  const [cannedResponses, setCannedResponses] = useState([]);
+
+  useEffect(() => {
+    const fetchCanned = async () => {
+      try {
+        const res = await get('/canned-responses/my-usage');
+        if (res.ok) {
+          const data = await res.json();
+          setCannedResponses(data.data || []);
+        }
+      } catch (err) {
+        console.error('Error fetching canned responses in mobile:', err);
+      }
+    };
+    fetchCanned();
+  }, []);
   const inputRef = useRef(null);
 
   useImperativeHandle(ref, () => ({
@@ -30,17 +42,26 @@ const ChatInput = forwardRef(({ onSendText, onSendMedia, onRequestAi, onOpenActi
 
   useEffect(() => {
     if (text.startsWith('/')) {
-      const q = text.toLowerCase();
-      const matches = MOCK_QUICK_REPLIES.filter(qr => qr.command.startsWith(q));
+      const q = text.slice(1).toLowerCase();
+      const matches = cannedResponses.filter(qr => 
+        (qr.shortcut && qr.shortcut.toLowerCase().includes(q)) || 
+        qr.title.toLowerCase().includes(q)
+      );
       setFilteredReplies(matches);
     } else {
       setFilteredReplies([]);
     }
-  }, [text]);
+  }, [text, cannedResponses]);
 
-  const selectQuickReply = (reply) => {
-    setText(reply.text);
+  const selectQuickReply = async (reply) => {
+    setText(reply.content);
     setFilteredReplies([]);
+    try {
+      await post(`/canned-responses/${reply.id}/use`);
+    } catch (e) {
+      // ignore
+    }
+    if (inputRef.current) inputRef.current.focus();
   };
 
   const handleSendText = async () => {
@@ -78,12 +99,16 @@ const ChatInput = forwardRef(({ onSendText, onSendMedia, onRequestAi, onOpenActi
     <View style={{ width: '100%' }}>
       {filteredReplies.length > 0 && (
         <View style={styles.quickRepliesContainer}>
+          <ScrollView keyboardShouldPersistTaps="handled">
+            
           {filteredReplies.map((qr) => (
-            <TouchableOpacity key={qr.command} style={styles.quickReplyItem} onPress={() => selectQuickReply(qr)}>
-              <Text style={styles.qrCommand}>{qr.command}</Text>
-              <Text style={styles.qrText} numberOfLines={1}>{qr.text}</Text>
+            <TouchableOpacity key={qr.id} style={styles.quickReplyItem} onPress={() => selectQuickReply(qr)}>
+              <Text style={styles.qrCommand}>/{qr.shortcut || qr.title}</Text>
+              <Text style={styles.qrText} numberOfLines={1}>{qr.content}</Text>
             </TouchableOpacity>
           ))}
+        
+          </ScrollView>
         </View>
       )}
       <View style={[styles.container, isWhisperMode && styles.containerWhisper]}>
@@ -225,17 +250,21 @@ const styles = StyleSheet.create({
     marginLeft: 2, // optical alignment
   },
   quickRepliesContainer: {
-    backgroundColor: '#fff',
-    borderTopLeftRadius: 10,
-    borderTopRightRadius: 10,
-    maxHeight: 150,
-    overflow: 'hidden',
-    elevation: 3,
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowOffset: { width: 0, height: -2 },
-    shadowRadius: 5,
-  },
+      position: 'absolute',
+      bottom: '100%',
+      left: 0,
+      right: 0,
+      backgroundColor: '#fff',
+      borderTopLeftRadius: 10,
+      borderTopRightRadius: 10,
+      maxHeight: 200,
+      elevation: 4,
+      shadowColor: '#000',
+      shadowOpacity: 0.15,
+      shadowOffset: { width: 0, height: -3 },
+      shadowRadius: 5,
+      zIndex: 10, // Ensure it's on top
+    },
   quickReplyItem: {
     padding: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
