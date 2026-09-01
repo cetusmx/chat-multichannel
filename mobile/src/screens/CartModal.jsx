@@ -30,6 +30,10 @@ export default function CartModal({ visible, onClose, chat }) {
   }, [activeTab, familias.length]);
 
   const handleSearchCatalog = async () => {
+    if (!searchForm.familia) {
+      Toast.show({ type: 'error', text1: 'Selecciona una familia', text2: 'Por favor selecciona una familia principal' });
+      return;
+    }
     setIsSearchingCatalog(true);
     try {
       const res = await searchSealMarketCatalog(searchForm);
@@ -394,16 +398,16 @@ export default function CartModal({ visible, onClose, chat }) {
               <View style={[styles.searchSection, {flexDirection: 'column', gap: 8}]}>
                 <View style={{flexDirection: 'row', gap: 8}}>
                   <TouchableOpacity 
-                    style={[styles.catalogSearchInput, {flex: 1, padding: 10, justifyContent: 'center', alignItems: 'center', backgroundColor: searchForm.sist_med === 'std' ? '#06b6d4' : '#1e293b'}]}
+                    style={[styles.catalogSearchInput, {flex: 1, padding: 8, justifyContent: 'center', alignItems: 'center', backgroundColor: searchForm.sist_med === 'std' ? '#06b6d4' : '#1e293b'}]}
                     onPress={() => setSearchForm({ ...searchForm, sist_med: 'std' })}
                   >
-                    <Text style={{color: searchForm.sist_med === 'std' ? '#fff' : '#94a3b8', fontWeight: 'bold'}}>STD</Text>
+                    <Text style={{color: searchForm.sist_med === 'std' ? '#fff' : '#94a3b8', fontWeight: 'bold', fontSize: 12}}>STD</Text>
                   </TouchableOpacity>
                   <TouchableOpacity 
-                    style={[styles.catalogSearchInput, {flex: 1, padding: 10, justifyContent: 'center', alignItems: 'center', backgroundColor: searchForm.sist_med === 'mil' ? '#06b6d4' : '#1e293b'}]}
-                    onPress={() => setSearchForm({ ...searchForm, sist_med: 'mil' })}
+                    style={[styles.catalogSearchInput, {flex: 1, padding: 8, justifyContent: 'center', alignItems: 'center', backgroundColor: searchForm.sist_med === 'mm' ? '#06b6d4' : '#1e293b'}]}
+                    onPress={() => setSearchForm({ ...searchForm, sist_med: 'mm' })}
                   >
-                    <Text style={{color: searchForm.sist_med === 'mil' ? '#fff' : '#94a3b8', fontWeight: 'bold'}}>MIL</Text>
+                    <Text style={{color: searchForm.sist_med === 'mm' ? '#fff' : '#94a3b8', fontWeight: 'bold', fontSize: 12}}>MM</Text>
                   </TouchableOpacity>
                 </View>
                 <View style={{flexDirection: 'row', gap: 8}}>
