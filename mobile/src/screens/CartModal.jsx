@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator, FlatList } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { X, Send, Download, Mail, Edit2, Search, MessageSquare, ShoppingCart as ShoppingCartIcon, Package } from 'lucide-react-native';
+import { X, Send, Download, Mail, Edit2, Search, MessageSquare, ShoppingCart as ShoppingCartIcon, Package, Plus, Minus, Trash2, Trash } from 'lucide-react-native';
 import Toast from 'react-native-toast-message';
 import useAuthStore from '@shared/stores/useAuthStore';
 import useChatStore from '@shared/stores/useChatStore';
@@ -17,7 +17,7 @@ export default function CartModal({ visible, onClose, chat }) {
 
   // Catalog State
   const [familias, setFamilias] = useState([]);
-  const [searchForm, setSearchForm] = useState({ query: '', familia: '' });
+  const [searchForm, setSearchForm] = useState({ familia: '', sist_med: 'std', diam_int: '', diam_ext: '', altura: '', seccion: '' });
   const [isSearchingCatalog, setIsSearchingCatalog] = useState(false);
   const [searchResults, setSearchResults] = useState([]);
 
@@ -102,30 +102,62 @@ export default function CartModal({ visible, onClose, chat }) {
   const iva = total - subtotal;
 
   const handleSendSummary = () => {
-    let text = '*RESUMEN DE COTIZACIÓN*\n\n';
+    if (cartItems.length === 0) return;
     
+    let text = '🧾 *RESUMEN DE COTIZACIÓN*\n';
     cartItems.forEach(item => {
-      const lineTotal = (item.precio || 0) * (item.cantidad || 1);
-      text += `• ${item.cantidad}x ${item.clave}\n`;
-      text += `  ${item.descripcion}\n`;
-      text += `  *$${lineTotal.toFixed(2)}*\n\n`;
+      text += `🔹 ${item.cantidad}x ${item.clave}\n`;
     });
+    text += `\n*Total Neto:* ${total.toFixed(2)}`;
 
-    text += `*Subtotal:* $${subtotal.toFixed(2)}\n`;
-    text += `*IVA (16%):* $${iva.toFixed(2)}\n`;
-    text += `*Total Neto:* $${total.toFixed(2)}\n`;
-
-    if (shippingAddress) {
-      text += `\n*Dirección de Envío:*\n${shippingAddress}`;
-    }
+    const metadata = {
+      items: cartItems.map(item => ({
+        clave: item.clave,
+        descripcion: item.descripcion,
+        precio: item.precio || 0,
+        cantidad: item.cantidad || 1
+      })),
+      subtotal,
+      iva,
+      total,
+      shippingAddress
+    };
 
     if (sendMessage) {
-      sendMessage(text, false);
+      sendMessage(text, false, 'CART_SUMMARY', metadata);
       Toast.show({ type: 'success', text1: 'Resumen enviado al chat' });
       onClose();
-    } else {
-      Toast.show({ type: 'error', text1: 'No se pudo enviar el mensaje' });
     }
+  };
+
+  const saveCartToServer = async (newItems) => {
+    try {
+      const newCartData = { ...cartData, items: newItems };
+      await patch(`/clients/${chat.client.id}/cart`, { cartData: newCartData });
+      updateChat(chat.id, { client: { ...chat.client, cartData: newCartData } });
+    } catch (e) {
+      Toast.show({ type: 'error', text1: 'Error al actualizar carrito' });
+    }
+  };
+
+  const updateItemQuantity = async (index, delta) => {
+    const newItems = [...cartItems];
+    const item = newItems[index];
+    item.cantidad = (item.cantidad || 1) + delta;
+    if (item.cantidad <= 0) {
+      newItems.splice(index, 1);
+    }
+    await saveCartToServer(newItems);
+  };
+
+  const removeItem = async (index) => {
+    const newItems = [...cartItems];
+    newItems.splice(index, 1);
+    await saveCartToServer(newItems);
+  };
+
+  const emptyCart = async () => {
+    await saveCartToServer([]);
   };
 
   const handleDownloadPDF = async () => {
@@ -359,17 +391,32 @@ export default function CartModal({ visible, onClose, chat }) {
             </ScrollView>
           ) : (
             <View style={styles.catalogContainer}>
-              <View style={styles.searchSection}>
-                <TextInput
-                  style={styles.catalogSearchInput}
-                  placeholder="Buscar producto..."
-                  placeholderTextColor="#64748b"
-                  value={searchForm.query}
-                  onChangeText={(t) => setSearchForm({ ...searchForm, query: t })}
-                  onSubmitEditing={handleSearchCatalog}
-                />
-                <TouchableOpacity style={styles.catalogSearchBtn} onPress={handleSearchCatalog}>
+              <View style={[styles.searchSection, {flexDirection: 'column', gap: 8}]}>
+                <View style={{flexDirection: 'row', gap: 8}}>
+                  <TouchableOpacity 
+                    style={[styles.catalogSearchInput, {flex: 1, padding: 10, justifyContent: 'center', alignItems: 'center', backgroundColor: searchForm.sist_med === 'std' ? '#06b6d4' : '#1e293b'}]}
+                    onPress={() => setSearchForm({ ...searchForm, sist_med: 'std' })}
+                  >
+                    <Text style={{color: searchForm.sist_med === 'std' ? '#fff' : '#94a3b8', fontWeight: 'bold'}}>STD</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={[styles.catalogSearchInput, {flex: 1, padding: 10, justifyContent: 'center', alignItems: 'center', backgroundColor: searchForm.sist_med === 'mil' ? '#06b6d4' : '#1e293b'}]}
+                    onPress={() => setSearchForm({ ...searchForm, sist_med: 'mil' })}
+                  >
+                    <Text style={{color: searchForm.sist_med === 'mil' ? '#fff' : '#94a3b8', fontWeight: 'bold'}}>MIL</Text>
+                  </TouchableOpacity>
+                </View>
+                <View style={{flexDirection: 'row', gap: 8}}>
+                  <TextInput style={[styles.catalogSearchInput, {flex: 1}]} placeholder="D. Interior" placeholderTextColor="#64748b" value={searchForm.diam_int} onChangeText={(t) => setSearchForm({ ...searchForm, diam_int: t })} />
+                  <TextInput style={[styles.catalogSearchInput, {flex: 1}]} placeholder="D. Exterior" placeholderTextColor="#64748b" value={searchForm.diam_ext} onChangeText={(t) => setSearchForm({ ...searchForm, diam_ext: t })} />
+                </View>
+                <View style={{flexDirection: 'row', gap: 8}}>
+                  <TextInput style={[styles.catalogSearchInput, {flex: 1}]} placeholder="Altura" placeholderTextColor="#64748b" value={searchForm.altura} onChangeText={(t) => setSearchForm({ ...searchForm, altura: t })} />
+                  <TextInput style={[styles.catalogSearchInput, {flex: 1}]} placeholder="Sección" placeholderTextColor="#64748b" value={searchForm.seccion} onChangeText={(t) => setSearchForm({ ...searchForm, seccion: t })} />
+                </View>
+                <TouchableOpacity style={[styles.catalogSearchBtn, {width: '100%', marginTop: 4, flexDirection: 'row', justifyContent: 'center'}]} onPress={handleSearchCatalog}>
                   <Search size={18} color="#fff" />
+                  <Text style={{color: '#fff', fontWeight: 'bold', marginLeft: 8}}>Buscar</Text>
                 </TouchableOpacity>
               </View>
               
