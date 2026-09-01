@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import ConfirmModal from '../../../components/ConfirmModal';
+import useChatStore from '../../../stores/useChatStore';
 
 export default function ChatActionModals({
   activeModal,
@@ -15,6 +16,22 @@ export default function ChatActionModals({
 
   const [scheduledAt, setScheduledAt] = useState('');
   const modalRef = React.useRef(null);
+
+  const conversations = useChatStore(state => state.conversations);
+  const currentConvId = useChatStore(state => state.currentConversationId);
+  const hasCollision = React.useMemo(() => {
+    if (activeModal !== 'SCHEDULED' || !scheduledAt) return false;
+    const [year, month, day, hour, minute] = scheduledAt.split(/[-T:]/).map(Number);
+    if (isNaN(year) || isNaN(hour)) return false;
+    const selectedDate = new Date(year, month - 1, day, hour, minute).getTime();
+    
+    return conversations.some(c => {
+      if (c.id === currentConvId) return false; // ignore self
+      if (c.status !== 'SCHEDULED' || !c.scheduledAt) return false;
+      const cTime = new Date(c.scheduledAt).getTime();
+      return cTime === selectedDate;
+    });
+  }, [scheduledAt, activeModal, conversations, currentConvId]);
 
   // Clean form state when modal closes
   useEffect(() => {
