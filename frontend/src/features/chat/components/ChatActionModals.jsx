@@ -29,9 +29,10 @@ export default function ChatActionModals({
   // Set smart default for scheduledAt when modal opens
   useEffect(() => {
     if (activeModal === 'SCHEDULED') {
-      const date = new Date(Date.now() + 24 * 60 * 60 * 1000);
-      setScheduledAt(new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16));
-    }
+        const date = new Date(Date.now() + 24 * 60 * 60 * 1000);
+        date.setMinutes(0, 0, 0);
+        setScheduledAt(new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16));
+      }
   }, [activeModal]);
 
   // Accessibility: Escape key and click-outside
@@ -136,15 +137,19 @@ export default function ChatActionModals({
     e.preventDefault();
     if (!scheduledAt) return;
     const [year, month, day, hour, minute] = scheduledAt.split(/[-T:]/).map(Number);
+      if (minute !== 0) {
+        alert('Por favor, selecciona una hora en punto (ej. 15:00). El sistema evalúa programaciones al inicio de cada hora.');
+        return;
+      }
       const selectedDate = new Date(year, month - 1, day, hour, minute);
     if (isNaN(selectedDate.getTime())) {
       alert('Fecha inválida.');
       return;
     }
-    if (selectedDate.getTime() < Date.now() + 15 * 60000) {
-      alert('La fecha programada debe ser al menos 15 minutos en el futuro.');
-      return;
-    }
+    if (selectedDate.getTime() <= Date.now()) {
+        alert('La fecha programada debe ser en el futuro.');
+        return;
+      }
     if (selectedDate.getTime() > Date.now() + 30 * 24 * 60 * 60000) {
       alert('La fecha programada no puede exceder los 30 días.');
       return;
@@ -242,8 +247,18 @@ export default function ChatActionModals({
                 <input
                   type="datetime-local"
                   required
-                  min={new Date(Date.now() - new Date().getTimezoneOffset() * 60000 + 15 * 60000).toISOString().slice(0, 16)}
-                  max={new Date(Date.now() - new Date().getTimezoneOffset() * 60000 + 30 * 24 * 60 * 60000).toISOString().slice(0, 16)}
+                  step="3600"
+                    min={(() => {
+                      const d = new Date();
+                      d.setHours(d.getHours() + 1, 0, 0, 0);
+                      return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+                    })()}
+                    max={(() => {
+                      const d = new Date();
+                      d.setDate(d.getDate() + 30);
+                      d.setMinutes(0, 0, 0);
+                      return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+                    })()}
                   value={scheduledAt}
                   onChange={(e) => setScheduledAt(e.target.value)}
                   className="w-full bg-sales-slate-800 border border-sales-slate-700 rounded p-2 text-white focus:border-sales-cyan-500 focus:outline-none [color-scheme:dark]"
