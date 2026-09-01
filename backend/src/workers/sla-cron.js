@@ -199,8 +199,8 @@ async function runSlaCleanup() {
 }
 
 function startSlaCron() {
-  cron.schedule('0 * * * *', runSlaCleanup);
-  console.log('[SLA-CRON] Worker scheduled: 0 * * * *');
+  cron.schedule('*/5 * * * *', runSlaCleanup);
+  console.log('[SLA-CRON] Worker scheduled: */5 * * * *');
 }
 
 async function waitForShutdown() {

@@ -135,7 +135,8 @@ export default function ChatActionModals({
   const handleScheduledSubmit = (e) => {
     e.preventDefault();
     if (!scheduledAt) return;
-    const selectedDate = new Date(scheduledAt);
+    const [year, month, day, hour, minute] = scheduledAt.split(/[-T:]/).map(Number);
+      const selectedDate = new Date(year, month - 1, day, hour, minute);
     if (isNaN(selectedDate.getTime())) {
       alert('Fecha inválida.');
       return;
@@ -151,7 +152,10 @@ export default function ChatActionModals({
 
     onSubmit({
       status: 'SCHEDULED',
-      scheduledAt: new Date(scheduledAt).toISOString(),
+      scheduledAt: (() => {
+          const [year, month, day, hour, minute] = scheduledAt.split(/[-T:]/).map(Number);
+          return new Date(year, month - 1, day, hour, minute).toISOString();
+        })(),
     });
   };
 

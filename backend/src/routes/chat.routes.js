@@ -1157,7 +1157,17 @@ router.patch('/:conversationId/status', authenticate, authorize('ADMIN', 'COORDI
              textContent = `[Pausado - On Hold] Motivo: ${reason.trim()} | Expira en ${timebombHours} horas`;
           } else if (status === 'SCHEDULED') {
              const djs = require('dayjs');
-             textContent = `[Programado] Seguimiento para el ${djs(scheduledAt).format('YYYY-MM-DD HH:mm')}`;
+               const timezone = require('dayjs/plugin/timezone');
+               const utcPlugin = require('dayjs/plugin/utc');
+               djs.extend(utcPlugin);
+               djs.extend(timezone);
+               
+               let tz = 'America/Mexico_City';
+               if (conversation.tenant && conversation.tenant.businessHours && conversation.tenant.businessHours.timezone) {
+                 tz = conversation.tenant.businessHours.timezone;
+               }
+               
+               textContent = `[Programado] Seguimiento para el ${djs.utc(scheduledAt).tz(tz).format('YYYY-MM-DD HH:mm')}`;
           } else if (status === 'WAITING_CUSTOMER') {
              textContent = `[Esperando al Cliente]`;
           } else if (status === 'ACTIVE') {
