@@ -261,9 +261,15 @@ export default function ChatActionModals({
                     })()}
                   value={scheduledAt}
                   onChange={(e) => setScheduledAt(e.target.value)}
-                  className="w-full bg-sales-slate-800 border border-sales-slate-700 rounded p-2 text-white focus:border-sales-cyan-500 focus:outline-none [color-scheme:dark]"
-                  disabled={isPatching}
-                />
+                    className="w-full bg-sales-slate-800 border border-sales-slate-700 rounded p-2 text-white focus:border-sales-cyan-500 focus:outline-none [color-scheme:dark]"
+                    disabled={isPatching}
+                  />
+                  {hasCollision && (
+                    <div className="mt-3 text-xs text-amber-400 bg-amber-900/30 p-2.5 rounded border border-amber-500/30 flex items-start gap-2">
+                      <span className="text-base leading-none">⚠️</span>
+                      <p>Ya tienes otra conversación programada para este mismo día y hora.</p>
+                    </div>
+                  )}
               </div>
             </div>
             <div className="p-4 border-t border-sales-slate-800 flex justify-end gap-3 bg-sales-slate-800/50">

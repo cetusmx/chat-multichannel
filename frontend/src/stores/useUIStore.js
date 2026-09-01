@@ -17,7 +17,12 @@ const useUIStore = create((set) => ({
 
   addNotification(notification) {
     set((state) => ({
-      notifications: [notification, ...state.notifications].slice(0, 50),
+      notifications: [{ id: Date.now().toString() + Math.random(), date: new Date(), read: false, ...notification }, ...state.notifications].slice(0, 50),
+    }));
+  },
+  markNotificationsAsRead() {
+    set((state) => ({
+      notifications: state.notifications.map(n => ({ ...n, read: true }))
     }));
   },
 
