@@ -69,10 +69,9 @@ const ChatInput = forwardRef(({ onSendText, onSendMedia, onRequestAi, onOpenActi
     if (!trimmedText) return;
 
     try {
-      const draft = isWhisperMode ? `/whisper ${trimmedText}` : trimmedText;
       setText(''); // Optimistic UX: clear instantly
       setIsSending(true);
-      await onSendText(draft);
+      await onSendText(trimmedText, isWhisperMode);
       // Reset whisper mode after sending
       if (isWhisperMode) setIsWhisperMode(false);
     } catch (error) {
