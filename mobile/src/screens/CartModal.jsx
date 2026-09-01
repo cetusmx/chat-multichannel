@@ -74,9 +74,19 @@ export default function CartModal({ visible, onClose, chat }) {
   const handleSuggestProduct = (product) => {
     const desc = product.DESC_ECOMM || product.DESCR || product.NOMBRE;
     const priceNet = ((product.PRECIO || 0) * 1.16).toFixed(2);
-    const msg = `Tengo esta opción:\n*${product.CVE_ART}* - ${desc}\nPrecio: $${priceNet} Neto (IVA Incluido)`;
-    sendMessage(msg, false);
-    onClose(); // Optional: close modal so user sees chat, this is good UX.
+    const linea = product.LIN_PROD || '';
+    const imageUrl = `https://sistemahidraulico.mx/Perfiles/${linea}.jpg`;
+
+    const metadata = {
+      clave: product.CVE_ART,
+      description: desc,
+      priceNet: priceNet,
+      imageUrl: imageUrl,
+      rawProduct: product
+    };
+
+    sendMessage('', false, 'PRODUCT_CARD', metadata);
+    onClose();
   };
 
   // Client and Cart Data extraction
