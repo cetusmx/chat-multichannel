@@ -16,7 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { launchImageLibrary } from 'react-native-image-picker';
 import Toast from 'react-native-toast-message';
-import { ShoppingCart, MoreVertical, CheckCircle, PauseCircle, Users, Ban, Image as ImageIcon, Sparkles, Calendar, ShieldAlert, Clock } from 'lucide-react-native';
+import { ShoppingCart, MoreVertical, CheckCircle, PauseCircle, Users, Ban, Image as ImageIcon, Sparkles, Calendar, ShieldAlert, Clock, FileText } from 'lucide-react-native';
 import { get, post, postFormData } from '../services/api';
 import { theme } from '../utils/theme';
 import useChatStore from '@shared/stores/useChatStore';
@@ -242,6 +242,25 @@ export default function ChatDetailScreen() {
     }, 1500);
   };
 
+  
+  const handleExtractCsf = async () => {
+    setActionMenuVisible(false);
+    setIsAiLoading(true);
+    Toast.show({ type: 'info', text1: 'Extrayendo CSF', text2: 'La IA está procesando el documento...' });
+    try {
+      const res = await post(`/conversations/${encodeURIComponent(chatId)}/extract-csf`);
+      if (res.ok) {
+        Toast.show({ type: 'success', text1: 'CSF Extraída', text2: 'Datos fiscales actualizados' });
+      } else {
+        Toast.show({ type: 'error', text1: 'Error AI', text2: 'No se pudo procesar la constancia' });
+      }
+    } catch (e) {
+      Toast.show({ type: 'error', text1: 'Error de red', text2: 'Fallo de conexión con IA' });
+    } finally {
+      setIsAiLoading(false);
+    }
+  };
+
   const updateChatStatus = async (newStatus) => {
     setStatusMenuVisible(false);
     setResolveModalVisible(false);
@@ -376,6 +395,13 @@ export default function ChatDetailScreen() {
                 <Sparkles size={22} color="#f8fafc" strokeWidth={1.5} />
               </View>
               <Text style={styles.sheetButtonText}>Sugerencia IA</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.sheetButton} onPress={handleExtractCsf}>
+              <View style={styles.sheetIconWrapper}>
+                <FileText size={22} color="#f8fafc" strokeWidth={1.5} />
+              </View>
+              <Text style={styles.sheetButtonText}>Extraer CSF (IA)</Text>
             </TouchableOpacity>
 
           </View>
