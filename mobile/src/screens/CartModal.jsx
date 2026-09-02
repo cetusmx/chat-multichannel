@@ -99,8 +99,8 @@ export default function CartModal({ visible, onClose, chat }) {
 
   if (Array.isArray(cartData)) {
     cartItems = cartData;
-  } else if (cartData && cartData.items) {
-    cartItems = cartData.items;
+  } else if (cartData) {
+    cartItems = cartData.items || [];
     shippingAddress = cartData.shippingAddress || '';
     razonSocial = cartData.razonSocial || '';
     rfc = cartData.rfc || cartData.RFC || '';
