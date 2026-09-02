@@ -100,7 +100,11 @@ function EditUserModal({ user, onClose, onSaved }) {
         setRole(userBody.data.role);
         setVendorCount(userBody.data.vendorCount || 0);
         if (userBody.data.groups) {
-          setGroupIds(userBody.data.groups.map((g) => g.id));
+          if (userBody.data.role === 'VENDOR' && userBody.data.groups.length > 0) {
+            setGroupIds([userBody.data.groups[0].id]);
+          } else {
+            setGroupIds(userBody.data.groups.map((g) => g.id));
+          }
         }
       }
       if (groupsRes.ok) setAllGroups(groupsBody.data || []);
