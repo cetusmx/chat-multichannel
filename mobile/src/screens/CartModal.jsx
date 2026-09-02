@@ -5,7 +5,7 @@ import { X, Send, Download, Mail, Edit2, Search, MessageSquare, ShoppingCart as 
 import Toast from 'react-native-toast-message';
 import useAuthStore from '@shared/stores/useAuthStore';
 import useChatStore from '@shared/stores/useChatStore';
-import { get, patch, getSealMarketFamilias, searchSealMarketCatalog } from '../services/api';
+import { get, post, patch, getSealMarketFamilias, searchSealMarketCatalog } from '../services/api';
 
 export default function CartModal({ visible, onClose, chat }) {
   const insets = useSafeAreaInsets();
