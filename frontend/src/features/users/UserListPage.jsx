@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Pencil, X } from 'lucide-react';
+import { Pencil, X, Trash2 } from 'lucide-react';
 import { get, put } from '../../services/api.js';
 import useAuthStore from '../../stores/useAuthStore.js';
 
@@ -9,6 +9,66 @@ const badgeColors = {
   COORDINATOR: 'bg-sales-orange/20 text-sales-orange',
   VENDOR: 'bg-slate-700 text-sales-slate-300',
 };
+
+function ConfirmDeactivateModal({ user, onClose, onSaved }) {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  async function handleConfirm() {
+    setError('');
+    setLoading(true);
+    try {
+      const payload = { isActive: false };
+      const res = await put(`/users/${user.id}`, payload);
+      if (!res.ok) {
+        const body = await res.json();
+        throw new Error(body.error?.message || 'Error al borrar usuario');
+      }
+      onSaved();
+      onClose();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+      <div className="w-full max-w-sm rounded-xl border border-slate-700 bg-slate-900 p-6 shadow-2xl">
+        <h3 className="text-lg font-semibold text-sales-slate-100 mb-2">Confirmar Eliminación</h3>
+        <p className="text-sm text-sales-slate-400 mb-6">
+          ¿Estás seguro de que deseas desactivar (borrar) al usuario <strong>{user.name}</strong>?
+        </p>
+
+        {error && (
+          <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-400">
+            {error}
+          </div>
+        )}
+
+        <div className="flex gap-3 justify-end">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={loading}
+            className="rounded-lg border border-slate-700 px-4 py-2 text-sm text-sales-slate-400 hover:bg-slate-800 transition-colors"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={handleConfirm}
+            disabled={loading}
+            className="rounded-lg bg-red-500/20 px-4 py-2 text-sm font-medium text-red-400 hover:bg-red-500/30 border border-red-500/30 transition-colors disabled:opacity-50"
+          >
+            {loading ? 'Borrando...' : 'Borrar'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function EditUserModal({ user, onClose, onSaved }) {
   const [form, setForm] = useState({ name: user.name, email: user.email, phone: user.phone || '' });
@@ -49,29 +109,6 @@ function EditUserModal({ user, onClose, onSaved }) {
 
   function handleGroupChange(groupId) {
     setGroupIds(groupId ? [groupId] : []);
-  }
-
-  async function handleDeactivate() {
-    if (!window.confirm('¿Estás seguro de que deseas borrar (desactivar) a este usuario?')) return;
-    setError('');
-    setLoading(true);
-    try {
-      const payload = { name: form.name, email: form.email, phone: form.phone, isActive: false };
-      if (user.role !== 'ADMIN') {
-        payload.groupIds = groupIds;
-      }
-      const res = await put(`/users/${user.id}`, payload);
-      if (!res.ok) {
-        const body = await res.json();
-        throw new Error(body.error?.message || 'Error al borrar');
-      }
-      onSaved();
-      onClose();
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
   }
 
   async function handleSubmit(e) {
@@ -223,16 +260,7 @@ function EditUserModal({ user, onClose, onSaved }) {
             >
               Cancelar
             </button>
-            {isActive && (
-              <button
-                type="button"
-                onClick={handleDeactivate}
-                disabled={loading}
-                className="ml-auto rounded-lg border border-red-500/30 px-6 py-2 text-sm font-medium text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-50"
-              >
-                Borrar
-              </button>
-            )}
+            
           </div>
         </form>
       </div>
@@ -248,6 +276,7 @@ export default function UserListPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [editingUser, setEditingUser] = useState(null);
+  const [deactivatingUser, setDeactivatingUser] = useState(null);
   const [tenantProfile, setTenantProfile] = useState(null);
   const user = useAuthStore((s) => s.user);
 
@@ -422,13 +451,24 @@ export default function UserListPage() {
                         <span className={`inline-block h-2 w-2 rounded-full ${u.isActive ? 'bg-green-500' : 'bg-red-500'}`} />
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <button
-                          onClick={() => setEditingUser(u)}
-                          className="rounded-lg p-1.5 text-sales-slate-400 hover:bg-slate-700 hover:text-sales-slate-200 transition-colors"
-                          title="Editar usuario"
-                        >
-                          <Pencil size={16} />
-                        </button>
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={() => setEditingUser(u)}
+                            className="rounded-lg p-1.5 text-sales-slate-400 hover:bg-slate-700 hover:text-sales-slate-200 transition-colors"
+                            title="Editar usuario"
+                          >
+                            <Pencil size={16} />
+                          </button>
+                          {u.isActive && u.role !== 'ADMIN' && (
+                            <button
+                              onClick={() => setDeactivatingUser(u)}
+                              className="rounded-lg p-1.5 text-sales-slate-400 hover:bg-red-500/10 hover:text-red-400 transition-colors"
+                              title="Borrar usuario"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -461,6 +501,17 @@ export default function UserListPage() {
         </>
       )}
 
+      {deactivatingUser && (
+        <ConfirmDeactivateModal
+          user={deactivatingUser}
+          onClose={() => setDeactivatingUser(null)}
+          onSaved={() => {
+            setDeactivatingUser(null);
+            loadUsers(meta.page);
+            loadTenantProfile();
+          }}
+        />
+      )}
       {editingUser && (
         <EditUserModal
           user={editingUser}
