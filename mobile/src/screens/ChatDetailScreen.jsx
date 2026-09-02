@@ -79,15 +79,22 @@ export default function ChatDetailScreen() {
   const aiAbortControllerRef = useRef(null);
   const prevStatusRef = useRef(chat?.status);
 
+  const globalSocket = useChatStore((state) => state.socket);
   useEffect(() => {
     if (chatId) {
       useChatStore.setState({ currentConversationId: chatId });
       clearUnreadCount(chatId);
+      if (globalSocket) {
+        globalSocket.emit('join:conversation', chatId);
+      }
     }
     return () => {
       useChatStore.setState({ currentConversationId: null });
+      if (globalSocket) {
+        globalSocket.emit('leave:conversation', chatId);
+      }
     };
-  }, [chatId, clearUnreadCount]);
+  }, [chatId, clearUnreadCount, globalSocket]);
 
   useEffect(() => {
     if (prevStatusRef.current === 'WAITING_CUSTOMER' && chat?.status === 'ACTIVE') {

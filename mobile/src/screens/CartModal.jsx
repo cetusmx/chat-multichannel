@@ -199,6 +199,16 @@ export default function CartModal({ visible, onClose, chat }) {
     }
   }, [visible]);
 
+  useEffect(() => {
+    if (visible && !isEditingBilling) {
+      setTempBilling(prev => ({
+        razonSocial: razonSocial || prev.razonSocial,
+        rfc: rfc || prev.rfc,
+        billingAddress: billingAddress || prev.billingAddress
+      }));
+    }
+  }, [razonSocial, rfc, billingAddress, isEditingBilling, visible]);
+
   const handleSearchRfc = async () => {
     if (!tempBilling.rfc) return;
     setIsSearchingRfc(true);
