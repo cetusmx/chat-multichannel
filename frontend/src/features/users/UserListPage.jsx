@@ -51,6 +51,29 @@ function EditUserModal({ user, onClose, onSaved }) {
     setGroupIds(groupId ? [groupId] : []);
   }
 
+  async function handleDeactivate() {
+    if (!window.confirm('¿Estás seguro de que deseas borrar (desactivar) a este usuario?')) return;
+    setError('');
+    setLoading(true);
+    try {
+      const payload = { name: form.name, email: form.email, phone: form.phone, isActive: false };
+      if (user.role !== 'ADMIN') {
+        payload.groupIds = groupIds;
+      }
+      const res = await put(`/users/${user.id}`, payload);
+      if (!res.ok) {
+        const body = await res.json();
+        throw new Error(body.error?.message || 'Error al borrar');
+      }
+      onSaved();
+      onClose();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
     setError('');
@@ -185,7 +208,7 @@ function EditUserModal({ user, onClose, onSaved }) {
             </div>
           )}
 
-          <div className="flex gap-3 pt-2">
+          <div className="flex gap-3 pt-2 w-full">
             <button
               type="submit"
               disabled={loading}
@@ -200,6 +223,16 @@ function EditUserModal({ user, onClose, onSaved }) {
             >
               Cancelar
             </button>
+            {isActive && (
+              <button
+                type="button"
+                onClick={handleDeactivate}
+                disabled={loading}
+                className="ml-auto rounded-lg border border-red-500/30 px-6 py-2 text-sm font-medium text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-50"
+              >
+                Borrar
+              </button>
+            )}
           </div>
         </form>
       </div>

@@ -461,6 +461,11 @@ async function updateUser(id, tenantId, actorRole, data) {
       if (!user) {
         throw ApiError.notFound('User not found');
       }
+      // Map raw postgres columns to prisma model properties
+      user.isActive = user.is_active;
+      user.tenantId = user.tenant_id;
+      user.coordinatorId = user.coordinator_id;
+      user.role = user.role;
 
       if (actorRole === 'COORDINATOR' && user.role !== 'VENDOR') {
         throw ApiError.forbidden('Coordinator can only edit vendor users');
