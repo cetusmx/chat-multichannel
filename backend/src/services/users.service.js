@@ -41,7 +41,7 @@ async function enforceQuota(tx, tenantId, newUsersCount = 1) {
 async function validateCoordinator(tx, coordinatorId, tenantId) {
   if (!coordinatorId) return;
   const coordinator = await tx.user.findFirst({
-    where: { id: coordinatorId, tenantId, role: 'COORDINATOR' },
+    where: { id: coordinatorId, tenantId, role: 'COORDINATOR', isActive: true },
   });
   if (!coordinator) {
     throw ApiError.badRequest('Invalid coordinator: user not found or is not a coordinator');
@@ -51,7 +51,7 @@ async function validateCoordinator(tx, coordinatorId, tenantId) {
 async function validateGroupCoordinatorLimit(tx, groupIds, tenantId, excludeUserId) {
   const where = {
     groupId: { in: groupIds },
-    user: { role: 'COORDINATOR', tenantId },
+    user: { role: 'COORDINATOR', tenantId, isActive: true },
     ...(excludeUserId ? { userId: { not: excludeUserId } } : {}),
   };
   const existing = await tx.groupVendor.findMany({
@@ -74,7 +74,7 @@ async function validateGroupCoordinatorLimit(tx, groupIds, tenantId, excludeUser
 async function resolveGroupCoordinator(tx, groupIds, tenantId) {
   if (!groupIds || groupIds.length === 0) return null;
   const coordGv = await tx.groupVendor.findFirst({
-    where: { groupId: groupIds[0], user: { role: 'COORDINATOR', tenantId } },
+    where: { groupId: groupIds[0], user: { role: 'COORDINATOR', tenantId, isActive: true } },
     select: { userId: true },
   });
   return coordGv ? coordGv.userId : null;
