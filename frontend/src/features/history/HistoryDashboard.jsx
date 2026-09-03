@@ -152,6 +152,21 @@ export default function HistoryDashboard() {
     );
   };
 
+  const getSearchSnippet = (text, term) => {
+    if (!text || !term) return '';
+    const idx = text.toLowerCase().indexOf(term.toLowerCase());
+    if (idx === -1) return text;
+    
+    const start = Math.max(0, idx - 40);
+    const end = Math.min(text.length, idx + term.length + 40);
+    let snippet = text.slice(start, end);
+    
+    if (start > 0) snippet = '...' + snippet;
+    if (end < text.length) snippet = snippet + '...';
+    
+    return highlightText(snippet, term);
+  };
+
   const totalPages = Math.ceil(total / limit) || 1;
 
   return (
@@ -268,7 +283,14 @@ export default function HistoryDashboard() {
                       onClick={() => openChat(chat)}
                     >
                       <td className="px-6 py-4 text-slate-300">{date}</td>
-                      <td className="px-6 py-4 font-medium text-white">{clientName}</td>
+                      <td className="px-6 py-4">
+                        <div className="font-medium text-white">{clientName}</div>
+                        {searchTerm && chat.messages && chat.messages.length > 0 && (
+                          <div className="text-xs text-slate-400 italic mt-1 line-clamp-2 max-w-md">
+                            💬 {getSearchSnippet(chat.messages[0].content || chat.messages[0].text, searchTerm)}
+                          </div>
+                        )}
+                      </td>
                       <td className="px-6 py-4 text-slate-400">{advisorName}</td>
                       <td className={`px-6 py-4 font-medium ${statusColor}`}>
                         {statusLabel}
