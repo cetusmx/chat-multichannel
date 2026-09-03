@@ -71,7 +71,7 @@ function ConfirmDeactivateModal({ user, onClose, onSaved }) {
 }
 
 function EditUserModal({ user, onClose, onSaved }) {
-  const [form, setForm] = useState({ name: user.name, email: user.email, phone: user.phone || '' });
+  const [form, setForm] = useState({ name: user.name, email: user.email, phone: user.phone || '', password: '' });
   const [isActive, setIsActive] = useState(user.isActive !== false);
   const [groupIds, setGroupIds] = useState([]);
   const [allGroups, setAllGroups] = useState([]);
@@ -121,6 +121,9 @@ function EditUserModal({ user, onClose, onSaved }) {
     setLoading(true);
     try {
       const payload = { name: form.name, email: form.email, phone: form.phone, isActive };
+      if (form.password) {
+        payload.password = form.password;
+      }
       if (user.role !== 'ADMIN') {
         payload.groupIds = groupIds;
       }
@@ -190,6 +193,17 @@ function EditUserModal({ user, onClose, onSaved }) {
             <input
               value={form.phone}
               onChange={(e) => setForm({ ...form, phone: e.target.value })}
+              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-sales-slate-100 focus:outline-none focus:ring-2 focus:ring-sales-coral/50"
+            />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-sm text-sales-slate-400">Contraseña <span className="text-xs text-sales-slate-500">(Dejar en blanco para no cambiarla)</span></label>
+            <input
+              type="password"
+              value={form.password}
+              onChange={(e) => setForm({ ...form, password: e.target.value })}
+              placeholder="Nueva contraseña"
               className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-sales-slate-100 focus:outline-none focus:ring-2 focus:ring-sales-coral/50"
             />
           </div>

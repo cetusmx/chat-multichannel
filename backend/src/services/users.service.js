@@ -509,6 +509,13 @@ async function updateUser(id, tenantId, actorRole, data) {
         isActive: data.isActive !== undefined ? data.isActive : undefined,
       };
 
+      if (data.password) {
+        if (data.password.length < 6) {
+          throw ApiError.badRequest('Password must be at least 6 characters long');
+        }
+        updateData.passwordHash = await bcrypt.hash(data.password, SALT_ROUNDS);
+      }
+
       if (data.groupIds !== undefined && data.groupIds !== null) {
         if (user.role === 'ADMIN') {
           throw ApiError.badRequest('Group assignment is not available for admin users');
