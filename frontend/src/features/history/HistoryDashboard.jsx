@@ -113,7 +113,7 @@ export default function HistoryDashboard() {
   const openChat = async (chat) => {
     setSelectedChat(chat);
     setIsPanelOpen(true);
-    setLocalSearch('');
+    setLocalSearch(searchTerm);
 
     try {
       const res = await get(`/chat/${chat.id || chat._id}/messages`);
