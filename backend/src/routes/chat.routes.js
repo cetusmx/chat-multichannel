@@ -423,6 +423,26 @@ router.get('/history', authenticate, authorize('ADMIN', 'COORDINATOR', 'VENDOR')
       take: parseInt(limit)
     });
 
+        if (search) {
+      const searchLower = search.trim().toLowerCase();
+      conversations.forEach(conv => {
+        if (conv.messages && conv.messages.length > 0) {
+          const msg = conv.messages[0];
+          const content = msg.content || '';
+          const idx = content.toLowerCase().indexOf(searchLower);
+          if (idx !== -1) {
+            const start = Math.max(0, idx - 30);
+            const end = Math.min(content.length, idx + searchLower.length + 40);
+            let snippet = content.substring(start, end);
+            if (start > 0) snippet = '...' + snippet;
+            if (end < content.length) snippet = snippet + '...';
+            msg.searchSnippet = snippet;
+            msg.content = snippet; // Free up payload size
+          }
+        }
+      });
+    }
+
     res.json({
       data: conversations,
       meta: {

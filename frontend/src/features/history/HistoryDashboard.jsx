@@ -152,21 +152,6 @@ export default function HistoryDashboard() {
     );
   };
 
-  const getSearchSnippet = (text, term) => {
-    if (!text || !term) return '';
-    const idx = text.toLowerCase().indexOf(term.toLowerCase());
-    if (idx === -1) return text;
-    
-    const start = Math.max(0, idx - 40);
-    const end = Math.min(text.length, idx + term.length + 40);
-    let snippet = text.slice(start, end);
-    
-    if (start > 0) snippet = '...' + snippet;
-    if (end < text.length) snippet = snippet + '...';
-    
-    return highlightText(snippet, term);
-  };
-
   const totalPages = Math.ceil(total / limit) || 1;
 
   return (
@@ -229,8 +214,7 @@ export default function HistoryDashboard() {
             <thead className="bg-slate-950/50 text-slate-400 border-b border-slate-800">
               <tr>
                 <th className="px-6 py-4 font-medium">Fecha</th>
-                <th className="px-6 py-4 font-medium">Cliente</th>
-                <th className="px-6 py-4 font-medium">Asesor</th>
+                <th className="px-6 py-4 font-medium">Cliente / Asesor</th>
                 <th className="px-6 py-4 font-medium">Estatus</th>
                 <th className="px-6 py-4 font-medium text-right">Acciones</th>
               </tr>
@@ -284,14 +268,16 @@ export default function HistoryDashboard() {
                     >
                       <td className="px-6 py-4 text-slate-300">{date}</td>
                       <td className="px-6 py-4">
-                        <div className="font-medium text-white">{clientName}</div>
+                        <div className="font-medium text-white flex items-center gap-2">
+                          <span>{clientName}</span>
+                          <span className="text-xs text-slate-500 font-normal">({advisorName})</span>
+                        </div>
                         {searchTerm && chat.messages && chat.messages.length > 0 && (
                           <div className="text-xs text-slate-400 italic mt-1 line-clamp-2 max-w-md">
-                            💬 {getSearchSnippet(chat.messages[0].content || chat.messages[0].text, searchTerm)}
+                            💬 {highlightText(chat.messages[0].searchSnippet || chat.messages[0].content || chat.messages[0].text, searchTerm)}
                           </div>
                         )}
                       </td>
-                      <td className="px-6 py-4 text-slate-400">{advisorName}</td>
                       <td className={`px-6 py-4 font-medium ${statusColor}`}>
                         {statusLabel}
                       </td>
