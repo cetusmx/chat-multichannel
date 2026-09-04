@@ -47,7 +47,9 @@ export default function SearchPage() {
       } catch (err) {
         if (axios.isCancel(err)) return;
         startTransition(() => {
-          setError(err.response?.data?.error || 'Error de red al cargar resultados');
+          const apiError = err.response?.data?.error;
+          const errMsg = typeof apiError === 'object' ? apiError.message : apiError;
+          setError(errMsg || 'Error de red al cargar resultados');
         });
       }
     };
