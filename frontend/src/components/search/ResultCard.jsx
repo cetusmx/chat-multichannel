@@ -52,7 +52,11 @@ const ResultCard = memo(({ item, isActive, onClick }) => {
   return (
     <div 
       onClick={handleClick}
-      className={p-4 border rounded-lg cursor-pointer transition-colors }
+      className={`p-4 border rounded-lg cursor-pointer transition-colors ${
+        isActive 
+          ? 'bg-blue-50 border-blue-400 shadow-sm' 
+          : 'bg-white border-gray-200 hover:border-blue-300'
+      }`}
     >
       <div className="flex justify-between items-start mb-2">
         <h4 className="font-semibold text-gray-800">{nameStr}</h4>
