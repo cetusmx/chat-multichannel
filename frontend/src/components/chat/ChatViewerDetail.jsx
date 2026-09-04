@@ -205,7 +205,7 @@ export default function ChatViewerDetail({ conversationId, targetMessageId, onBa
                       : 'bg-white border border-gray-200 text-gray-800 self-start mr-auto rounded-tl-none'
                   }`}
                 >
-                  <p className="whitespace-pre-wrap text-sm">{msg.content}</p>
+                  <p className="whitespace-pre-wrap text-sm">{typeof msg.content === 'object' ? JSON.stringify(msg.content) : msg.content}</p>
                   <span className="text-[10px] text-gray-500 text-right mt-1 opacity-70">
                     {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </span>

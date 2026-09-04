@@ -116,7 +116,7 @@ export default function SearchResultsLayout({ data, loading, error, query, meta,
           >
             Anterior
           </button>
-          <span className="text-sm text-gray-500">Página {pagination?.page || 1}</span>
+          <span className="text-sm text-gray-500">Página {typeof pagination?.page === 'object' ? JSON.stringify(pagination?.page) : (pagination?.page || 1)}</span>
           <button 
             disabled={!pagination?.hasMore || loading}
             onClick={() => onPageChange(pagination.page + 1)}

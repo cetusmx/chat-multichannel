@@ -21,10 +21,10 @@ const ResultCard = memo(({ item, isActive, onClick }) => {
     >
       <div className="flex justify-between items-start mb-2">
         <h4 className="font-semibold text-gray-800">
-          {item.clientName || item.name || item.phone || 'Contacto Desconocido'}
+          {typeof (item.clientName || item.name || item.phone) === 'object' ? JSON.stringify(item.clientName || item.name || item.phone) : (item.clientName || item.name || item.phone || 'Contacto Desconocido')}
         </h4>
         <span className="text-xs text-gray-500 whitespace-nowrap ml-2">
-          {isValidDate ? timeAgo(date) : 'Fecha desconocida'}
+          {isValidDate ? (typeof timeAgo(date) === 'object' ? JSON.stringify(timeAgo(date)) : timeAgo(date)) : 'Fecha desconocida'}
         </span>
       </div>
       
@@ -32,13 +32,13 @@ const ResultCard = memo(({ item, isActive, onClick }) => {
         <div className="text-sm text-gray-600">
           {item.previousMessageContext && (
              <p className="text-gray-400 italic mb-1 line-clamp-1 border-l-2 border-gray-300 pl-2">
-               {item.previousMessageContext}
+               {typeof item.previousMessageContext === 'object' ? JSON.stringify(item.previousMessageContext) : item.previousMessageContext}
              </p>
           )}
           <p 
             className="line-clamp-3 whitespace-pre-wrap" 
             dangerouslySetInnerHTML={{ 
-              __html: DOMPurify.sanitize(item.snippet || item.body || item.content || 'Coincidencia en metadatos', { 
+              __html: DOMPurify.sanitize(typeof (item.snippet || item.body || item.content) === 'object' ? JSON.stringify(item.snippet || item.body || item.content) : (item.snippet || item.body || item.content || 'Coincidencia en metadatos'), { 
                 ALLOWED_TAGS: ['b', 'i', 'em', 'strong', 'mark', 'br'], 
                 ALLOWED_ATTR: [] 
               }) 
@@ -48,7 +48,7 @@ const ResultCard = memo(({ item, isActive, onClick }) => {
       )}
       
       {item.type === 'client' && (
-        <p className="text-sm text-gray-600">Teléfono: {item.phone}</p>
+        <p className="text-sm text-gray-600">Teléfono: {typeof item.phone === 'object' ? JSON.stringify(item.phone) : item.phone}</p>
       )}
     </div>
   );
