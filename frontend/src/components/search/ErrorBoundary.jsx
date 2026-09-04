@@ -22,9 +22,9 @@ export default class ErrorBoundary extends React.Component {
           <h2 className="text-lg font-bold mb-2">Something went wrong.</h2>
           <details className="whitespace-pre-wrap text-sm">
             <summary>Show details</summary>
-            {this.state.error && this.state.error.toString()}
+            {this.state.error ? String(this.state.error) : 'No error msg'}
             <br />
-            {this.state.errorInfo && this.state.errorInfo.componentStack}
+            {this.state.errorInfo && this.state.errorInfo.componentStack ? String(this.state.errorInfo.componentStack) : 'No stack'}
           </details>
         </div>
       );
