@@ -17,7 +17,7 @@ export default function SearchResultsLayout({ data, loading, error, query, meta,
           </svg>
         </div>
         <h3 className="text-lg font-bold text-gray-800">Error al buscar</h3>
-        <p className="text-gray-500 mt-2">{error}</p>
+        <p className="text-gray-500 mt-2">{typeof error === 'string' ? error : (error?.message || JSON.stringify(error))}</p>
         <button 
           onClick={() => window.location.reload()}
           className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"

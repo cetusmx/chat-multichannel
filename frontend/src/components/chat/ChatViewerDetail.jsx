@@ -169,7 +169,7 @@ export default function ChatViewerDetail({ conversationId, targetMessageId, onBa
             <span className="sr-only">Cargando chat...</span>
           </div>
         ) : error ? (
-          <div className="text-center py-10 text-red-500">{error}</div>
+          <div className="text-center py-10 text-red-500">{typeof error === 'string' ? error : (error?.message || JSON.stringify(error))}</div>
         ) : (
           <div className="space-y-4">
             {meta?.previousSessionId && (
