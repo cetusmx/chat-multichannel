@@ -70,6 +70,31 @@ export default function FiltersSidebar({ isOpen, currentFilters, onApply, onClos
           </div>
         )}
 
+        {/* RFC / Razón Social */}
+        {facets?.rfcs?.length > 0 && (
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-gray-700 uppercase tracking-wider flex items-center gap-1 mb-2">
+              <Activity size={14} /> RFC / Razón Social
+            </label>
+            <div className="space-y-1 max-h-40 overflow-y-auto pr-1">
+              {facets.rfcs.map(r => (
+                <label key={r.id} className="flex items-center gap-2 text-sm text-gray-700 hover:bg-gray-50 p-1 rounded cursor-pointer">
+                  <input 
+                    type="checkbox" 
+                    checked={currentFilters.rfc === r.id}
+                    onChange={(e) => {
+                      onApply({ ...currentFilters, rfc: e.target.checked ? r.id : '' });
+                    }}
+                    className="rounded text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="flex-1 truncate uppercase" title={r.name}>{r.name}</span>
+                  <span className="text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">{r.count}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Fechas */}
         <div className="space-y-2">
           <label className="text-xs font-bold text-gray-700 uppercase tracking-wider flex items-center gap-1 mb-2">

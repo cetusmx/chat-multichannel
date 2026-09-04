@@ -15,6 +15,7 @@ export default function SearchPage() {
   const currentFilters = {
     vendorId: searchParams.get('vendorId') || '',
     clientId: searchParams.get('clientId') || '',
+    rfc: searchParams.get('rfc') || '',
     dateFrom: searchParams.get('dateFrom') || '',
     dateTo: searchParams.get('dateTo') || '',
     status: searchParams.get('status') || '',
@@ -43,6 +44,7 @@ export default function SearchPage() {
         
         if (currentFilters.vendorId) params.append('vendorId', currentFilters.vendorId);
         if (currentFilters.clientId) params.append('clientId', currentFilters.clientId);
+        if (currentFilters.rfc) params.append('rfc', currentFilters.rfc);
         if (currentFilters.dateFrom) params.append('dateFrom', currentFilters.dateFrom);
         if (currentFilters.dateTo) params.append('dateTo', currentFilters.dateTo);
         if (currentFilters.status) params.append('status', currentFilters.status);
@@ -69,7 +71,7 @@ export default function SearchPage() {
     fetchResults();
 
     return () => controller.abort();
-  }, [query, page, currentFilters.vendorId, currentFilters.clientId, currentFilters.dateFrom, currentFilters.dateTo, currentFilters.status, token]);
+  }, [query, page, currentFilters.vendorId, currentFilters.clientId, currentFilters.rfc, currentFilters.dateFrom, currentFilters.dateTo, currentFilters.status, token]);
 
   const handleApplyFilters = (newFilters) => {
     const params = new URLSearchParams(searchParams);
@@ -159,6 +161,7 @@ export default function SearchPage() {
               <span className="text-sm font-medium text-gray-500 mr-1">Filtros:</span>
               {renderPill('vendorId', 'Asesor', getVendorName(currentFilters.vendorId))}
               {renderPill('clientId', 'Cliente', getClientName(currentFilters.clientId))}
+              {renderPill('rfc', 'RFC', currentFilters.rfc)}
               {renderPill('dateFrom', 'Desde', currentFilters.dateFrom)}
               {renderPill('dateTo', 'Hasta', currentFilters.dateTo)}
               

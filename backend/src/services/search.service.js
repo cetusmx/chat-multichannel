@@ -5,7 +5,7 @@ const performSearch = async ({ tenantId, query, type, filters, limit, offset, pa
   const data = [];
   const facets = { chats: 0, clients: 0, orders: 0 };
 
-  const { dateFrom, dateTo, vendorId } = filters;
+  const { dateFrom, dateTo, vendorId, rfc } = filters;
   const skipChats = type && type !== 'chats';
   const skipClients = type && type !== 'clients';
 
@@ -23,6 +23,11 @@ const performSearch = async ({ tenantId, query, type, filters, limit, offset, pa
   let vendorFilter = Prisma.sql``;
   if (vendorId) vendorFilter = Prisma.sql`AND c."vendor_id" = ${vendorId}`;
 
+  let rfcFilter = Prisma.sql``;
+  if (rfc) {
+    rfcFilter = Prisma.sql`AND cl."cart_data"::text ILIKE ${'%"rfc":"' + rfc + '"%'}`;
+  }
+
   // 1. CHATS (Messages)
   let chatsCount = 0;
   if (!skipChats) {
@@ -30,10 +35,12 @@ const performSearch = async ({ tenantId, query, type, filters, limit, offset, pa
       SELECT COUNT(*) as cnt
       FROM "messages" m
       JOIN "conversations" c ON m."conversation_id" = c.id
+      JOIN "clients" cl ON c."client_id" = cl.id
       WHERE c."tenant_id" = ${tenantId}
       AND to_tsvector('spanish', COALESCE(m.content, '')) @@ websearch_to_tsquery('spanish', ${query})
       ${dateFilter}
       ${vendorFilter}
+      ${rfcFilter}
     `;
     chatsCount = Number(chatsCountQuery[0]?.cnt || 0);
     facets.chats = chatsCount;
@@ -46,22 +53,25 @@ const performSearch = async ({ tenantId, query, type, filters, limit, offset, pa
         COUNT(DISTINCT c.id) as count
       FROM "messages" m
       JOIN "conversations" c ON m."conversation_id" = c.id
+      JOIN "clients" cl ON c."client_id" = cl.id
       JOIN "users" u ON c."vendor_id" = u.id
       WHERE c."tenant_id" = ${tenantId}
       AND c."vendor_id" IS NOT NULL
       AND to_tsvector('spanish', COALESCE(m.content, '')) @@ websearch_to_tsquery('spanish', ${query})
       ${dateFilter}
+      ${rfcFilter}
       GROUP BY u.id, u.name
       ORDER BY count DESC
     `;
     facets.asesores = vendorFacetsQuery.map(v => ({ id: v.id, name: v.name, count: Number(v.count) }));
 
-    // Dynamic Facets for Clients
+    // Dynamic Facets for Clients (and safe RFC extraction)
     const clientFacetsQuery = await prisma.$queryRaw`
       SELECT 
         cl.id, 
         cl.name, 
         cl."phone_number" as phone,
+        cl."cart_data"::text as cart_data_text,
         COUNT(DISTINCT c.id) as count
       FROM "messages" m
       JOIN "conversations" c ON m."conversation_id" = c.id
@@ -70,10 +80,41 @@ const performSearch = async ({ tenantId, query, type, filters, limit, offset, pa
       AND to_tsvector('spanish', COALESCE(m.content, '')) @@ websearch_to_tsquery('spanish', ${query})
       ${dateFilter}
       ${vendorFilter}
-      GROUP BY cl.id, cl.name, cl."phone_number"
+      ${rfcFilter}
+      GROUP BY cl.id, cl.name, cl."phone_number", cl."cart_data"::text
       ORDER BY count DESC
     `;
-    facets.clientes = clientFacetsQuery.map(c => ({ id: c.id, name: c.name || c.phone, count: Number(c.count) }));
+    
+    const rfcsMap = new Map();
+    facets.clientes = clientFacetsQuery.map(c => {
+      // Safe parsing of cartData to avoid crashes
+      let cart = [];
+      try {
+        if (c.cart_data_text) {
+          const parsed = JSON.parse(c.cart_data_text);
+          if (Array.isArray(parsed)) cart = parsed;
+          else if (typeof parsed === 'object' && parsed !== null) cart = [parsed];
+        }
+      } catch (e) {
+        // Ignore JSON parse errors for malformed cart_data
+      }
+
+      // Extract any RFCs found
+      cart.forEach(item => {
+        if (item && item.rfc) {
+          const rfcVal = String(item.rfc).trim();
+          if (rfcVal) {
+            rfcsMap.set(rfcVal, (rfcsMap.get(rfcVal) || 0) + Number(c.count));
+          }
+        }
+      });
+
+      return { id: c.id, name: c.name || c.phone, count: Number(c.count) };
+    });
+
+    facets.rfcs = Array.from(rfcsMap.entries())
+      .map(([rfc, count]) => ({ id: rfc, name: rfc, count }))
+      .sort((a, b) => b.count - a.count);
 
     if (chatsCount > 0 && offset < chatsCount) {
       const chatLimit = Math.min(limit, chatsCount - offset);
@@ -88,7 +129,8 @@ const performSearch = async ({ tenantId, query, type, filters, limit, offset, pa
             c."client_id",
             cl.name as "client_name",
             cl."phone_number",
-            ts_headline('spanish', COALESCE(m.content, ''), websearch_to_tsquery('spanish', ${query}), 'StartSel=<b>, StopSel=</b>, MaxWords=20, MinWords=5') as snippet
+            ts_headline('spanish', COALESCE(m.content, ''), websearch_to_tsquery('spanish', ${query}), 'StartSel=<b>, 
+StopSel=</b>, MaxWords=20, MinWords=5') as snippet
           FROM "messages" m
           JOIN "conversations" c ON m."conversation_id" = c.id
           JOIN "clients" cl ON c."client_id" = cl.id
@@ -96,6 +138,7 @@ const performSearch = async ({ tenantId, query, type, filters, limit, offset, pa
           AND to_tsvector('spanish', COALESCE(m.content, '')) @@ websearch_to_tsquery('spanish', ${query})
           ${dateFilter}
           ${vendorFilter}
+          ${rfcFilter}
           ORDER BY m."created_at" DESC
           LIMIT ${chatLimit} OFFSET ${offset}
         )
