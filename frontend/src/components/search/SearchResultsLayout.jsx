@@ -3,11 +3,13 @@ import { useSearchParams } from 'react-router-dom';
 import ResultCard from './ResultCard';
 import ChatViewerDetail from '../chat/ChatViewerDetail';
 
-export default function SearchResultsLayout({ data }) {
+export default function SearchResultsLayout({ data, loading, meta, onPageChange }) {
   if (!Array.isArray(data)) return <div>No data</div>;
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedChatId = searchParams.get('selectedChatId');
   const targetMessageId = searchParams.get('targetMessageId');
+
+  const { pagination } = meta || {};
 
   const handleCardClick = React.useCallback((item) => {
     if (item.type === 'chat') {
@@ -44,6 +46,25 @@ export default function SearchResultsLayout({ data }) {
             onClick={handleCardClick}
           />
         ))}
+
+        {/* Pagination Controls */}
+        <div className="flex justify-between items-center mt-6 pt-4 border-t border-gray-200">
+          <button 
+            disabled={pagination?.page <= 1 || loading}
+            onClick={() => onPageChange(pagination.page - 1)}
+            className="px-3 py-1 text-sm bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50"
+          >
+            Anterior
+          </button>
+          <span className="text-sm text-gray-500">Página {typeof pagination?.page === 'object' ? JSON.stringify(pagination?.page) : (pagination?.page || 1)}</span>
+          <button 
+            disabled={!pagination?.hasMore || loading}
+            onClick={() => onPageChange(pagination.page + 1)}
+            className="px-3 py-1 text-sm bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50"
+          >
+            Siguiente
+          </button>
+        </div>
       </div>
       <div className={`${detailClass} flex-[2]`}>
          <ChatViewerDetail 
