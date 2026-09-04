@@ -4,6 +4,7 @@ import axios from 'axios';
 import SearchResultsLayout from '../components/search/SearchResultsLayout';
 import FiltersSidebar from '../components/search/FiltersSidebar';
 import FiltersDrawer from '../components/search/FiltersDrawer';
+import ErrorBoundary from '../components/search/ErrorBoundary';
 import { Filter, X } from 'lucide-react';
 import useAuthStore from '../stores/useAuthStore';
 
@@ -145,18 +146,20 @@ export default function SearchPage() {
           </div>
         )}
 
-        <SearchResultsLayout 
-          data={data} 
-          loading={isPending} 
-          error={error} 
-          query={query} 
-          meta={meta}
-          onPageChange={(newPage) => {
-            const params = new URLSearchParams(searchParams);
-            params.set('page', newPage.toString());
-            setSearchParams(params);
-          }}
-        />
+        <ErrorBoundary>
+          <SearchResultsLayout 
+            data={data} 
+            loading={isPending} 
+            error={error} 
+            query={query} 
+            meta={meta}
+            onPageChange={(newPage) => {
+              const params = new URLSearchParams(searchParams);
+              params.set('page', newPage.toString());
+              setSearchParams(params);
+            }}
+          />
+        </ErrorBoundary>
       </div>
 
       {/* Mobile Drawer */}
