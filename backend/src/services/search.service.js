@@ -38,6 +38,43 @@ const performSearch = async ({ tenantId, query, type, filters, limit, offset, pa
     chatsCount = Number(chatsCountQuery[0]?.cnt || 0);
     facets.chats = chatsCount;
 
+    // Dynamic Facets for Vendors
+    const vendorFacetsQuery = await prisma.$queryRaw`
+      SELECT 
+        u.id, 
+        u.name, 
+        COUNT(DISTINCT c.id) as count
+      FROM "messages" m
+      JOIN "conversations" c ON m."conversation_id" = c.id
+      JOIN "users" u ON c."vendor_id" = u.id
+      WHERE c."tenant_id" = ${tenantId}
+      AND c."vendor_id" IS NOT NULL
+      AND to_tsvector('spanish', COALESCE(m.content, '')) @@ websearch_to_tsquery('spanish', ${query})
+      ${dateFilter}
+      GROUP BY u.id, u.name
+      ORDER BY count DESC
+    `;
+    facets.asesores = vendorFacetsQuery.map(v => ({ id: v.id, name: v.name, count: Number(v.count) }));
+
+    // Dynamic Facets for Clients
+    const clientFacetsQuery = await prisma.$queryRaw`
+      SELECT 
+        cl.id, 
+        cl.name, 
+        cl."phone_number" as phone,
+        COUNT(DISTINCT c.id) as count
+      FROM "messages" m
+      JOIN "conversations" c ON m."conversation_id" = c.id
+      JOIN "clients" cl ON c."client_id" = cl.id
+      WHERE c."tenant_id" = ${tenantId}
+      AND to_tsvector('spanish', COALESCE(m.content, '')) @@ websearch_to_tsquery('spanish', ${query})
+      ${dateFilter}
+      ${vendorFilter}
+      GROUP BY cl.id, cl.name, cl."phone_number"
+      ORDER BY count DESC
+    `;
+    facets.clientes = clientFacetsQuery.map(c => ({ id: c.id, name: c.name || c.phone, count: Number(c.count) }));
+
     if (chatsCount > 0 && offset < chatsCount) {
       const chatLimit = Math.min(limit, chatsCount - offset);
       

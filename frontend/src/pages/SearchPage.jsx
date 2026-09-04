@@ -2,7 +2,7 @@ import React, { useEffect, useState, useTransition } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import axios from 'axios';
 import SearchResultsLayout from '../components/search/SearchResultsLayout';
-import FiltersDrawer from '../components/search/FiltersDrawer';
+import FiltersSidebar from '../components/search/FiltersSidebar';
 import ErrorBoundary from '../components/search/ErrorBoundary';
 import { Filter, X } from 'lucide-react';
 import useAuthStore from '../stores/useAuthStore';
@@ -14,6 +14,7 @@ export default function SearchPage() {
   // Operational Filters
   const currentFilters = {
     vendorId: searchParams.get('vendorId') || '',
+    clientId: searchParams.get('clientId') || '',
     dateFrom: searchParams.get('dateFrom') || '',
     dateTo: searchParams.get('dateTo') || '',
     status: searchParams.get('status') || '',
@@ -24,7 +25,7 @@ export default function SearchPage() {
   const [data, setData] = useState([]);
   const [meta, setMeta] = useState(null);
   const [error, setError] = useState(null);
-  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const [isPending, startTransition] = useTransition();
   const token = useAuthStore(state => state.token);
 
@@ -41,6 +42,7 @@ export default function SearchPage() {
         params.append('page', page);
         
         if (currentFilters.vendorId) params.append('vendorId', currentFilters.vendorId);
+        if (currentFilters.clientId) params.append('clientId', currentFilters.clientId);
         if (currentFilters.dateFrom) params.append('dateFrom', currentFilters.dateFrom);
         if (currentFilters.dateTo) params.append('dateTo', currentFilters.dateTo);
         if (currentFilters.status) params.append('status', currentFilters.status);
@@ -67,7 +69,7 @@ export default function SearchPage() {
     fetchResults();
 
     return () => controller.abort();
-  }, [query, page, currentFilters.vendorId, currentFilters.dateFrom, currentFilters.dateTo, currentFilters.status, token]);
+  }, [query, page, currentFilters.vendorId, currentFilters.clientId, currentFilters.dateFrom, currentFilters.dateTo, currentFilters.status, token]);
 
   const handleApplyFilters = (newFilters) => {
     const params = new URLSearchParams(searchParams);
@@ -99,6 +101,16 @@ export default function SearchPage() {
 
   const hasActiveFilters = Object.values(currentFilters).some(v => v !== '');
 
+  const getVendorName = (id) => {
+    const v = meta?.facets?.asesores?.find(x => x.id === id);
+    return v ? v.name : id;
+  };
+
+  const getClientName = (id) => {
+    const c = meta?.facets?.clientes?.find(x => x.id === id);
+    return c ? c.name : id;
+  };
+
   const renderPill = (key, label, value) => {
     if (!value) return null;
     return (
@@ -114,40 +126,41 @@ export default function SearchPage() {
   return (
     <div className="flex flex-col h-screen bg-gray-50 overflow-hidden pt-14">
       {/* Search Header Row */}
-      <div className="bg-white border-b border-gray-200 p-4 md:px-6 shadow-sm z-10 flex-shrink-0">
-        <div className="max-w-7xl mx-auto">
-          <div className="flex justify-between items-center mb-3">
-            <h1 className="text-xl md:text-2xl font-bold text-gray-800 flex items-center gap-3">
-              {query ? `Resultados para "${query}"` : 'Búsqueda Global'}
-              {meta?.pagination?.hasMore !== undefined && (
-                <span className="text-sm font-normal text-gray-500 bg-gray-100 px-2 py-1 rounded-md">
-                  Página {meta.pagination.page}
-                </span>
+      <div className="bg-white border-b border-gray-200 p-4 shadow-sm z-10 flex-shrink-0">
+        <div className="w-full px-2">
+          <div className="flex justify-between items-center mb-2">
+            <div className="flex items-center gap-4">
+              {!sidebarOpen && (
+                <button 
+                  className="flex items-center justify-center p-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors shadow-sm"
+                  onClick={() => setSidebarOpen(true)}
+                  title="Mostrar Filtros"
+                >
+                  <Filter size={18} /> 
+                  {hasActiveFilters && (
+                    <span className="absolute top-0 right-0 h-2.5 w-2.5 bg-blue-500 rounded-full border-2 border-white transform translate-x-1/2 -translate-y-1/2"></span>
+                  )}
+                </button>
               )}
-            </h1>
-            <button 
-              className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50 hover:text-blue-600 transition-colors shadow-sm focus:ring-2 focus:ring-blue-100"
-              onClick={() => setDrawerOpen(true)}
-            >
-              <Filter size={18} /> 
-              <span className="hidden sm:inline">Filtros</span>
-              {hasActiveFilters && (
-                <span className="flex h-2 w-2 relative -top-1 -right-1">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
-                </span>
-              )}
-            </button>
+              <h1 className="text-xl font-bold text-gray-800 flex items-center gap-3">
+                {query ? `Resultados para "${query}"` : 'Búsqueda Global'}
+                {meta?.pagination?.hasMore !== undefined && (
+                  <span className="text-sm font-normal text-gray-500 bg-gray-100 px-2 py-1 rounded-md">
+                    Página {meta.pagination.page}
+                  </span>
+                )}
+              </h1>
+            </div>
           </div>
 
           {/* Active Filters Pills */}
           {hasActiveFilters && (
-            <div className="flex flex-wrap gap-2 items-center mt-2">
-              <span className="text-sm font-medium text-gray-500 mr-1">Filtros aplicados:</span>
-              {renderPill('vendorId', 'Asesor', currentFilters.vendorId)}
+            <div className="flex flex-wrap gap-2 items-center mt-3">
+              <span className="text-sm font-medium text-gray-500 mr-1">Filtros:</span>
+              {renderPill('vendorId', 'Asesor', getVendorName(currentFilters.vendorId))}
+              {renderPill('clientId', 'Cliente', getClientName(currentFilters.clientId))}
               {renderPill('dateFrom', 'Desde', currentFilters.dateFrom)}
               {renderPill('dateTo', 'Hasta', currentFilters.dateTo)}
-              {renderPill('status', 'Estatus', currentFilters.status)}
               
               <button 
                 onClick={clearAllFilters}
@@ -160,29 +173,33 @@ export default function SearchPage() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-hidden relative max-w-7xl mx-auto w-full px-4 md:px-6">
-        <ErrorBoundary>
-          <SearchResultsLayout 
-            data={data} 
-            loading={isPending} 
-            error={error} 
-            query={query} 
-            meta={meta}
-            onPageChange={(newPage) => {
-              const params = new URLSearchParams(searchParams);
-              params.set('page', newPage.toString());
-              setSearchParams(params);
-            }}
-          />
-        </ErrorBoundary>
+      {/* Main Content Area (3 Columns) */}
+      <div className="flex-1 flex overflow-hidden w-full relative">
+        <FiltersSidebar 
+          isOpen={sidebarOpen}
+          currentFilters={currentFilters}
+          onApply={handleApplyFilters}
+          onClose={() => setSidebarOpen(false)}
+          facets={meta?.facets}
+        />
+        
+        <div className="flex-1 overflow-auto bg-gray-50 p-2 md:p-4">
+          <ErrorBoundary>
+            <SearchResultsLayout 
+              data={data} 
+              loading={isPending} 
+              error={error} 
+              query={query} 
+              meta={meta}
+              onPageChange={(newPage) => {
+                const params = new URLSearchParams(searchParams);
+                params.set('page', newPage.toString());
+                setSearchParams(params);
+              }}
+            />
+          </ErrorBoundary>
+        </div>
       </div>
-
-      <FiltersDrawer 
-        isOpen={drawerOpen} 
-        onClose={() => setDrawerOpen(false)}
-        currentFilters={currentFilters}
-        onApply={handleApplyFilters}
-      />
     </div>
   );
 }
