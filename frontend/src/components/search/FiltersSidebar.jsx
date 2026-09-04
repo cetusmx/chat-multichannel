@@ -43,7 +43,7 @@ export default function FiltersSidebar({ facets, loading, activeTypes, onFilterC
                       {t.label}
                     </span>
                     <span className={`px-2 py-0.5 rounded-full text-xs ${isActive ? 'bg-blue-100' : 'bg-gray-100'}`}>
-                      {t.count}
+                      {typeof t.count === "object" ? JSON.stringify(t.count) : t.count}
                     </span>
                   </button>
                 );

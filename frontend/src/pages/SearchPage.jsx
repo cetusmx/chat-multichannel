@@ -107,7 +107,7 @@ export default function SearchPage() {
       <div className="flex-1 overflow-auto p-4 md:p-6">
         <div className="flex justify-between items-center mb-4">
           <h1 className="text-2xl font-bold text-gray-800">
-            {query ? `Resultados para "${query}"` : 'Búsqueda Global'}
+            {typeof query === "object" ? JSON.stringify(query) : query ? `Resultados para "${query}"` : 'Búsqueda Global'}
           </h1>
           <button 
             className="md:hidden flex items-center gap-2 text-blue-600 font-medium p-2"
@@ -122,8 +122,8 @@ export default function SearchPage() {
           <div className="flex flex-wrap gap-2 mb-4 items-center">
             <span className="text-sm text-gray-500">Filtros activos:</span>
             {typeFilter.map(t => (
-              <span key={t} className="inline-flex items-center gap-1 px-3 py-1 bg-blue-50 text-blue-700 text-sm rounded-full border border-blue-200">
-                Tipo: {t}
+              <span key={typeof t === "object" ? JSON.stringify(t) : t} className="inline-flex items-center gap-1 px-3 py-1 bg-blue-50 text-blue-700 text-sm rounded-full border border-blue-200">
+                Tipo: {typeof t === "object" ? JSON.stringify(t) : t}
                 <button onClick={() => handleFilterChange('type', t)} className="hover:bg-blue-200 rounded-full p-0.5">
                   <X size={14} />
                 </button>
@@ -131,7 +131,7 @@ export default function SearchPage() {
             ))}
             {vendorIdFilter && (
               <span className="inline-flex items-center gap-1 px-3 py-1 bg-blue-50 text-blue-700 text-sm rounded-full border border-blue-200">
-                Vendedor: {vendorIdFilter}
+                Vendedor: {typeof vendorIdFilter === "object" ? JSON.stringify(vendorIdFilter) : vendorIdFilter}
                 <button onClick={() => handleFilterChange('vendorId', null)} className="hover:bg-blue-200 rounded-full p-0.5">
                   <X size={14} />
                 </button>
