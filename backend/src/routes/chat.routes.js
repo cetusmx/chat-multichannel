@@ -675,6 +675,40 @@ router.get('/:conversationId/messages', authenticate, authorize('ADMIN', 'COORDI
     const cursor = req.query.cursor;
     const aroundMessageId = req.query.aroundMessageId;
 
+    const currentConv = await prisma.conversation.findUnique({
+      where: { id: req.params.conversationId },
+      select: { clientId: true, createdAt: true, tenantId: true }
+    });
+
+    let adjacentSessions = { previousSessionId: null, nextSessionId: null };
+    
+    if (currentConv && currentConv.clientId && currentConv.tenantId === req.user.tenantId) {
+      const [prevConv, nextConv] = await Promise.all([
+        prisma.conversation.findFirst({
+          where: { 
+            clientId: currentConv.clientId, 
+            createdAt: { lt: currentConv.createdAt },
+            tenantId: req.user.tenantId
+          },
+          orderBy: { createdAt: 'desc' },
+          select: { id: true }
+        }),
+        prisma.conversation.findFirst({
+          where: { 
+            clientId: currentConv.clientId, 
+            createdAt: { gt: currentConv.createdAt },
+            tenantId: req.user.tenantId
+          },
+          orderBy: { createdAt: 'asc' },
+          select: { id: true }
+        })
+      ]);
+      adjacentSessions = {
+        previousSessionId: prevConv?.id || null,
+        nextSessionId: nextConv?.id || null
+      };
+    }
+
     if (aroundMessageId) {
       // Fetch messages around a specific message
       const findArgs = {
@@ -713,7 +747,7 @@ router.get('/:conversationId/messages', authenticate, authorize('ADMIN', 'COORDI
 
       return res.json({
         data: messages,
-        meta: { hasMore, nextCursor }
+        meta: { hasMore, nextCursor, ...adjacentSessions }
       });
     }
 
@@ -755,7 +789,8 @@ router.get('/:conversationId/messages', authenticate, authorize('ADMIN', 'COORDI
       data: messages,
       meta: {
         hasMore,
-        nextCursor
+        nextCursor,
+        ...adjacentSessions
       }
     });
   } catch (error) {

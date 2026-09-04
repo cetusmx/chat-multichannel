@@ -1,0 +1,1440 @@
+diff --git a/backend/src/app.js b/backend/src/app.js
+index d12afbe..21cc527 100644
+--- a/backend/src/app.js
++++ b/backend/src/app.js
+@@ -79,6 +79,7 @@ app.use('/api/chat', chatRoutes);
+ app.use('/api/clients', clientRoutes);
+ app.use('/api/conversations', conversationRoutes);
+ app.use('/api/metrics', metricsRoutes);
++app.use('/api/search', require('./routes/search.routes'));
+ app.use('/api/canned-responses', require('./routes/canned_responses.routes'));
+ app.use('/api/tenant/ai-rules', authenticate, require('./routes/aiRules.routes'));
+ app.use('/api/sealmarket', require('./routes/sealmarket.routes'));
+diff --git a/backend/src/controllers/__tests__/search.controller.test.js b/backend/src/controllers/__tests__/search.controller.test.js
+new file mode 100644
+index 0000000..93e5f1b
+--- /dev/null
++++ b/backend/src/controllers/__tests__/search.controller.test.js
+@@ -0,0 +1,68 @@
++const { globalSearch } = require('../search.controller');
++const searchService = require('../../services/search.service');
++
++jest.mock('../../services/search.service');
++
++describe('Search Controller', () => {
++  let req;
++  let res;
++
++  beforeEach(() => {
++    req = {
++      query: {},
++      user: { tenantId: 'tenant-1' }
++    };
++    res = {
++      status: jest.fn().mockReturnThis(),
++      json: jest.fn()
++    };
++    jest.clearAllMocks();
++  });
++
++  it('should return 400 if query is missing', async () => {
++    await globalSearch(req, res);
++    expect(res.status).toHaveBeenCalledWith(400);
++    expect(res.json).toHaveBeenCalledWith({ error: 'Invalid input: expected string, received undefined' });
++  });
++
++  it('should return 400 if query is too long', async () => {
++    req.query.q = 'a'.repeat(101);
++    await globalSearch(req, res);
++    expect(res.status).toHaveBeenCalledWith(400);
++    expect(res.json).toHaveBeenCalledWith({ error: 'Search query is too long' });
++  });
++
++  it('should sanitize special characters from query', async () => {
++    req.query.q = 'hello | & world (test)';
++    searchService.performSearch.mockResolvedValue({ data: [], meta: {} });
++    
++    await globalSearch(req, res);
++    
++    expect(searchService.performSearch).toHaveBeenCalledWith(expect.objectContaining({
++      query: 'hello world test'
++    }));
++    expect(res.json).toHaveBeenCalled();
++  });
++
++  it('should pass pagination and filters to service correctly', async () => {
++    req.query = {
++      q: 'valid search',
++      type: 'chats',
++      page: '2',
++      limit: '10'
++    };
++    
++    searchService.performSearch.mockResolvedValue({ data: [], meta: {} });
++    await globalSearch(req, res);
++    
++    expect(searchService.performSearch).toHaveBeenCalledWith({
++      tenantId: 'tenant-1',
++      query: 'valid search',
++      type: 'chats',
++      filters: { dateFrom: undefined, dateTo: undefined, vendorId: undefined },
++      page: 2,
++      limit: 10,
++      offset: 10
++    });
++  });
++});
+diff --git a/backend/src/controllers/search.controller.js b/backend/src/controllers/search.controller.js
+new file mode 100644
+index 0000000..c115fda
+--- /dev/null
++++ b/backend/src/controllers/search.controller.js
+@@ -0,0 +1,56 @@
++const searchService = require('../services/search.service');
++const { z } = require('zod');
++
++// Schema for request validation
++const searchSchema = z.object({
++  q: z.string().trim().min(1, 'Search query is required').max(100, 'Search query is too long'),
++  type: z.enum(['chats', 'clients', 'orders']).optional(),
++  dateFrom: z.string().optional(),
++  dateTo: z.string().optional(),
++  vendorId: z.string().optional(),
++  page: z.coerce.number().int().min(1).default(1),
++  limit: z.coerce.number().int().min(1).max(50).default(20)
++});
++
++const sanitizeQuery = (query) => {
++  // Remove special characters that could break tsquery
++  return query.replace(/[|&!*()<>:;]/g, ' ').replace(/\s+/g, ' ').trim();
++};
++
++const globalSearch = async (req, res) => {
++  try {
++    const parsed = searchSchema.safeParse(req.query);
++    if (!parsed.success) {
++      return res.status(400).json({ error: parsed.error.issues[0].message });
++    }
++
++    const { q, type, dateFrom, dateTo, vendorId, page, limit } = parsed.data;
++    const sanitizedQ = sanitizeQuery(q);
++
++    if (!sanitizedQ) {
++      return res.status(400).json({ error: 'Search query is invalid or empty after sanitization' });
++    }
++
++    const offset = (page - 1) * limit;
++    const tenantId = req.user.tenantId;
++
++    const result = await searchService.performSearch({
++      tenantId,
++      query: sanitizedQ,
++      type,
++      filters: { dateFrom, dateTo, vendorId },
++      limit,
++      offset,
++      page
++    });
++
++    res.json(result);
++  } catch (error) {
++    console.error('Error in globalSearch:', error);
++    res.status(500).json({ error: 'Internal server error during search' });
++  }
++};
++
++module.exports = {
++  globalSearch
++};
+diff --git a/backend/src/routes/chat.routes.js b/backend/src/routes/chat.routes.js
+index 14aa24e..3e8d4d9 100644
+--- a/backend/src/routes/chat.routes.js
++++ b/backend/src/routes/chat.routes.js
+@@ -675,6 +675,40 @@ router.get('/:conversationId/messages', authenticate, authorize('ADMIN', 'COORDI
+     const cursor = req.query.cursor;
+     const aroundMessageId = req.query.aroundMessageId;
+ 
++    const currentConv = await prisma.conversation.findUnique({
++      where: { id: req.params.conversationId },
++      select: { clientId: true, createdAt: true, tenantId: true }
++    });
++
++    let adjacentSessions = { previousSessionId: null, nextSessionId: null };
++    
++    if (currentConv && currentConv.tenantId === req.user.tenantId) {
++      const [prevConv, nextConv] = await Promise.all([
++        prisma.conversation.findFirst({
++          where: { 
++            clientId: currentConv.clientId, 
++            createdAt: { lt: currentConv.createdAt },
++            tenantId: req.user.tenantId
++          },
++          orderBy: { createdAt: 'desc' },
++          select: { id: true }
++        }),
++        prisma.conversation.findFirst({
++          where: { 
++            clientId: currentConv.clientId, 
++            createdAt: { gt: currentConv.createdAt },
++            tenantId: req.user.tenantId
++          },
++          orderBy: { createdAt: 'asc' },
++          select: { id: true }
++        })
++      ]);
++      adjacentSessions = {
++        previousSessionId: prevConv?.id || null,
++        nextSessionId: nextConv?.id || null
++      };
++    }
++
+     if (aroundMessageId) {
+       // Fetch messages around a specific message
+       const findArgs = {
+@@ -713,7 +747,7 @@ router.get('/:conversationId/messages', authenticate, authorize('ADMIN', 'COORDI
+ 
+       return res.json({
+         data: messages,
+-        meta: { hasMore, nextCursor }
++        meta: { hasMore, nextCursor, ...adjacentSessions }
+       });
+     }
+ 
+@@ -755,7 +789,8 @@ router.get('/:conversationId/messages', authenticate, authorize('ADMIN', 'COORDI
+       data: messages,
+       meta: {
+         hasMore,
+-        nextCursor
++        nextCursor,
++        ...adjacentSessions
+       }
+     });
+   } catch (error) {
+diff --git a/backend/src/routes/search.routes.js b/backend/src/routes/search.routes.js
+new file mode 100644
+index 0000000..5a8182c
+--- /dev/null
++++ b/backend/src/routes/search.routes.js
+@@ -0,0 +1,16 @@
++const express = require('express');
++const router = express.Router();
++const searchController = require('../controllers/search.controller');
++const authenticate = require('../middleware/auth');
++const rateLimit = require('express-rate-limit');
++
++// Rate limiting middleware: max 20 requests per minute
++const searchLimiter = rateLimit({
++  windowMs: 60 * 1000,
++  max: 20,
++  message: { error: 'Too many search requests, please try again later.' }
++});
++
++router.get('/', authenticate, searchLimiter, searchController.globalSearch);
++
++module.exports = router;
+diff --git a/backend/src/services/search.service.js b/backend/src/services/search.service.js
+new file mode 100644
+index 0000000..3b55d0e
+--- /dev/null
++++ b/backend/src/services/search.service.js
+@@ -0,0 +1,161 @@
++const { PrismaClient, Prisma } = require('@prisma/client');
++const prisma = new PrismaClient();
++
++const performSearch = async ({ tenantId, query, type, filters, limit, offset, page }) => {
++  const data = [];
++  const facets = { chats: 0, clients: 0, orders: 0 };
++
++  const { dateFrom, dateTo, vendorId } = filters;
++  const skipChats = type && type !== 'chats';
++  const skipClients = type && type !== 'clients';
++
++  // Build where conditions dynamically
++  let dateFilter = Prisma.sql``;
++  if (dateFrom && !isNaN(Date.parse(dateFrom))) {
++    dateFilter = Prisma.sql`AND m."created_at" >= ${new Date(dateFrom)}`;
++  }
++  if (dateTo && !isNaN(Date.parse(dateTo))) {
++    dateFilter = Prisma.sql`AND m."created_at" <= ${new Date(dateTo)}`;
++  }
++
++  let vendorFilter = Prisma.sql``;
++  if (vendorId) vendorFilter = Prisma.sql`AND c."vendor_id" = ${vendorId}`;
++
++  // 1. CHATS (Messages)
++  let chatsCount = 0;
++  if (!skipChats) {
++    const chatsCountQuery = await prisma.$queryRaw`
++      SELECT COUNT(*) as cnt
++      FROM "messages" m
++      JOIN "conversations" c ON m."conversation_id" = c.id
++      WHERE c."tenant_id" = ${tenantId}
++      AND to_tsvector('spanish', COALESCE(m.content, '')) @@ websearch_to_tsquery('spanish', ${query})
++      ${dateFilter}
++      ${vendorFilter}
++    `;
++    chatsCount = Number(chatsCountQuery[0]?.cnt || 0);
++    facets.chats = chatsCount;
++
++    if (chatsCount > 0 && offset < chatsCount) {
++      const chatLimit = Math.min(limit, chatsCount - offset);
++      
++      const messages = await prisma.$queryRaw`
++        WITH paginated_messages AS (
++          SELECT 
++            m.id, 
++            m."conversation_id", 
++            m.content, 
++            m."created_at",
++            c."client_id",
++            cl.name as "client_name",
++            cl."phone_number",
++            ts_headline('spanish', COALESCE(m.content, ''), websearch_to_tsquery('spanish', ${query}), 'StartSel=<b>, StopSel=</b>, MaxWords=20, MinWords=5') as snippet
++          FROM "messages" m
++          JOIN "conversations" c ON m."conversation_id" = c.id
++          JOIN "clients" cl ON c."client_id" = cl.id
++          WHERE c."tenant_id" = ${tenantId}
++          AND to_tsvector('spanish', COALESCE(m.content, '')) @@ websearch_to_tsquery('spanish', ${query})
++          ${dateFilter}
++          ${vendorFilter}
++          ORDER BY m."created_at" DESC
++          LIMIT ${chatLimit} OFFSET ${offset}
++        )
++        SELECT 
++          pm.*,
++          (
++            SELECT p.content 
++            FROM "messages" p 
++            WHERE p."conversation_id" = pm."conversation_id" 
++              AND p."created_at" < pm."created_at" 
++            ORDER BY p."created_at" DESC 
++            LIMIT 1
++          ) as "previousMessageContext"
++        FROM paginated_messages pm
++      `;
++
++      for (const msg of messages) {
++        data.push({
++          type: 'chat',
++          id: msg.id,
++          conversationId: msg.conversation_id,
++          clientId: msg.client_id,
++          clientName: msg.client_name || msg.phone_number,
++          createdAt: msg.created_at,
++          snippet: msg.snippet || msg.content,
++          previousMessageContext: msg.previousMessageContext || null
++        });
++      }
++    }
++  }
++
++  // 2. CLIENTS
++  if (!skipClients) {
++    const escapedQuery = query.replace(/[%_]/g, '\\$&');
++    
++    const clientsCountQuery = await prisma.$queryRaw`
++      SELECT COUNT(*) as cnt
++      FROM "clients"
++      WHERE "tenant_id" = ${tenantId}
++      AND (
++        "phone_number" ILIKE ${'%' + escapedQuery + '%'}
++        OR "name" ILIKE ${'%' + escapedQuery + '%'}
++      )
++    `;
++    const clientsCount = Number(clientsCountQuery[0]?.cnt || 0);
++    facets.clients = clientsCount;
++
++    const remainingLimit = limit - data.length;
++    // Calculate client offset taking into account chats that might have been skipped
++    const clientOffset = Math.max(0, offset - chatsCount);
++
++    if (clientsCount > 0 && remainingLimit > 0 && clientOffset < clientsCount) {
++      const clients = await prisma.$queryRaw`
++        SELECT id, name, "phone_number" as "phoneNumber", "created_at" as "createdAt"
++        FROM "clients"
++        WHERE "tenant_id" = ${tenantId}
++        AND (
++          "phone_number" ILIKE ${'%' + escapedQuery + '%'}
++          OR "name" ILIKE ${'%' + escapedQuery + '%'}
++        )
++        ORDER BY "created_at" DESC
++        LIMIT ${remainingLimit} OFFSET ${clientOffset}
++      `;
++
++      for (const c of clients) {
++        data.push({
++          type: 'client',
++          id: c.id,
++          name: c.name,
++          phone: c.phoneNumber,
++          createdAt: c.createdAt,
++          snippet: c.name || c.phoneNumber
++        });
++      }
++    }
++  }
++
++  data.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
++
++  let totalRequestedCount = 0;
++  if (!skipChats) totalRequestedCount += facets.chats;
++  if (!skipClients) totalRequestedCount += facets.clients;
++  
++  const hasMore = (offset + limit) < totalRequestedCount;
++
++  return {
++    data,
++    meta: {
++      pagination: {
++        page,
++        limit,
++        offset,
++        hasMore
++      },
++      facets
++    }
++  };
++};
++
++module.exports = {
++  performSearch
++};
+diff --git a/frontend/src/App.jsx b/frontend/src/App.jsx
+index cd384d1..5630b3a 100644
+--- a/frontend/src/App.jsx
++++ b/frontend/src/App.jsx
+@@ -12,6 +12,7 @@ import History from './pages/History.jsx';
+ import UserListPage from './features/users/UserListPage.jsx';
+ import CreateUserForm from './features/users/CreateUserForm.jsx';
+ import LoginPage from './features/auth/LoginPage.jsx';
++import SearchPage from './pages/SearchPage.jsx';
+ import ClientProfile from './pages/ClientProfile.jsx';
+ import useChatStore from './stores/useChatStore.js';
+ import useTabNotification from './hooks/useTabNotification.js';
+@@ -53,6 +54,7 @@ function AppLayout() {
+             <Route path="/users/new" element={<CreateUserForm onSuccess={() => window.location.href = '/users'} />} />
+             <Route path="/metrics" element={<Metrics />} />
+             <Route path="/history" element={<History />} />
++            <Route path="/search" element={<SearchPage />} />
+             <Route path="/settings" element={<Settings />} />
+           </Routes>
+         </main>
+diff --git a/frontend/src/components/chat/ChatViewerDetail.jsx b/frontend/src/components/chat/ChatViewerDetail.jsx
+new file mode 100644
+index 0000000..9834fbf
+--- /dev/null
++++ b/frontend/src/components/chat/ChatViewerDetail.jsx
+@@ -0,0 +1,224 @@
++import React, { useEffect, useState, useRef, useLayoutEffect } from 'react';
++import axios from 'axios';
++import { ArrowLeft, MessageSquare } from 'lucide-react';
++import useAuthStore from '../../stores/useAuthStore';
++import ContiguousSessionCard from './ContiguousSessionCard';
++
++export default function ChatViewerDetail({ conversationId, targetMessageId, onBack }) {
++  const [messages, setMessages] = useState([]);
++  const [loading, setLoading] = useState(true);
++  const [error, setError] = useState(null);
++  const [meta, setMeta] = useState(null);
++
++  const [loadingPrev, setLoadingPrev] = useState(false);
++  const [errorPrev, setErrorPrev] = useState(false);
++  
++  const [loadingNext, setLoadingNext] = useState(false);
++  const [errorNext, setErrorNext] = useState(false);
++
++  const containerRef = useRef(null);
++  const targetMessageRef = useRef(null);
++  const isFirstLoad = useRef(true);
++  
++  // For preserving scroll
++  const prevHeightRef = useRef(0);
++  const isPrependingRef = useRef(false);
++
++  const token = useAuthStore(state => state.token);
++
++  useEffect(() => {
++    if (!conversationId) return;
++
++    const controller = new AbortController();
++    setLoading(true);
++    setError(null);
++    isFirstLoad.current = true;
++
++    const fetchChat = async () => {
++      try {
++        const url = new URL(`/api/chat/${conversationId}/messages`, window.location.origin);
++        if (targetMessageId) url.searchParams.append('aroundMessageId', targetMessageId);
++        
++        const res = await axios.get(url.toString(), {
++          headers: token ? { Authorization: `Bearer ${token}` } : {},
++          signal: controller.signal
++        });
++        
++        setMessages(res.data.data);
++        setMeta(res.data.meta);
++      } catch (err) {
++        if (!axios.isCancel(err)) {
++          setError('El chat no existe o no tienes acceso');
++        }
++      } finally {
++        setLoading(false);
++      }
++    };
++    fetchChat();
++
++    return () => controller.abort();
++  }, [conversationId, targetMessageId, token]);
++
++  useLayoutEffect(() => {
++    // Preserve scroll position when prepending messages
++    if (isPrependingRef.current && containerRef.current) {
++      const newHeight = containerRef.current.scrollHeight;
++      const heightDiff = newHeight - prevHeightRef.current;
++      containerRef.current.scrollTop += heightDiff;
++      isPrependingRef.current = false;
++    }
++  }, [messages]);
++
++  useEffect(() => {
++    if (isFirstLoad.current && !loading && messages.length > 0) {
++      isFirstLoad.current = false;
++      
++      // Handle auto-scroll to target message
++      if (targetMessageId && targetMessageRef.current) {
++        targetMessageRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
++        targetMessageRef.current.focus();
++        targetMessageRef.current.classList.add('bg-yellow-100', 'transition-colors', 'duration-1000');
++        const timer = setTimeout(() => {
++          if (targetMessageRef.current) {
++            targetMessageRef.current.classList.remove('bg-yellow-100');
++          }
++        }, 3000);
++        return () => clearTimeout(timer);
++      } else if (containerRef.current) {
++        // Scroll to bottom if no target
++        containerRef.current.scrollTop = containerRef.current.scrollHeight;
++      }
++    }
++  }, [loading, messages, targetMessageId]);
++
++  const loadAdjacentSession = async (type) => {
++    const sessionId = type === 'previous' ? meta?.previousSessionId : meta?.nextSessionId;
++    if (!sessionId) return;
++    
++    type === 'previous' ? setLoadingPrev(true) : setLoadingNext(true);
++    type === 'previous' ? setErrorPrev(false) : setErrorNext(false);
++    
++    try {
++      const url = new URL(`/api/chat/${sessionId}/messages`, window.location.origin);
++      url.searchParams.append('limit', '50');
++      
++      const res = await axios.get(url.toString(), {
++        headers: token ? { Authorization: `Bearer ${token}` } : {}
++      });
++      
++      const newMessages = res.data.data;
++      const newMeta = res.data.meta;
++      
++      if (type === 'previous') {
++        if (containerRef.current) {
++           prevHeightRef.current = containerRef.current.scrollHeight;
++           isPrependingRef.current = true;
++        }
++        setMessages(prev => [...newMessages, { type: 'separator', text: 'Sesión anterior' }, ...prev]);
++        setMeta(prev => ({ ...prev, previousSessionId: newMeta.previousSessionId }));
++      } else {
++        setMessages(prev => [...prev, { type: 'separator', text: 'Siguiente sesión' }, ...newMessages]);
++        setMeta(prev => ({ ...prev, nextSessionId: newMeta.nextSessionId }));
++      }
++    } catch (err) {
++      type === 'previous' ? setErrorPrev(true) : setErrorNext(true);
++    } finally {
++      type === 'previous' ? setLoadingPrev(false) : setLoadingNext(false);
++    }
++  };
++
++  if (!conversationId) {
++    return (
++      <div className="hidden lg:flex flex-[2] bg-gray-100 rounded-lg border border-gray-200 items-center justify-center min-h-[500px]">
++        <div className="text-center">
++          <MessageSquare size={48} className="mx-auto text-gray-300 mb-4" />
++          <h3 className="text-lg font-medium text-gray-500">Selecciona un chat</h3>
++          <p className="text-sm text-gray-400">El historial se mostrará aquí</p>
++        </div>
++      </div>
++    );
++  }
++
++  return (
++    <div className="flex flex-col h-full bg-white rounded-lg border border-gray-200 shadow-sm flex-[2]">
++      {/* Header */}
++      <div className="flex items-center p-4 border-b border-gray-200 bg-white sticky top-0 z-10">
++        <button 
++          onClick={onBack}
++          aria-label="Volver a los resultados de búsqueda"
++          className="lg:hidden p-2 mr-2 text-gray-600 hover:bg-gray-100 rounded-full"
++        >
++          <ArrowLeft size={20} />
++        </button>
++        <h2 className="text-lg font-bold text-gray-800">Previsualización de Chat</h2>
++      </div>
++
++      {/* Messages */}
++      <div ref={containerRef} className="flex-1 overflow-y-auto p-4 bg-gray-50" aria-live="polite">
++        {loading ? (
++          <div className="flex justify-center py-10">
++            <svg className="animate-spin h-8 w-8 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
++              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
++              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
++            </svg>
++            <span className="sr-only">Cargando chat...</span>
++          </div>
++        ) : error ? (
++          <div className="text-center py-10 text-red-500">{error}</div>
++        ) : (
++          <div className="space-y-4">
++            {meta?.previousSessionId && (
++              <ContiguousSessionCard 
++                type="previous" 
++                loading={loadingPrev} 
++                error={errorPrev} 
++                onClick={() => loadAdjacentSession('previous')} 
++              />
++            )}
++            
++            {messages.map((msg, index) => {
++              if (msg.type === 'separator') {
++                return (
++                   <div key={`sep-${index}`} className="flex justify-center my-4">
++                     <span className="px-3 py-1 bg-gray-200 text-xs text-gray-600 rounded-full">
++                       {msg.text}
++                     </span>
++                   </div>
++                );
++              }
++              const isTarget = msg.id === targetMessageId;
++              const isVendor = msg.senderType === 'VENDOR' || msg.senderType === 'SYSTEM';
++              
++              return (
++                <div 
++                  key={msg.id} 
++                  ref={isTarget ? targetMessageRef : null}
++                  tabIndex={isTarget ? -1 : undefined}
++                  className={`flex flex-col max-w-[80%] rounded-lg p-3 ${
++                    isVendor 
++                      ? 'bg-blue-100 text-blue-900 self-end ml-auto rounded-tr-none' 
++                      : 'bg-white border border-gray-200 text-gray-800 self-start mr-auto rounded-tl-none'
++                  }`}
++                >
++                  <p className="whitespace-pre-wrap text-sm">{msg.content}</p>
++                  <span className="text-[10px] text-gray-500 text-right mt-1 opacity-70">
++                    {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
++                  </span>
++                </div>
++              );
++            })}
++
++            {meta?.nextSessionId && (
++              <ContiguousSessionCard 
++                type="next" 
++                loading={loadingNext} 
++                error={errorNext} 
++                onClick={() => loadAdjacentSession('next')} 
++              />
++            )}
++          </div>
++        )}
++      </div>
++    </div>
++  );
++}
+diff --git a/frontend/src/components/chat/ContiguousSessionCard.jsx b/frontend/src/components/chat/ContiguousSessionCard.jsx
+new file mode 100644
+index 0000000..04995d3
+--- /dev/null
++++ b/frontend/src/components/chat/ContiguousSessionCard.jsx
+@@ -0,0 +1,32 @@
++import React from 'react';
++
++export default function ContiguousSessionCard({ type, date, loading, error, onClick }) {
++  return (
++    <button
++      onClick={onClick}
++      disabled={loading}
++      aria-busy={loading}
++      aria-disabled={loading}
++      className="w-full py-3 px-4 my-2 flex items-center justify-center bg-gray-50 border border-dashed border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-100 hover:text-gray-900 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
++    >
++      {loading ? (
++        <span className="flex items-center gap-2">
++          <svg className="animate-spin h-4 w-4 text-gray-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
++            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
++            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
++          </svg>
++          Cargando {type === 'previous' ? 'mensajes anteriores' : 'mensajes siguientes'}...
++        </span>
++      ) : error ? (
++        <span className="text-red-500 flex items-center gap-2">
++          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
++          Error al cargar. Reintentar
++        </span>
++      ) : (
++        <span>
++          Cargar {type === 'previous' ? 'sesión anterior' : 'sesión siguiente'}
++        </span>
++      )}
++    </button>
++  );
++}
+diff --git a/frontend/src/components/layout/Header.jsx b/frontend/src/components/layout/Header.jsx
+index 7988f56..23deca5 100644
+--- a/frontend/src/components/layout/Header.jsx
++++ b/frontend/src/components/layout/Header.jsx
+@@ -4,6 +4,7 @@ import useUIStore from '../../stores/useUIStore.js';
+ import useAuthStore from '../../stores/useAuthStore.js';
+ import { disconnectSockets } from '../../services/socket.js';
+ import { useNavigate } from 'react-router-dom';
++import GlobalSearchInput from '../search/GlobalSearchInput.jsx';
+ 
+ export default function Header() {
+   const notifications = useUIStore((state) => state.notifications);
+@@ -37,9 +38,8 @@ export default function Header() {
+       <div className="flex items-center gap-4">
+         <span className="text-sm font-semibold text-sales-slate-100">{user?.tenantName}</span>
+         <div className="h-4 w-px bg-slate-700" />
+-        <div className="flex items-center gap-2 rounded-md bg-slate-800 px-3 py-1.5 text-sm text-sales-slate-400">
+-          <Search size={16} />
+-          <span className="hidden sm:inline">Buscar... (Ctrl+K)</span>
++        <div className="w-64 sm:w-96">
++          <GlobalSearchInput />
+         </div>
+       </div>
+ 
+diff --git a/frontend/src/components/search/FiltersDrawer.jsx b/frontend/src/components/search/FiltersDrawer.jsx
+new file mode 100644
+index 0000000..7d92906
+--- /dev/null
++++ b/frontend/src/components/search/FiltersDrawer.jsx
+@@ -0,0 +1,55 @@
++import React, { useEffect, useRef } from 'react';
++import FiltersSidebar from './FiltersSidebar';
++import { X } from 'lucide-react';
++
++export default function FiltersDrawer({ isOpen, onClose, facets, activeTypes, onFilterChange }) {
++  const dialogRef = useRef(null);
++
++  useEffect(() => {
++    const dialog = dialogRef.current;
++    if (isOpen) {
++      document.body.style.overflow = 'hidden';
++      // Native focus trapping with dialog
++      if (dialog && !dialog.open) {
++        dialog.showModal();
++      }
++    } else {
++      document.body.style.overflow = '';
++      if (dialog && dialog.open) {
++        dialog.close();
++      }
++    }
++    return () => { document.body.style.overflow = ''; };
++  }, [isOpen]);
++
++  const handleClose = () => {
++    onClose();
++  };
++
++  return (
++    <dialog 
++      ref={dialogRef}
++      onCancel={handleClose}
++      className="fixed inset-y-0 left-0 w-4/5 max-w-sm h-full m-0 bg-white shadow-xl transform transition-transform duration-300 flex flex-col p-0 backdrop:bg-black/50 backdrop:backdrop-blur-sm open:flex"
++    >
++      <div className="flex justify-between items-center p-4 border-b border-gray-200 w-full">
++        <h2 className="text-lg font-bold text-gray-800">Filtros</h2>
++        <button onClick={handleClose} aria-label="Cerrar filtros" className="p-2 text-gray-500 hover:text-gray-800 rounded-full hover:bg-gray-100">
++          <X size={20} />
++        </button>
++      </div>
++      
++      <div className="flex-1 overflow-y-auto w-full">
++        <FiltersSidebar 
++          facets={facets} 
++          loading={false} 
++          activeTypes={activeTypes}
++          onFilterChange={(k, v) => {
++            onFilterChange(k, v);
++            handleClose();
++          }}
++        />
++      </div>
++    </dialog>
++  );
++}
+diff --git a/frontend/src/components/search/FiltersSidebar.jsx b/frontend/src/components/search/FiltersSidebar.jsx
+new file mode 100644
+index 0000000..9bafda0
+--- /dev/null
++++ b/frontend/src/components/search/FiltersSidebar.jsx
+@@ -0,0 +1,57 @@
++import React from 'react';
++import { MessageSquare, User, ShoppingBag } from 'lucide-react';
++
++export default function FiltersSidebar({ facets, loading, activeTypes, onFilterChange }) {
++  const types = [
++    { id: 'chats', label: 'Chats', icon: MessageSquare, count: facets?.chats || 0 },
++    { id: 'clients', label: 'Clientes', icon: User, count: facets?.clients || 0 },
++    { id: 'orders', label: 'Pedidos', icon: ShoppingBag, count: facets?.orders || 0 },
++  ];
++
++  return (
++    <div className="p-6 h-full overflow-y-auto">
++      <h2 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-4">Filtrar Por</h2>
++      
++      <div className="space-y-6">
++        <div>
++          <h3 className="text-sm font-semibold text-gray-800 mb-3">Categoría</h3>
++          {loading && !facets ? (
++            <div className="space-y-2">
++              {[1, 2, 3].map(i => <div key={i} className="h-8 bg-gray-200 animate-pulse rounded" />)}
++            </div>
++          ) : (
++            <div className="space-y-1">
++              {types.map(t => {
++                const isActive = activeTypes.includes(t.id);
++                const disabled = t.count === 0 && !isActive;
++                const Icon = t.icon;
++                return (
++                  <button
++                    key={t.id}
++                    disabled={disabled}
++                    onClick={() => onFilterChange('type', t.id)}
++                    className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-colors ${
++                      isActive 
++                        ? 'bg-blue-50 text-blue-700 font-medium' 
++                        : disabled 
++                          ? 'text-gray-400 cursor-not-allowed' 
++                          : 'text-gray-700 hover:bg-gray-100'
++                    }`}
++                  >
++                    <span className="flex items-center gap-2">
++                      <Icon size={16} className={isActive ? 'text-blue-600' : 'text-gray-400'} />
++                      {t.label}
++                    </span>
++                    <span className={`px-2 py-0.5 rounded-full text-xs ${isActive ? 'bg-blue-100' : 'bg-gray-100'}`}>
++                      {t.count}
++                    </span>
++                  </button>
++                );
++              })}
++            </div>
++          )}
++        </div>
++      </div>
++    </div>
++  );
++}
+diff --git a/frontend/src/components/search/GlobalSearchInput.jsx b/frontend/src/components/search/GlobalSearchInput.jsx
+new file mode 100644
+index 0000000..ecf9f22
+--- /dev/null
++++ b/frontend/src/components/search/GlobalSearchInput.jsx
+@@ -0,0 +1,129 @@
++import React, { useState, useEffect, useRef } from 'react';
++import { useNavigate, useSearchParams } from 'react-router-dom';
++import { Search, X, Clock } from 'lucide-react';
++import { useSearchStore } from '../../stores/searchStore';
++
++export default function GlobalSearchInput() {
++  const [searchParams] = useSearchParams();
++  const navigate = useNavigate();
++  const { recentSearches, addSearchTerm, removeSearchTerm, clearHistory } = useSearchStore();
++
++  const [inputValue, setInputValue] = useState('');
++  const [isFocused, setIsFocused] = useState(false);
++  const containerRef = useRef(null);
++
++  // Sync with URL
++  useEffect(() => {
++    const q = searchParams.get('q');
++    if (q) {
++      setInputValue(q);
++    } else {
++      setInputValue('');
++    }
++  }, [searchParams]);
++
++  // Click outside to close history
++  useEffect(() => {
++    function handleClickOutside(event) {
++      if (containerRef.current && !containerRef.current.contains(event.target)) {
++        setIsFocused(false);
++      }
++    }
++    document.addEventListener('mousedown', handleClickOutside);
++    return () => document.removeEventListener('mousedown', handleClickOutside);
++  }, []);
++
++  const handleSubmit = (e) => {
++    e.preventDefault();
++    const term = inputValue.trim();
++    if (!term) return;
++
++    addSearchTerm(term);
++    setIsFocused(false);
++    navigate(`/search?q=${encodeURIComponent(term)}`);
++  };
++
++  const handleClear = () => {
++    setInputValue('');
++  };
++
++  const handleHistoryClick = (term) => {
++    setInputValue(term);
++    addSearchTerm(term);
++    setIsFocused(false);
++    navigate(`/search?q=${encodeURIComponent(term)}`);
++  };
++
++  const showDropdown = isFocused && recentSearches.length > 0;
++
++  return (
++    <div ref={containerRef} className="relative w-full max-w-md mx-auto">
++      <form onSubmit={handleSubmit} role="search" className="relative">
++        <div className="relative flex items-center w-full">
++          <div className="absolute left-3 text-gray-400">
++            <Search size={18} />
++          </div>
++          <input
++            type="text"
++            value={inputValue}
++            onChange={(e) => setInputValue(e.target.value)}
++            onFocus={() => setIsFocused(true)}
++            placeholder="Buscar chats, clientes o pedidos..."
++            aria-label="Buscar en toda la aplicación"
++            aria-expanded={showDropdown}
++            aria-controls="history-dropdown-id"
++            maxLength={100}
++            className="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
++          />
++          {inputValue && (
++            <button
++              type="button"
++              onClick={handleClear}
++              className="absolute right-3 text-gray-400 hover:text-gray-600"
++              aria-label="Limpiar búsqueda"
++            >
++              <X size={16} />
++            </button>
++          )}
++        </div>
++      </form>
++
++      {showDropdown && (
++        <div 
++          id="history-dropdown-id" 
++          className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-50 py-1"
++        >
++          <div className="flex justify-between items-center px-4 py-2 border-b border-gray-100">
++            <span className="text-xs font-semibold text-gray-500 uppercase">Búsquedas Recientes</span>
++            <button 
++              onMouseDown={(e) => { e.preventDefault(); clearHistory(); }}
++              className="text-xs text-blue-600 hover:text-blue-800"
++            >
++              Borrar historial
++            </button>
++          </div>
++          <ul className="max-h-64 overflow-y-auto">
++            {recentSearches.map((term, idx) => (
++              <li key={idx} className="flex justify-between items-center hover:bg-gray-50 px-4 py-2 cursor-pointer group">
++                <div 
++                  className="flex items-center gap-2 flex-grow"
++                  onMouseDown={(e) => { e.preventDefault(); handleHistoryClick(term); }}
++                >
++                  <Clock size={14} className="text-gray-400" />
++                  <span className="text-sm text-gray-700">{term}</span>
++                </div>
++                <button
++                  onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); removeSearchTerm(term); }}
++                  className="text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity p-1"
++                  aria-label={`Eliminar ${term} del historial`}
++                >
++                  <X size={14} />
++                </button>
++              </li>
++            ))}
++          </ul>
++        </div>
++      )}
++    </div>
++  );
++}
+diff --git a/frontend/src/components/search/ResultCard.jsx b/frontend/src/components/search/ResultCard.jsx
+new file mode 100644
+index 0000000..cab6fb5
+--- /dev/null
++++ b/frontend/src/components/search/ResultCard.jsx
+@@ -0,0 +1,57 @@
++import React, { memo, useCallback } from 'react';
++import DOMPurify from 'dompurify';
++
++const ResultCard = memo(({ item, isActive, onClick }) => {
++  const handleClick = useCallback(() => {
++    onClick(item);
++  }, [item, onClick]);
++
++  const date = new Date(item.createdAt);
++  const isValidDate = !isNaN(date.getTime());
++
++  return (
++    <div 
++      onClick={handleClick}
++      className={`p-4 border rounded-lg cursor-pointer transition-colors ${
++        isActive 
++          ? 'bg-blue-50 border-blue-400 shadow-sm' 
++          : 'bg-white border-gray-200 hover:border-blue-300'
++      }`}
++    >
++      <div className="flex justify-between items-start mb-2">
++        <h4 className="font-semibold text-gray-800">
++          {item.clientName || item.name || item.phone || 'Contacto Desconocido'}
++        </h4>
++        <span className="text-xs text-gray-500 whitespace-nowrap ml-2">
++          {isValidDate ? date.toLocaleDateString() : 'Fecha desconocida'}
++        </span>
++      </div>
++      
++      {item.type === 'chat' && (
++        <div className="text-sm text-gray-600">
++          {item.previousMessageContext && (
++             <p className="text-gray-400 italic mb-1 line-clamp-1 border-l-2 border-gray-300 pl-2">
++               {item.previousMessageContext}
++             </p>
++          )}
++          <p 
++            className="line-clamp-3 whitespace-pre-wrap" 
++            dangerouslySetInnerHTML={{ 
++              __html: DOMPurify.sanitize(item.snippet, { 
++                ALLOWED_TAGS: ['b', 'i', 'em', 'strong', 'mark', 'br'], 
++                ALLOWED_ATTR: [] 
++              }) 
++            }}
++          />
++        </div>
++      )}
++      
++      {item.type === 'client' && (
++        <p className="text-sm text-gray-600">Teléfono: {item.phone}</p>
++      )}
++    </div>
++  );
++});
++
++ResultCard.displayName = 'ResultCard';
++export default ResultCard;
+diff --git a/frontend/src/components/search/SearchResultsLayout.jsx b/frontend/src/components/search/SearchResultsLayout.jsx
+new file mode 100644
+index 0000000..3eaf049
+--- /dev/null
++++ b/frontend/src/components/search/SearchResultsLayout.jsx
+@@ -0,0 +1,131 @@
++import React, { useState, useEffect } from 'react';
++import { useSearchParams } from 'react-router-dom';
++import ResultCard from './ResultCard';
++import ChatViewerDetail from '../chat/ChatViewerDetail';
++
++export default function SearchResultsLayout({ data, loading, error, query, meta, onPageChange }) {
++  const [searchParams, setSearchParams] = useSearchParams();
++  const selectedChatId = searchParams.get('selectedChatId');
++  const targetMessageId = searchParams.get('targetMessageId');
++
++  if (error) {
++    return (
++      <div className="flex flex-col items-center justify-center py-20 text-center">
++        <div className="text-red-500 mb-4">
++          <svg className="w-12 h-12 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
++            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
++          </svg>
++        </div>
++        <h3 className="text-lg font-bold text-gray-800">Error al buscar</h3>
++        <p className="text-gray-500 mt-2">{error}</p>
++        <button 
++          onClick={() => window.location.reload()}
++          className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
++        >
++          Reintentar
++        </button>
++      </div>
++    );
++  }
++
++  if (loading && (!data || data.length === 0)) {
++    return (
++      <div className="space-y-4">
++        {[1, 2, 3, 4, 5].map(i => (
++          <div key={i} className="animate-pulse flex space-x-4 p-4 border border-gray-200 rounded-lg bg-white">
++            <div className="rounded-full bg-gray-200 h-10 w-10"></div>
++            <div className="flex-1 space-y-4 py-1">
++              <div className="h-4 bg-gray-200 rounded w-3/4"></div>
++              <div className="space-y-2">
++                <div className="h-4 bg-gray-200 rounded"></div>
++                <div className="h-4 bg-gray-200 rounded w-5/6"></div>
++              </div>
++            </div>
++          </div>
++        ))}
++      </div>
++    );
++  }
++
++  if (!loading && data && data.length === 0) {
++    return (
++      <div className="flex flex-col items-center justify-center py-20 text-center">
++        <h3 className="text-lg font-bold text-gray-800">No se encontraron resultados</h3>
++        <p className="text-gray-500 mt-2">Intenta con otros términos o ajusta tus filtros.</p>
++      </div>
++    );
++  }
++
++  const { pagination } = meta || {};
++
++  const handleCardClick = (item) => {
++    if (item.type === 'chat') {
++      const newParams = new URLSearchParams(searchParams);
++      if (selectedChatId === item.conversationId && targetMessageId === item.id) {
++        // Deselect if already active
++        newParams.delete('selectedChatId');
++        newParams.delete('targetMessageId');
++      } else {
++        newParams.set('selectedChatId', item.conversationId);
++        newParams.set('targetMessageId', item.id);
++      }
++      setSearchParams(newParams, { replace: true });
++    }
++  };
++
++  const handleBack = () => {
++    const newParams = new URLSearchParams(searchParams);
++    newParams.delete('selectedChatId');
++    newParams.delete('targetMessageId');
++    setSearchParams(newParams, { replace: true });
++  };
++
++  // Master column hide logic on mobile
++  const masterClass = selectedChatId ? "hidden lg:flex" : "flex";
++  // Detail column hide logic on mobile
++  const detailClass = selectedChatId ? "flex" : "hidden lg:flex";
++
++  return (
++    <div className="flex flex-col h-full lg:flex-row gap-6">
++      {/* Master Column */}
++      <div className={`${masterClass} flex-1 lg:w-1/3 xl:w-1/4 flex-col space-y-4 overflow-y-auto pr-2 pb-10`}>
++        {data?.map(item => (
++          <ResultCard 
++            key={`${item.type}-${item.id}`} 
++            item={item} 
++            isActive={selectedChatId === item.conversationId && targetMessageId === item.id}
++            onClick={handleCardClick}
++          />
++        ))}
++
++        {/* Pagination Controls */}
++        <div className="flex justify-between items-center mt-6 pt-4 border-t border-gray-200">
++          <button 
++            disabled={pagination?.page <= 1 || loading}
++            onClick={() => onPageChange(pagination.page - 1)}
++            className="px-3 py-1 text-sm bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50"
++          >
++            Anterior
++          </button>
++          <span className="text-sm text-gray-500">Página {pagination?.page || 1}</span>
++          <button 
++            disabled={!pagination?.hasMore || loading}
++            onClick={() => onPageChange(pagination.page + 1)}
++            className="px-3 py-1 text-sm bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50"
++          >
++            Siguiente
++          </button>
++        </div>
++      </div>
++
++      {/* Detail Column (US-2.2) */}
++      <div className={`${detailClass} flex-[2]`}>
++         <ChatViewerDetail 
++            conversationId={selectedChatId} 
++            targetMessageId={targetMessageId} 
++            onBack={handleBack} 
++         />
++      </div>
++    </div>
++  );
++}
+diff --git a/frontend/src/pages/SearchPage.jsx b/frontend/src/pages/SearchPage.jsx
+new file mode 100644
+index 0000000..ccb49cb
+--- /dev/null
++++ b/frontend/src/pages/SearchPage.jsx
+@@ -0,0 +1,170 @@
++import React, { useEffect, useState, useTransition } from 'react';
++import { useSearchParams } from 'react-router-dom';
++import axios from 'axios';
++import SearchResultsLayout from '../components/search/SearchResultsLayout';
++import FiltersSidebar from '../components/search/FiltersSidebar';
++import FiltersDrawer from '../components/search/FiltersDrawer';
++import { Filter, X } from 'lucide-react';
++import useAuthStore from '../stores/useAuthStore';
++
++export default function SearchPage() {
++  const [searchParams, setSearchParams] = useSearchParams();
++  const query = searchParams.get('q') || '';
++  const typeFilter = searchParams.getAll('type');
++  const vendorIdFilter = searchParams.get('vendorId');
++  const page = parseInt(searchParams.get('page') || '1', 10);
++
++  const [data, setData] = useState([]);
++  const [meta, setMeta] = useState(null);
++  const [error, setError] = useState(null);
++  const [drawerOpen, setDrawerOpen] = useState(false);
++  const [isPending, startTransition] = useTransition();
++  const token = useAuthStore(state => state.token);
++
++  useEffect(() => {
++    if (!query) return;
++
++    const controller = new AbortController();
++    setError(null);
++
++    const fetchResults = async () => {
++      try {
++        const params = new URLSearchParams();
++        params.append('q', query);
++        params.append('page', page);
++        typeFilter.forEach(t => params.append('type', t));
++        if (vendorIdFilter) params.append('vendorId', vendorIdFilter);
++
++        const res = await axios.get(`/api/search?${params.toString()}`, {
++          signal: controller.signal,
++          headers: token ? { Authorization: `Bearer ${token}` } : {}
++        });
++
++        startTransition(() => {
++          setData(res.data.data);
++          setMeta(res.data.meta);
++        });
++      } catch (err) {
++        if (axios.isCancel(err)) return;
++        startTransition(() => {
++          setError(err.response?.data?.error || 'Error de red al cargar resultados');
++        });
++      }
++    };
++
++    fetchResults();
++
++    return () => controller.abort();
++  }, [query, page, typeFilter.join(','), vendorIdFilter, token]);
++
++  const handleFilterChange = (filterKey, value) => {
++    const newParams = new URLSearchParams(searchParams);
++    
++    // reset page to 1
++    newParams.set('page', '1');
++    
++    if (filterKey === 'type') {
++      const current = newParams.getAll('type');
++      newParams.delete('type');
++      if (current.includes(value)) {
++        // remove
++        current.filter(t => t !== value).forEach(t => newParams.append('type', t));
++      } else {
++        // add
++        current.forEach(t => newParams.append('type', t));
++        newParams.append('type', value);
++      }
++    } else if (value) {
++      newParams.set(filterKey, value);
++    } else {
++      newParams.delete(filterKey);
++    }
++    setSearchParams(newParams);
++  };
++
++  const clearAllFilters = () => {
++    const newParams = new URLSearchParams();
++    newParams.set('q', query);
++    setSearchParams(newParams);
++  };
++
++  return (
++    <div className="flex h-screen bg-gray-50 overflow-hidden pt-14">
++      {/* Desktop Sidebar */}
++      <div className="hidden md:block w-64 border-r border-gray-200 bg-white flex-shrink-0">
++        <FiltersSidebar 
++          facets={meta?.facets} 
++          loading={isPending}
++          activeTypes={typeFilter}
++          onFilterChange={handleFilterChange}
++        />
++      </div>
++
++      {/* Main Content */}
++      <div className="flex-1 overflow-auto p-4 md:p-6">
++        <div className="flex justify-between items-center mb-4">
++          <h1 className="text-2xl font-bold text-gray-800">
++            {query ? `Resultados para "${query}"` : 'Búsqueda Global'}
++          </h1>
++          <button 
++            className="md:hidden flex items-center gap-2 text-blue-600 font-medium p-2"
++            onClick={() => setDrawerOpen(true)}
++          >
++            <Filter size={18} /> Filtros
++          </button>
++        </div>
++
++        {/* Active Filters Pills */}
++        {(typeFilter.length > 0 || vendorIdFilter) && (
++          <div className="flex flex-wrap gap-2 mb-4 items-center">
++            <span className="text-sm text-gray-500">Filtros activos:</span>
++            {typeFilter.map(t => (
++              <span key={t} className="inline-flex items-center gap-1 px-3 py-1 bg-blue-50 text-blue-700 text-sm rounded-full border border-blue-200">
++                Tipo: {t}
++                <button onClick={() => handleFilterChange('type', t)} className="hover:bg-blue-200 rounded-full p-0.5">
++                  <X size={14} />
++                </button>
++              </span>
++            ))}
++            {vendorIdFilter && (
++              <span className="inline-flex items-center gap-1 px-3 py-1 bg-blue-50 text-blue-700 text-sm rounded-full border border-blue-200">
++                Vendedor: {vendorIdFilter}
++                <button onClick={() => handleFilterChange('vendorId', null)} className="hover:bg-blue-200 rounded-full p-0.5">
++                  <X size={14} />
++                </button>
++              </span>
++            )}
++            <button 
++              onClick={clearAllFilters}
++              className="text-sm text-gray-500 hover:text-gray-800 underline ml-2"
++            >
++              Borrar todos
++            </button>
++          </div>
++        )}
++
++        <SearchResultsLayout 
++          data={data} 
++          loading={isPending} 
++          error={error} 
++          query={query} 
++          meta={meta}
++          onPageChange={(newPage) => {
++            const params = new URLSearchParams(searchParams);
++            params.set('page', newPage.toString());
++            setSearchParams(params);
++          }}
++        />
++      </div>
++
++      {/* Mobile Drawer */}
++      <FiltersDrawer 
++        isOpen={drawerOpen} 
++        onClose={() => setDrawerOpen(false)}
++        facets={meta?.facets}
++        activeTypes={typeFilter}
++        onFilterChange={handleFilterChange}
++      />
++    </div>
++  );
++}
+diff --git a/frontend/src/stores/__tests__/searchStore.test.js b/frontend/src/stores/__tests__/searchStore.test.js
+new file mode 100644
+index 0000000..14c7281
+--- /dev/null
++++ b/frontend/src/stores/__tests__/searchStore.test.js
+@@ -0,0 +1,51 @@
++import { describe, it, expect, beforeEach } from 'vitest';
++import { useSearchStore } from '../searchStore';
++
++describe('Search Store', () => {
++  beforeEach(() => {
++    useSearchStore.setState({ recentSearches: [] });
++  });
++
++  it('should add a new search term to recent searches', () => {
++    useSearchStore.getState().addSearchTerm('hello');
++    expect(useSearchStore.getState().recentSearches).toEqual(['hello']);
++  });
++
++  it('should avoid duplicates and move term to top', () => {
++    const store = useSearchStore.getState();
++    store.addSearchTerm('first');
++    store.addSearchTerm('second');
++    store.addSearchTerm('First');
++    
++    expect(useSearchStore.getState().recentSearches).toEqual(['First', 'second']);
++  });
++
++  it('should limit recent searches to 10 items', () => {
++    const store = useSearchStore.getState();
++    for (let i = 1; i <= 15; i++) {
++      store.addSearchTerm(`term-${i}`);
++    }
++    
++    expect(useSearchStore.getState().recentSearches.length).toBe(10);
++    expect(useSearchStore.getState().recentSearches[0]).toBe('term-15');
++    expect(useSearchStore.getState().recentSearches[9]).toBe('term-6');
++  });
++
++  it('should remove a specific search term', () => {
++    const store = useSearchStore.getState();
++    store.addSearchTerm('term1');
++    store.addSearchTerm('term2');
++    
++    store.removeSearchTerm('term1');
++    expect(useSearchStore.getState().recentSearches).toEqual(['term2']);
++  });
++
++  it('should clear all history', () => {
++    const store = useSearchStore.getState();
++    store.addSearchTerm('term1');
++    store.addSearchTerm('term2');
++    
++    store.clearHistory();
++    expect(useSearchStore.getState().recentSearches).toEqual([]);
++  });
++});
+diff --git a/frontend/src/stores/searchStore.js b/frontend/src/stores/searchStore.js
+new file mode 100644
+index 0000000..eca00cd
+--- /dev/null
++++ b/frontend/src/stores/searchStore.js
+@@ -0,0 +1,29 @@
++import { create } from 'zustand';
++import { persist } from 'zustand/middleware';
++
++export const useSearchStore = create(
++  persist(
++    (set) => ({
++      recentSearches: [],
++      addSearchTerm: (term) => set((state) => {
++        const lowerTerm = term.trim().toLowerCase();
++        // Remove existing to avoid duplicates
++        const filtered = state.recentSearches.filter(t => t.toLowerCase() !== lowerTerm);
++        // Add to front
++        filtered.unshift(term.trim());
++        // Cap at 10
++        if (filtered.length > 10) {
++          filtered.pop();
++        }
++        return { recentSearches: filtered };
++      }),
++      removeSearchTerm: (term) => set((state) => ({
++        recentSearches: state.recentSearches.filter(t => t.toLowerCase() !== term.toLowerCase())
++      })),
++      clearHistory: () => set({ recentSearches: [] })
++    }),
++    {
++      name: 'search-history',
++    }
++  )
++);

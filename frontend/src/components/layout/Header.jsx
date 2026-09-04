@@ -4,6 +4,7 @@ import useUIStore from '../../stores/useUIStore.js';
 import useAuthStore from '../../stores/useAuthStore.js';
 import { disconnectSockets } from '../../services/socket.js';
 import { useNavigate } from 'react-router-dom';
+import GlobalSearchInput from '../search/GlobalSearchInput.jsx';
 
 export default function Header() {
   const notifications = useUIStore((state) => state.notifications);
@@ -37,9 +38,8 @@ export default function Header() {
       <div className="flex items-center gap-4">
         <span className="text-sm font-semibold text-sales-slate-100">{user?.tenantName}</span>
         <div className="h-4 w-px bg-slate-700" />
-        <div className="flex items-center gap-2 rounded-md bg-slate-800 px-3 py-1.5 text-sm text-sales-slate-400">
-          <Search size={16} />
-          <span className="hidden sm:inline">Buscar... (Ctrl+K)</span>
+        <div className="w-64 sm:w-96">
+          <GlobalSearchInput />
         </div>
       </div>
 

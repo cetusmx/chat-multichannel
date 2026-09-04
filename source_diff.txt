@@ -1,0 +1,883 @@
+diff --git a/backend/src/app.js b/backend/src/app.js
+index d12afbe..21cc527 100644
+--- a/backend/src/app.js
++++ b/backend/src/app.js
+@@ -79,6 +79,7 @@ app.use('/api/chat', chatRoutes);
+ app.use('/api/clients', clientRoutes);
+ app.use('/api/conversations', conversationRoutes);
+ app.use('/api/metrics', metricsRoutes);
++app.use('/api/search', require('./routes/search.routes'));
+ app.use('/api/canned-responses', require('./routes/canned_responses.routes'));
+ app.use('/api/tenant/ai-rules', authenticate, require('./routes/aiRules.routes'));
+ app.use('/api/sealmarket', require('./routes/sealmarket.routes'));
+diff --git a/backend/src/controllers/search.controller.js b/backend/src/controllers/search.controller.js
+new file mode 100644
+index 0000000..a5db918
+--- /dev/null
++++ b/backend/src/controllers/search.controller.js
+@@ -0,0 +1,45 @@
++const searchService = require('../services/search.service');
++
++const globalSearch = async (req, res) => {
++  try {
++    const { q, type, dateFrom, dateTo, vendorId, page = 1, limit = 20 } = req.query;
++    
++    if (!q || typeof q !== 'string' || q.trim() === '') {
++      return res.status(400).json({ error: 'Search query is required' });
++    }
++    
++    const query = q.trim();
++    if (query.length > 100) {
++      return res.status(400).json({ error: 'Search query is too long (max 100 characters)' });
++    }
++    
++    let parsedLimit = parseInt(limit, 10);
++    if (isNaN(parsedLimit) || parsedLimit <= 0) parsedLimit = 20;
++    if (parsedLimit > 50) parsedLimit = 50; 
++    
++    let parsedPage = parseInt(page, 10);
++    if (isNaN(parsedPage) || parsedPage <= 0) parsedPage = 1;
++    
++    const offset = (parsedPage - 1) * parsedLimit;
++    const tenantId = req.user.tenantId;
++
++    const result = await searchService.performSearch({
++      tenantId,
++      query,
++      type,
++      filters: { dateFrom, dateTo, vendorId },
++      limit: parsedLimit,
++      offset,
++      page: parsedPage
++    });
++
++    res.json(result);
++  } catch (error) {
++    console.error('Error in globalSearch:', error);
++    res.status(500).json({ error: 'Internal server error during search' });
++  }
++};
++
++module.exports = {
++  globalSearch
++};
+diff --git a/backend/src/routes/search.routes.js b/backend/src/routes/search.routes.js
+new file mode 100644
+index 0000000..5a8182c
+--- /dev/null
++++ b/backend/src/routes/search.routes.js
+@@ -0,0 +1,16 @@
++const express = require('express');
++const router = express.Router();
++const searchController = require('../controllers/search.controller');
++const authenticate = require('../middleware/auth');
++const rateLimit = require('express-rate-limit');
++
++// Rate limiting middleware: max 20 requests per minute
++const searchLimiter = rateLimit({
++  windowMs: 60 * 1000,
++  max: 20,
++  message: { error: 'Too many search requests, please try again later.' }
++});
++
++router.get('/', authenticate, searchLimiter, searchController.globalSearch);
++
++module.exports = router;
+diff --git a/backend/src/services/search.service.js b/backend/src/services/search.service.js
+new file mode 100644
+index 0000000..5990399
+--- /dev/null
++++ b/backend/src/services/search.service.js
+@@ -0,0 +1,164 @@
++const { PrismaClient, Prisma } = require('@prisma/client');
++const prisma = new PrismaClient();
++
++const performSearch = async ({ tenantId, query, type, filters, limit, offset, page }) => {
++  const data = [];
++  const facets = { chats: 0, clients: 0, orders: 0 };
++  let totalCount = 0;
++
++  const { dateFrom, dateTo, vendorId } = filters;
++
++  // Sanitization of query for TSQuery
++  // Prisma raw queries take parameters, so we use $1, $2 or prisma.$queryRaw`... ${query} ...`
++  // which is already parameterized and safe from SQL injection.
++
++  const skipChats = type && type !== 'chats';
++  const skipClients = type && type !== 'clients';
++
++  // 1. CHATS (Messages)
++  if (!skipChats) {
++    // Build where conditions dynamically
++    // A strict tenant isolation is required
++    let dateFilter = Prisma.sql``;
++    if (dateFrom) dateFilter = Prisma.sql`AND m."created_at" >= ${new Date(dateFrom)}`;
++    if (dateTo) dateFilter = Prisma.sql`AND m."created_at" <= ${new Date(dateTo)}`;
++
++    let vendorFilter = Prisma.sql``;
++    if (vendorId) vendorFilter = Prisma.sql`AND c."vendor_id" = ${vendorId}`;
++
++    // Facet Count for Chats (limited to 100 max to avoid slow counts)
++    const chatsCountQuery = await prisma.$queryRaw`
++      SELECT COUNT(*) as cnt FROM (
++        SELECT m.id 
++        FROM "messages" m
++        JOIN "conversations" c ON m."conversation_id" = c.id
++        WHERE c."tenant_id" = ${tenantId}
++        AND to_tsvector('spanish', COALESCE(m.content, '')) @@ websearch_to_tsquery('spanish', ${query})
++        ${dateFilter}
++        ${vendorFilter}
++        LIMIT 100
++      ) AS sub;
++    `;
++    const chatsCount = Number(chatsCountQuery[0]?.cnt || 0);
++    facets.chats = chatsCount;
++
++    if (chatsCount > 0) {
++      // Fetch paginated messages with ts_headline only applied to the final subset
++      const messages = await prisma.$queryRaw`
++        SELECT 
++          m.id, 
++          m."conversation_id" as "conversationId", 
++          m.content, 
++          m."created_at" as "createdAt",
++          c."client_id" as "clientId",
++          cl.name as "clientName",
++          cl."phone_number" as "clientPhone",
++          ts_headline('spanish', COALESCE(m.content, ''), websearch_to_tsquery('spanish', ${query}), 'StartSel=<b>, StopSel=</b>, MaxWords=20, MinWords=5') as snippet
++        FROM "messages" m
++        JOIN "conversations" c ON m."conversation_id" = c.id
++        JOIN "clients" cl ON c."client_id" = cl.id
++        WHERE c."tenant_id" = ${tenantId}
++        AND to_tsvector('spanish', COALESCE(m.content, '')) @@ websearch_to_tsquery('spanish', ${query})
++        ${dateFilter}
++        ${vendorFilter}
++        ORDER BY m."created_at" DESC
++        LIMIT ${limit} OFFSET ${offset}
++      `;
++
++      // Fetch previous message context for the paginated messages
++      for (const msg of messages) {
++        const prevMsg = await prisma.message.findFirst({
++          where: {
++            conversationId: msg.conversationId,
++            createdAt: { lt: msg.createdAt }
++          },
++          orderBy: { createdAt: 'desc' }
++        });
++        
++        data.push({
++          type: 'chat',
++          id: msg.id,
++          conversationId: msg.conversationId,
++          clientId: msg.clientId,
++          clientName: msg.clientName || msg.clientPhone,
++          createdAt: msg.createdAt,
++          snippet: msg.snippet || msg.content,
++          previousMessageContext: prevMsg ? prevMsg.content : null
++        });
++      }
++    }
++  }
++
++  // 2. CLIENTS
++  if (!skipClients) {
++    let vendorFilter = Prisma.sql``;
++    // Note: Clients don't have a direct vendorId, but for now we won't filter clients by vendor unless required
++    // Count limited to 100
++    const clientsCountQuery = await prisma.$queryRaw`
++      SELECT COUNT(*) as cnt FROM (
++        SELECT id 
++        FROM "clients"
++        WHERE "tenant_id" = ${tenantId}
++        AND (
++          "phone_number" ILIKE ${'%' + query + '%'}
++          OR "name" ILIKE ${'%' + query + '%'}
++        )
++        LIMIT 100
++      ) AS sub;
++    `;
++    const clientsCount = Number(clientsCountQuery[0]?.cnt || 0);
++    facets.clients = clientsCount;
++
++    if (clientsCount > 0 && data.length < limit) {
++      const remainingLimit = limit - data.length;
++      const clients = await prisma.$queryRaw`
++        SELECT id, name, "phone_number" as "phoneNumber", "created_at" as "createdAt"
++        FROM "clients"
++        WHERE "tenant_id" = ${tenantId}
++        AND (
++          "phone_number" ILIKE ${'%' + query + '%'}
++          OR "name" ILIKE ${'%' + query + '%'}
++        )
++        ORDER BY "created_at" DESC
++        LIMIT ${remainingLimit} OFFSET ${offset}
++      `;
++
++      for (const c of clients) {
++        data.push({
++          type: 'client',
++          id: c.id,
++          name: c.name,
++          phone: c.phoneNumber,
++          createdAt: c.createdAt,
++          snippet: c.name || c.phoneNumber
++        });
++      }
++    }
++  }
++
++  // Sort final data by date just in case
++  data.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
++
++  let totalRequestedCount = 0;
++  if (!skipChats) totalRequestedCount += facets.chats;
++  if (!skipClients) totalRequestedCount += facets.clients;
++  
++  const hasMore = (offset + limit) < totalRequestedCount;
++
++  return {
++    data,
++    meta: {
++      pagination: {
++        page,
++        limit,
++        offset,
++        hasMore
++      },
++      facets
++    }
++  };
++};
++
++module.exports = {
++  performSearch
++};
+diff --git a/frontend/src/App.jsx b/frontend/src/App.jsx
+index cd384d1..5630b3a 100644
+--- a/frontend/src/App.jsx
++++ b/frontend/src/App.jsx
+@@ -12,6 +12,7 @@ import History from './pages/History.jsx';
+ import UserListPage from './features/users/UserListPage.jsx';
+ import CreateUserForm from './features/users/CreateUserForm.jsx';
+ import LoginPage from './features/auth/LoginPage.jsx';
++import SearchPage from './pages/SearchPage.jsx';
+ import ClientProfile from './pages/ClientProfile.jsx';
+ import useChatStore from './stores/useChatStore.js';
+ import useTabNotification from './hooks/useTabNotification.js';
+@@ -53,6 +54,7 @@ function AppLayout() {
+             <Route path="/users/new" element={<CreateUserForm onSuccess={() => window.location.href = '/users'} />} />
+             <Route path="/metrics" element={<Metrics />} />
+             <Route path="/history" element={<History />} />
++            <Route path="/search" element={<SearchPage />} />
+             <Route path="/settings" element={<Settings />} />
+           </Routes>
+         </main>
+diff --git a/frontend/src/components/layout/Header.jsx b/frontend/src/components/layout/Header.jsx
+index 7988f56..23deca5 100644
+--- a/frontend/src/components/layout/Header.jsx
++++ b/frontend/src/components/layout/Header.jsx
+@@ -4,6 +4,7 @@ import useUIStore from '../../stores/useUIStore.js';
+ import useAuthStore from '../../stores/useAuthStore.js';
+ import { disconnectSockets } from '../../services/socket.js';
+ import { useNavigate } from 'react-router-dom';
++import GlobalSearchInput from '../search/GlobalSearchInput.jsx';
+ 
+ export default function Header() {
+   const notifications = useUIStore((state) => state.notifications);
+@@ -37,9 +38,8 @@ export default function Header() {
+       <div className="flex items-center gap-4">
+         <span className="text-sm font-semibold text-sales-slate-100">{user?.tenantName}</span>
+         <div className="h-4 w-px bg-slate-700" />
+-        <div className="flex items-center gap-2 rounded-md bg-slate-800 px-3 py-1.5 text-sm text-sales-slate-400">
+-          <Search size={16} />
+-          <span className="hidden sm:inline">Buscar... (Ctrl+K)</span>
++        <div className="w-64 sm:w-96">
++          <GlobalSearchInput />
+         </div>
+       </div>
+ 
+diff --git a/frontend/src/components/search/FiltersDrawer.jsx b/frontend/src/components/search/FiltersDrawer.jsx
+new file mode 100644
+index 0000000..345cbcc
+--- /dev/null
++++ b/frontend/src/components/search/FiltersDrawer.jsx
+@@ -0,0 +1,50 @@
++import React, { useEffect } from 'react';
++import FiltersSidebar from './FiltersSidebar';
++import { X } from 'lucide-react';
++
++export default function FiltersDrawer({ isOpen, onClose, facets, activeTypes, onFilterChange }) {
++  
++  useEffect(() => {
++    if (isOpen) {
++      document.body.style.overflow = 'hidden';
++    } else {
++      document.body.style.overflow = '';
++    }
++    return () => { document.body.style.overflow = ''; };
++  }, [isOpen]);
++
++  if (!isOpen) return null;
++
++  return (
++    <div className="fixed inset-0 z-[100] md:hidden">
++      {/* Backdrop */}
++      <div 
++        className="fixed inset-0 bg-black/50 transition-opacity" 
++        onClick={onClose}
++        aria-hidden="true"
++      />
++      
++      {/* Drawer */}
++      <div className="fixed inset-y-0 left-0 w-4/5 max-w-sm bg-white shadow-xl transform transition-transform duration-300 flex flex-col">
++        <div className="flex justify-between items-center p-4 border-b border-gray-200">
++          <h2 className="text-lg font-bold text-gray-800">Filtros</h2>
++          <button onClick={onClose} className="p-2 text-gray-500 hover:text-gray-800 rounded-full hover:bg-gray-100">
++            <X size={20} />
++          </button>
++        </div>
++        
++        <div className="flex-1 overflow-y-auto">
++          <FiltersSidebar 
++            facets={facets} 
++            loading={false} 
++            activeTypes={activeTypes}
++            onFilterChange={(k, v) => {
++              onFilterChange(k, v);
++              onClose();
++            }}
++          />
++        </div>
++      </div>
++    </div>
++  );
++}
+diff --git a/frontend/src/components/search/FiltersSidebar.jsx b/frontend/src/components/search/FiltersSidebar.jsx
+new file mode 100644
+index 0000000..9bafda0
+--- /dev/null
++++ b/frontend/src/components/search/FiltersSidebar.jsx
+@@ -0,0 +1,57 @@
++import React from 'react';
++import { MessageSquare, User, ShoppingBag } from 'lucide-react';
++
++export default function FiltersSidebar({ facets, loading, activeTypes, onFilterChange }) {
++  const types = [
++    { id: 'chats', label: 'Chats', icon: MessageSquare, count: facets?.chats || 0 },
++    { id: 'clients', label: 'Clientes', icon: User, count: facets?.clients || 0 },
++    { id: 'orders', label: 'Pedidos', icon: ShoppingBag, count: facets?.orders || 0 },
++  ];
++
++  return (
++    <div className="p-6 h-full overflow-y-auto">
++      <h2 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-4">Filtrar Por</h2>
++      
++      <div className="space-y-6">
++        <div>
++          <h3 className="text-sm font-semibold text-gray-800 mb-3">Categoría</h3>
++          {loading && !facets ? (
++            <div className="space-y-2">
++              {[1, 2, 3].map(i => <div key={i} className="h-8 bg-gray-200 animate-pulse rounded" />)}
++            </div>
++          ) : (
++            <div className="space-y-1">
++              {types.map(t => {
++                const isActive = activeTypes.includes(t.id);
++                const disabled = t.count === 0 && !isActive;
++                const Icon = t.icon;
++                return (
++                  <button
++                    key={t.id}
++                    disabled={disabled}
++                    onClick={() => onFilterChange('type', t.id)}
++                    className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-colors ${
++                      isActive 
++                        ? 'bg-blue-50 text-blue-700 font-medium' 
++                        : disabled 
++                          ? 'text-gray-400 cursor-not-allowed' 
++                          : 'text-gray-700 hover:bg-gray-100'
++                    }`}
++                  >
++                    <span className="flex items-center gap-2">
++                      <Icon size={16} className={isActive ? 'text-blue-600' : 'text-gray-400'} />
++                      {t.label}
++                    </span>
++                    <span className={`px-2 py-0.5 rounded-full text-xs ${isActive ? 'bg-blue-100' : 'bg-gray-100'}`}>
++                      {t.count}
++                    </span>
++                  </button>
++                );
++              })}
++            </div>
++          )}
++        </div>
++      </div>
++    </div>
++  );
++}
+diff --git a/frontend/src/components/search/GlobalSearchInput.jsx b/frontend/src/components/search/GlobalSearchInput.jsx
+new file mode 100644
+index 0000000..2a67c0c
+--- /dev/null
++++ b/frontend/src/components/search/GlobalSearchInput.jsx
+@@ -0,0 +1,128 @@
++import React, { useState, useEffect, useRef } from 'react';
++import { useNavigate, useSearchParams } from 'react-router-dom';
++import { Search, X, Clock } from 'lucide-react';
++import { useSearchStore } from '../../stores/searchStore';
++
++export default function GlobalSearchInput() {
++  const [searchParams] = useSearchParams();
++  const navigate = useNavigate();
++  const { recentSearches, addSearchTerm, removeSearchTerm, clearHistory } = useSearchStore();
++
++  const [inputValue, setInputValue] = useState('');
++  const [isFocused, setIsFocused] = useState(false);
++  const containerRef = useRef(null);
++
++  // Sync with URL
++  useEffect(() => {
++    const q = searchParams.get('q');
++    if (q) {
++      setInputValue(q);
++    } else {
++      setInputValue('');
++    }
++  }, [searchParams]);
++
++  // Click outside to close history
++  useEffect(() => {
++    function handleClickOutside(event) {
++      if (containerRef.current && !containerRef.current.contains(event.target)) {
++        setIsFocused(false);
++      }
++    }
++    document.addEventListener('mousedown', handleClickOutside);
++    return () => document.removeEventListener('mousedown', handleClickOutside);
++  }, []);
++
++  const handleSubmit = (e) => {
++    e.preventDefault();
++    const term = inputValue.trim();
++    if (!term) return;
++
++    addSearchTerm(term);
++    setIsFocused(false);
++    navigate(`/search?q=${encodeURIComponent(term)}`);
++  };
++
++  const handleClear = () => {
++    setInputValue('');
++  };
++
++  const handleHistoryClick = (term) => {
++    setInputValue(term);
++    addSearchTerm(term);
++    setIsFocused(false);
++    navigate(`/search?q=${encodeURIComponent(term)}`);
++  };
++
++  const showDropdown = isFocused && recentSearches.length > 0;
++
++  return (
++    <div ref={containerRef} className="relative w-full max-w-md mx-auto">
++      <form onSubmit={handleSubmit} role="search" className="relative">
++        <div className="relative flex items-center w-full">
++          <div className="absolute left-3 text-gray-400">
++            <Search size={18} />
++          </div>
++          <input
++            type="text"
++            value={inputValue}
++            onChange={(e) => setInputValue(e.target.value)}
++            onFocus={() => setIsFocused(true)}
++            placeholder="Buscar chats, clientes o pedidos..."
++            aria-label="Buscar en toda la aplicación"
++            aria-expanded={showDropdown}
++            aria-controls="history-dropdown-id"
++            className="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
++          />
++          {inputValue && (
++            <button
++              type="button"
++              onClick={handleClear}
++              className="absolute right-3 text-gray-400 hover:text-gray-600"
++              aria-label="Limpiar búsqueda"
++            >
++              <X size={16} />
++            </button>
++          )}
++        </div>
++      </form>
++
++      {showDropdown && (
++        <div 
++          id="history-dropdown-id" 
++          className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-50 py-1"
++        >
++          <div className="flex justify-between items-center px-4 py-2 border-b border-gray-100">
++            <span className="text-xs font-semibold text-gray-500 uppercase">Búsquedas Recientes</span>
++            <button 
++              onMouseDown={(e) => { e.preventDefault(); clearHistory(); }}
++              className="text-xs text-blue-600 hover:text-blue-800"
++            >
++              Borrar historial
++            </button>
++          </div>
++          <ul className="max-h-64 overflow-y-auto">
++            {recentSearches.map((term, idx) => (
++              <li key={idx} className="flex justify-between items-center hover:bg-gray-50 px-4 py-2 cursor-pointer group">
++                <div 
++                  className="flex items-center gap-2 flex-grow"
++                  onMouseDown={(e) => { e.preventDefault(); handleHistoryClick(term); }}
++                >
++                  <Clock size={14} className="text-gray-400" />
++                  <span className="text-sm text-gray-700">{term}</span>
++                </div>
++                <button
++                  onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); removeSearchTerm(term); }}
++                  className="text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity p-1"
++                  aria-label={`Eliminar ${term} del historial`}
++                >
++                  <X size={14} />
++                </button>
++              </li>
++            ))}
++          </ul>
++        </div>
++      )}
++    </div>
++  );
++}
+diff --git a/frontend/src/components/search/SearchResultsLayout.jsx b/frontend/src/components/search/SearchResultsLayout.jsx
+new file mode 100644
+index 0000000..c8458ad
+--- /dev/null
++++ b/frontend/src/components/search/SearchResultsLayout.jsx
+@@ -0,0 +1,111 @@
++import React from 'react';
++
++export default function SearchResultsLayout({ data, loading, error, query, meta, onPageChange }) {
++  if (error) {
++    return (
++      <div className="flex flex-col items-center justify-center py-20 text-center">
++        <div className="text-red-500 mb-4">
++          <svg className="w-12 h-12 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
++            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
++          </svg>
++        </div>
++        <h3 className="text-lg font-bold text-gray-800">Error al buscar</h3>
++        <p className="text-gray-500 mt-2">{error}</p>
++        <button 
++          onClick={() => window.location.reload()}
++          className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
++        >
++          Reintentar
++        </button>
++      </div>
++    );
++  }
++
++  if (loading && (!data || data.length === 0)) {
++    return (
++      <div className="space-y-4">
++        {[1, 2, 3, 4, 5].map(i => (
++          <div key={i} className="animate-pulse flex space-x-4 p-4 border border-gray-200 rounded-lg bg-white">
++            <div className="rounded-full bg-gray-200 h-10 w-10"></div>
++            <div className="flex-1 space-y-4 py-1">
++              <div className="h-4 bg-gray-200 rounded w-3/4"></div>
++              <div className="space-y-2">
++                <div className="h-4 bg-gray-200 rounded"></div>
++                <div className="h-4 bg-gray-200 rounded w-5/6"></div>
++              </div>
++            </div>
++          </div>
++        ))}
++      </div>
++    );
++  }
++
++  if (!loading && data && data.length === 0) {
++    return (
++      <div className="flex flex-col items-center justify-center py-20 text-center">
++        <h3 className="text-lg font-bold text-gray-800">No se encontraron resultados</h3>
++        <p className="text-gray-500 mt-2">Intenta con otros términos o ajusta tus filtros.</p>
++      </div>
++    );
++  }
++
++  const { pagination } = meta || {};
++
++  return (
++    <div className="flex flex-col h-full lg:flex-row gap-6">
++      {/* Master Column */}
++      <div className="flex-1 lg:w-1/3 xl:w-1/4 flex flex-col space-y-4 overflow-y-auto pr-2 pb-10">
++        {data?.map(item => (
++          <div key={item.id} className="p-4 border border-gray-200 rounded-lg bg-white hover:border-blue-300 cursor-pointer transition-colors">
++            <div className="flex justify-between items-start mb-2">
++              <h4 className="font-semibold text-gray-800">{item.clientName || item.name || 'Contacto Desconocido'}</h4>
++              <span className="text-xs text-gray-500">
++                {new Date(item.createdAt).toLocaleDateString()}
++              </span>
++            </div>
++            {item.type === 'chat' && (
++              <p 
++                className="text-sm text-gray-600 line-clamp-3" 
++                dangerouslySetInnerHTML={{ __html: item.snippet }} // Note: Needs DOMPurify in US-2.1
++              />
++            )}
++            {item.type === 'client' && (
++              <p className="text-sm text-gray-600">Teléfono: {item.phone}</p>
++            )}
++          </div>
++        ))}
++
++        {/* Pagination Controls */}
++        <div className="flex justify-between items-center mt-6 pt-4 border-t border-gray-200">
++          <button 
++            disabled={pagination?.page <= 1}
++            onClick={() => onPageChange(pagination.page - 1)}
++            className="px-3 py-1 text-sm bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50"
++          >
++            Anterior
++          </button>
++          <span className="text-sm text-gray-500">Página {pagination?.page || 1}</span>
++          <button 
++            disabled={!pagination?.hasMore}
++            onClick={() => onPageChange(pagination.page + 1)}
++            className="px-3 py-1 text-sm bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50"
++          >
++            Siguiente
++          </button>
++        </div>
++      </div>
++
++      {/* Detail Column Placeholder (US-2.2) */}
++      <div className="hidden lg:flex flex-[2] bg-gray-100 rounded-lg border border-gray-200 items-center justify-center min-h-[500px]">
++        <div className="text-center">
++          <MessageSquare size={48} className="mx-auto text-gray-300 mb-4" />
++          <h3 className="text-lg font-medium text-gray-500">Selecciona un chat</h3>
++          <p className="text-sm text-gray-400">El historial se mostrará aquí</p>
++        </div>
++      </div>
++    </div>
++  );
++}
++
++// Dummy import to satisfy compiler since I used the icon
++import { MessageSquare } from 'lucide-react';
+diff --git a/frontend/src/pages/SearchPage.jsx b/frontend/src/pages/SearchPage.jsx
+new file mode 100644
+index 0000000..f50092a
+--- /dev/null
++++ b/frontend/src/pages/SearchPage.jsx
+@@ -0,0 +1,173 @@
++import React, { useEffect, useState, useTransition } from 'react';
++import { useSearchParams } from 'react-router-dom';
++import axios from 'axios';
++import SearchResultsLayout from '../components/search/SearchResultsLayout';
++import FiltersSidebar from '../components/search/FiltersSidebar';
++import FiltersDrawer from '../components/search/FiltersDrawer';
++import { Filter, X } from 'lucide-react';
++
++export default function SearchPage() {
++  const [searchParams, setSearchParams] = useSearchParams();
++  const query = searchParams.get('q') || '';
++  const typeFilter = searchParams.getAll('type');
++  const vendorIdFilter = searchParams.get('vendorId');
++  const page = parseInt(searchParams.get('page') || '1', 10);
++
++  const [data, setData] = useState([]);
++  const [meta, setMeta] = useState(null);
++  const [loading, setLoading] = useState(false);
++  const [error, setError] = useState(null);
++  const [drawerOpen, setDrawerOpen] = useState(false);
++  const [isPending, startTransition] = useTransition();
++
++  useEffect(() => {
++    if (!query) return;
++
++    const controller = new AbortController();
++    setLoading(true);
++    setError(null);
++
++    const fetchResults = async () => {
++      try {
++        const params = new URLSearchParams();
++        params.append('q', query);
++        params.append('page', page);
++        typeFilter.forEach(t => params.append('type', t));
++        if (vendorIdFilter) params.append('vendorId', vendorIdFilter);
++
++        const token = localStorage.getItem('auth_token'); // Or however auth is handled
++        const res = await axios.get(`/api/search?${params.toString()}`, {
++          signal: controller.signal,
++          headers: token ? { Authorization: `Bearer ${token}` } : {}
++        });
++
++        startTransition(() => {
++          setData(res.data.data);
++          setMeta(res.data.meta);
++          setLoading(false);
++        });
++      } catch (err) {
++        if (axios.isCancel(err)) return;
++        startTransition(() => {
++          setError(err.response?.data?.error || 'Error de red al cargar resultados');
++          setLoading(false);
++        });
++      }
++    };
++
++    fetchResults();
++
++    return () => controller.abort();
++  }, [query, page, typeFilter.join(','), vendorIdFilter]);
++
++  const handleFilterChange = (filterKey, value) => {
++    const newParams = new URLSearchParams(searchParams);
++    
++    // reset page to 1
++    newParams.set('page', '1');
++    
++    if (filterKey === 'type') {
++      const current = newParams.getAll('type');
++      newParams.delete('type');
++      if (current.includes(value)) {
++        // remove
++        current.filter(t => t !== value).forEach(t => newParams.append('type', t));
++      } else {
++        // add
++        current.forEach(t => newParams.append('type', t));
++        newParams.append('type', value);
++      }
++    } else if (value) {
++      newParams.set(filterKey, value);
++    } else {
++      newParams.delete(filterKey);
++    }
++    setSearchParams(newParams);
++  };
++
++  const clearAllFilters = () => {
++    const newParams = new URLSearchParams();
++    newParams.set('q', query);
++    setSearchParams(newParams);
++  };
++
++  return (
++    <div className="flex h-screen bg-gray-50 overflow-hidden pt-14">
++      {/* Desktop Sidebar */}
++      <div className="hidden md:block w-64 border-r border-gray-200 bg-white flex-shrink-0">
++        <FiltersSidebar 
++          facets={meta?.facets} 
++          loading={loading}
++          activeTypes={typeFilter}
++          onFilterChange={handleFilterChange}
++        />
++      </div>
++
++      {/* Main Content */}
++      <div className="flex-1 overflow-auto p-4 md:p-6">
++        <div className="flex justify-between items-center mb-4">
++          <h1 className="text-2xl font-bold text-gray-800">
++            {query ? `Resultados para "${query}"` : 'Búsqueda Global'}
++          </h1>
++          <button 
++            className="md:hidden flex items-center gap-2 text-blue-600 font-medium p-2"
++            onClick={() => setDrawerOpen(true)}
++          >
++            <Filter size={18} /> Filtros
++          </button>
++        </div>
++
++        {/* Active Filters Pills */}
++        {(typeFilter.length > 0 || vendorIdFilter) && (
++          <div className="flex flex-wrap gap-2 mb-4 items-center">
++            <span className="text-sm text-gray-500">Filtros activos:</span>
++            {typeFilter.map(t => (
++              <span key={t} className="inline-flex items-center gap-1 px-3 py-1 bg-blue-50 text-blue-700 text-sm rounded-full border border-blue-200">
++                Tipo: {t}
++                <button onClick={() => handleFilterChange('type', t)} className="hover:bg-blue-200 rounded-full p-0.5">
++                  <X size={14} />
++                </button>
++              </span>
++            ))}
++            {vendorIdFilter && (
++              <span className="inline-flex items-center gap-1 px-3 py-1 bg-blue-50 text-blue-700 text-sm rounded-full border border-blue-200">
++                Vendedor: {vendorIdFilter}
++                <button onClick={() => handleFilterChange('vendorId', null)} className="hover:bg-blue-200 rounded-full p-0.5">
++                  <X size={14} />
++                </button>
++              </span>
++            )}
++            <button 
++              onClick={clearAllFilters}
++              className="text-sm text-gray-500 hover:text-gray-800 underline ml-2"
++            >
++              Borrar todos
++            </button>
++          </div>
++        )}
++
++        <SearchResultsLayout 
++          data={data} 
++          loading={loading} 
++          error={error} 
++          query={query} 
++          meta={meta}
++          onPageChange={(newPage) => {
++            const params = new URLSearchParams(searchParams);
++            params.set('page', newPage.toString());
++            setSearchParams(params);
++          }}
++        />
++      </div>
++
++      {/* Mobile Drawer */}
++      <FiltersDrawer 
++        isOpen={drawerOpen} 
++        onClose={() => setDrawerOpen(false)}
++        facets={meta?.facets}
++        activeTypes={typeFilter}
++        onFilterChange={handleFilterChange}
++      />
++    </div>
++  );
++}
+diff --git a/frontend/src/stores/searchStore.js b/frontend/src/stores/searchStore.js
+new file mode 100644
+index 0000000..eca00cd
+--- /dev/null
++++ b/frontend/src/stores/searchStore.js
+@@ -0,0 +1,29 @@
++import { create } from 'zustand';
++import { persist } from 'zustand/middleware';
++
++export const useSearchStore = create(
++  persist(
++    (set) => ({
++      recentSearches: [],
++      addSearchTerm: (term) => set((state) => {
++        const lowerTerm = term.trim().toLowerCase();
++        // Remove existing to avoid duplicates
++        const filtered = state.recentSearches.filter(t => t.toLowerCase() !== lowerTerm);
++        // Add to front
++        filtered.unshift(term.trim());
++        // Cap at 10
++        if (filtered.length > 10) {
++          filtered.pop();
++        }
++        return { recentSearches: filtered };
++      }),
++      removeSearchTerm: (term) => set((state) => ({
++        recentSearches: state.recentSearches.filter(t => t.toLowerCase() !== term.toLowerCase())
++      })),
++      clearHistory: () => set({ recentSearches: [] })
++    }),
++    {
++      name: 'search-history',
++    }
++  )
++);

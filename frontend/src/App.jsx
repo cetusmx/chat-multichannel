@@ -12,6 +12,7 @@ import History from './pages/History.jsx';
 import UserListPage from './features/users/UserListPage.jsx';
 import CreateUserForm from './features/users/CreateUserForm.jsx';
 import LoginPage from './features/auth/LoginPage.jsx';
+import SearchPage from './pages/SearchPage.jsx';
 import ClientProfile from './pages/ClientProfile.jsx';
 import useChatStore from './stores/useChatStore.js';
 import useTabNotification from './hooks/useTabNotification.js';
@@ -53,6 +54,7 @@ function AppLayout() {
             <Route path="/users/new" element={<CreateUserForm onSuccess={() => window.location.href = '/users'} />} />
             <Route path="/metrics" element={<Metrics />} />
             <Route path="/history" element={<History />} />
+            <Route path="/search" element={<SearchPage />} />
             <Route path="/settings" element={<Settings />} />
           </Routes>
         </main>
