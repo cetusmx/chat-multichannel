@@ -93,6 +93,7 @@ export default function SearchPage() {
 
   return (
     <div className="flex h-screen bg-gray-50 overflow-hidden pt-14">
+      {/* Desktop Sidebar */}
       <div className="hidden md:block w-64 border-r border-gray-200 bg-white flex-shrink-0">
         <FiltersSidebar 
           facets={meta?.facets} 
@@ -102,12 +103,48 @@ export default function SearchPage() {
         />
       </div>
 
+      {/* Main Content */}
       <div className="flex-1 overflow-auto p-4 md:p-6">
         <div className="flex justify-between items-center mb-4">
           <h1 className="text-2xl font-bold text-gray-800">
             {typeof query === "object" ? JSON.stringify(query) : query ? `Resultados para "${query}"` : 'Búsqueda Global'}
           </h1>
+          <button 
+            className="md:hidden flex items-center gap-2 text-blue-600 font-medium p-2"
+            onClick={() => setDrawerOpen(true)}
+          >
+            <Filter size={18} /> Filtros
+          </button>
         </div>
+
+        {/* Active Filters Pills */}
+        {(typeFilter.length > 0 || vendorIdFilter) && (
+          <div className="flex flex-wrap gap-2 mb-4 items-center">
+            <span className="text-sm text-gray-500">Filtros activos:</span>
+            {typeFilter.map(t => (
+              <span key={typeof t === "object" ? JSON.stringify(t) : t} className="inline-flex items-center gap-1 px-3 py-1 bg-blue-50 text-blue-700 text-sm rounded-full border border-blue-200">
+                Tipo: {typeof t === "object" ? JSON.stringify(t) : t}
+                <button onClick={() => handleFilterChange('type', t)} className="hover:bg-blue-200 rounded-full p-0.5">
+                  <X size={14} />
+                </button>
+              </span>
+            ))}
+            {vendorIdFilter && (
+              <span className="inline-flex items-center gap-1 px-3 py-1 bg-blue-50 text-blue-700 text-sm rounded-full border border-blue-200">
+                Vendedor: {typeof vendorIdFilter === "object" ? JSON.stringify(vendorIdFilter) : vendorIdFilter}
+                <button onClick={() => handleFilterChange('vendorId', null)} className="hover:bg-blue-200 rounded-full p-0.5">
+                  <X size={14} />
+                </button>
+              </span>
+            )}
+            <button 
+              onClick={clearAllFilters}
+              className="text-sm text-gray-500 hover:text-gray-800 underline ml-2"
+            >
+              Borrar todos
+            </button>
+          </div>
+        )}
 
         <ErrorBoundary>
           <SearchResultsLayout 
@@ -124,6 +161,15 @@ export default function SearchPage() {
           />
         </ErrorBoundary>
       </div>
+
+      {/* Mobile Drawer */}
+      <FiltersDrawer 
+        isOpen={drawerOpen} 
+        onClose={() => setDrawerOpen(false)}
+        facets={meta?.facets}
+        activeTypes={typeFilter}
+        onFilterChange={handleFilterChange}
+      />
     </div>
   );
 }
