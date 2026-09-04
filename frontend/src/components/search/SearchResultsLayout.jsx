@@ -95,43 +95,11 @@ export default function SearchResultsLayout({ data, loading, error, query, meta,
 
   return (
     <div className="flex flex-col h-full lg:flex-row gap-6">
-      {/* Master Column */}
       <div className={`${masterClass} flex-1 lg:w-1/3 xl:w-1/4 flex-col space-y-4 overflow-y-auto pr-2 pb-10`}>
-        {data?.map((item, i) => (
-           <div key={i} className="p-4 border border-red-500">
-             {typeof item === 'object' ? JSON.stringify(item).substring(0,100) : String(item)}
-           </div>
-        ))}
-
-        <div ref={loaderRef} className="h-10" />
-        {/* Pagination Controls */}
-        <div className="flex justify-between items-center mt-6 pt-4 border-t border-gray-200">
-          <button 
-            disabled={pagination?.page <= 1 || loading}
-            onClick={() => onPageChange(pagination.page - 1)}
-            className="px-3 py-1 text-sm bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50"
-          >
-            Anterior
-          </button>
-          <span className="text-sm text-gray-500">Página {typeof pagination?.page === 'object' ? JSON.stringify(pagination?.page) : (pagination?.page || 1)}</span>
-          <button 
-            disabled={!pagination?.hasMore || loading}
-            onClick={() => onPageChange(pagination.page + 1)}
-            className="px-3 py-1 text-sm bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50"
-          >
-            Siguiente
-          </button>
-        </div>
+        Empty Layout
       </div>
-
-      {/* Detail Column (US-2.2) */}
       <div className={`${detailClass} flex-[2]`}>
-         {/*<ChatViewerDetail 
-            conversationId={selectedChatId} 
-            targetMessageId={targetMessageId} 
-            onBack={handleBack} 
-         />*/}
-         Detalle Oculto para Debugging
+        Detalle Oculto
       </div>
     </div>
   );
