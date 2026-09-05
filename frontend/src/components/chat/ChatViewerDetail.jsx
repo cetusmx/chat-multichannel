@@ -5,11 +5,37 @@ import DOMPurify from 'dompurify';
 import useAuthStore from '../../stores/useAuthStore';
 import ContiguousSessionCard from './ContiguousSessionCard';
 
-export default function ChatViewerDetail({ conversationId, targetMessageId, onBack }) {
+export default function ChatViewerDetail({ conversationId, targetMessageId, searchQuery, onBack }) {
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [meta, setMeta] = useState(null);
+
+  const highlightText = (text, query) => {
+    if (!query || !text) return text;
+    try {
+      // Split query by spaces to highlight individual words (mimicking full-text search)
+      const tokens = query.split(/\s+/).filter(Boolean);
+      if (tokens.length === 0) return text;
+      
+      let highlighted = text;
+      tokens.forEach(token => {
+        const safeToken = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        // Match token, case insensitive
+        const regex = new RegExp(`(${safeToken})`, 'gi');
+        // We use a temporary placeholder to avoid double highlighting the mark tags themselves
+        highlighted = highlighted.replace(regex, '%%%HIGHLIGHT%%%$1%%%ENDHIGHLIGHT%%%');
+      });
+
+      // Replace placeholders with actual HTML
+      highlighted = highlighted.replace(/%%%HIGHLIGHT%%%/g, '<mark class="bg-sales-orange/30 text-sales-orange-light px-1 rounded font-bold">');
+      highlighted = highlighted.replace(/%%%ENDHIGHLIGHT%%%/g, '</mark>');
+      
+      return highlighted;
+    } catch(e) {
+      return text;
+    }
+  };
 
   const [loadingPrev, setLoadingPrev] = useState(false);
   const [errorPrev, setErrorPrev] = useState(false);
@@ -205,16 +231,16 @@ export default function ChatViewerDetail({ conversationId, targetMessageId, onBa
                   <div 
                     className={`max-w-[85%] rounded-2xl px-4 py-2 relative shadow-sm ${
                       isTarget 
-                        ? 'ring-2 ring-blue-500 bg-sales-slate-800' 
+                        ? 'ring-2 ring-sales-orange bg-sales-slate-800' 
                         : isVendor 
                           ? 'bg-sales-slate-800 text-sales-slate-100 rounded-tr-none' 
                           : 'bg-sales-slate-900 border border-sales-slate-800 text-sales-slate-100 rounded-tl-none'
                     }`}
                   >
                     <p className="whitespace-pre-wrap text-sm leading-relaxed" dangerouslySetInnerHTML={{
-                      __html: DOMPurify.sanitize(msg.snippet || msg.content || '', {
+                      __html: DOMPurify.sanitize(highlightText(msg.snippet || msg.content || '', searchQuery), {
                         ALLOWED_TAGS: ['b', 'i', 'em', 'strong', 'mark', 'br'],
-                        ALLOWED_ATTR: []
+                        ALLOWED_ATTR: ['class']
                       })
                     }} />
                     <div className={`text-[10px] mt-1 text-right ${isVendor ? 'text-sales-slate-400' : 'text-sales-slate-500'}`}>

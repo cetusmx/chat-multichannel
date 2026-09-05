@@ -124,7 +124,8 @@ export default function SearchResultsLayout({ data, loading, error, meta, onPage
       <div className={`${detailClass} flex-[2]`}>
          <ChatViewerDetail 
             conversationId={selectedChatId} 
-            targetMessageId={targetMessageId} 
+            targetMessageId={targetMessageId}
+            searchQuery={searchParams.get('query') || ''}
             onBack={handleBack} 
          />
       </div>

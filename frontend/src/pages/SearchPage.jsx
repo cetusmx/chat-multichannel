@@ -26,7 +26,7 @@ export default function SearchPage() {
   const [data, setData] = useState([]);
   const [meta, setMeta] = useState(null);
   const [error, setError] = useState(null);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
   const token = useAuthStore(state => state.token);
 

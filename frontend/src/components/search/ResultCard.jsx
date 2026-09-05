@@ -75,8 +75,8 @@ const ResultCard = memo(({ item, isActive, onClick }) => {
             dangerouslySetInnerHTML={{ 
               __html: DOMPurify.sanitize(snippetStr, { 
                 ALLOWED_TAGS: ['b', 'i', 'em', 'strong', 'mark', 'br'], 
-                ALLOWED_ATTR: [] 
-              }) 
+                ALLOWED_ATTR: ['class'] 
+              }).replace(/<b>/g, '<mark class="bg-sales-orange/30 text-sales-orange-light px-1 rounded font-bold">').replace(/<\/b>/g, '</mark>')
             }}
           />
         </div>
