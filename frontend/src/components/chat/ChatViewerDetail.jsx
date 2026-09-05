@@ -4,7 +4,7 @@ import { ArrowLeft, MessageSquare } from 'lucide-react';
 import DOMPurify from 'dompurify';
 import useAuthStore from '../../stores/useAuthStore';
 import ContiguousSessionCard from './ContiguousSessionCard';
-import SecureMedia from './SecureMedia';
+import SecureMedia from '../SecureMedia';
 
 export default function ChatViewerDetail({ conversationId, targetMessageId, searchQuery, onBack }) {
   const [messages, setMessages] = useState([]);
