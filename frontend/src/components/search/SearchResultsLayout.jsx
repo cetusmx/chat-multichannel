@@ -87,6 +87,7 @@ export default function SearchResultsLayout({ data, loading, error, meta, onPage
 
   const masterClass = selectedChatId ? "hidden lg:flex" : "flex";
   const detailClass = selectedChatId ? "flex" : "hidden lg:flex";
+  const selectedChat = data.find(d => String(d.conversationId) === String(selectedChatId));
 
   return (
     <div className="flex flex-col h-full lg:flex-row gap-6">
@@ -126,6 +127,7 @@ export default function SearchResultsLayout({ data, loading, error, meta, onPage
             conversationId={selectedChatId} 
             targetMessageId={targetMessageId}
             searchQuery={searchParams.get('q') || ''}
+            vendorName={selectedChat?.vendorName}
             onBack={handleBack} 
          />
       </div>

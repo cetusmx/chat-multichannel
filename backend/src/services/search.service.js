@@ -127,11 +127,14 @@ const performSearch = async ({ tenantId, query, type, filters, limit, offset, pa
             m.content, 
             m."created_at",
             c."client_id",
+            c."vendor_id",
             cl.name as "client_name",
-            cl."phone_number"
+            cl."phone_number",
+            u.name as "vendor_name"
           FROM "messages" m
           JOIN "conversations" c ON m."conversation_id" = c.id
           JOIN "clients" cl ON c."client_id" = cl.id
+          LEFT JOIN "users" u ON c."vendor_id" = u.id
           WHERE c."tenant_id" = ${tenantId}
           AND to_tsvector('spanish', COALESCE(m.content, '')) @@ websearch_to_tsquery('spanish', ${query})
           ${dateFilter}
@@ -167,6 +170,7 @@ StopSel=</b>, MaxWords=20, MinWords=5') as snippet
           conversationId: msg.conversation_id,
           clientId: msg.client_id,
           clientName: msg.client_name || msg.phone_number,
+          vendorName: msg.vendor_name,
           createdAt: msg.created_at,
           snippet: msg.snippet || msg.content,
           previousMessageContext: msg.previousMessageContext || null

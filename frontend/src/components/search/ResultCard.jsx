@@ -14,7 +14,10 @@ const ResultCard = memo(({ item, isActive, onClick }) => {
     if (item && item.createdAt) {
       const date = new Date(item.createdAt);
       if (!isNaN(date.getTime())) {
-        dateStr = String(timeAgo(date));
+        dateStr = new Intl.DateTimeFormat('es-MX', { 
+          day: '2-digit', month: 'short', year: 'numeric', 
+          hour: '2-digit', minute: '2-digit' 
+        }).format(date);
       }
     }
   } catch(e) {}
@@ -24,6 +27,13 @@ const ResultCard = memo(({ item, isActive, onClick }) => {
     if (item) {
       const n = item.clientName || item.name || item.phone;
       if (n) nameStr = typeof n === 'object' ? JSON.stringify(n) : String(n);
+    }
+  } catch(e) {}
+
+  let vendorNameStr = '';
+  try {
+    if (item?.vendorName) {
+      vendorNameStr = typeof item.vendorName === 'object' ? JSON.stringify(item.vendorName) : String(item.vendorName);
     }
   } catch(e) {}
 
@@ -59,8 +69,11 @@ const ResultCard = memo(({ item, isActive, onClick }) => {
       }`}
     >
       <div className="flex justify-between items-start mb-2">
-        <h4 className="font-semibold text-sales-slate-100">{nameStr}</h4>
-        <span className="text-xs text-sales-slate-400 whitespace-nowrap ml-2">{dateStr}</span>
+        <div>
+          <h4 className="font-semibold text-sales-slate-100">{nameStr}</h4>
+          {vendorNameStr && <p className="text-[11px] text-sales-slate-400 mt-0.5">Asesor: {vendorNameStr}</p>}
+        </div>
+        <span className="text-[11px] text-sales-slate-400 whitespace-nowrap ml-2 text-right">{dateStr}</span>
       </div>
       
       {item && item.type === 'chat' ? (

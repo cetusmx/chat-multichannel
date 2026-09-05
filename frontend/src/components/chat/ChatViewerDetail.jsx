@@ -6,7 +6,7 @@ import useAuthStore from '../../stores/useAuthStore';
 import ContiguousSessionCard from './ContiguousSessionCard';
 import SecureMedia from '../SecureMedia';
 
-export default function ChatViewerDetail({ conversationId, targetMessageId, searchQuery, onBack }) {
+export default function ChatViewerDetail({ conversationId, targetMessageId, searchQuery, vendorName, onBack }) {
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -195,22 +195,22 @@ export default function ChatViewerDetail({ conversationId, targetMessageId, sear
   return (
     <div className="flex flex-col h-full bg-sales-slate-900 rounded-lg border border-sales-slate-800 shadow-xl flex-[2] overflow-hidden">
       {/* Header */}
-      <div className="flex items-center p-4 border-b border-sales-slate-800 bg-sales-slate-900/90 sticky top-0 z-10 backdrop-blur-sm">
-        <button 
-          onClick={onBack}
-          aria-label="Volver a los resultados de búsqueda"
-          className="lg:hidden p-2 mr-2 text-sales-slate-400 hover:text-sales-slate-100 hover:bg-sales-slate-800 rounded-full transition-colors"
-        >
-          <ArrowLeft size={20} />
-        </button>
-        <div className="flex flex-col">
+      <div className="flex justify-between items-center p-4 border-b border-sales-slate-800 bg-sales-slate-900/90 sticky top-0 z-10 backdrop-blur-sm">
+        <div className="flex items-center">
+          <button 
+            onClick={onBack}
+            aria-label="Volver a los resultados de búsqueda"
+            className="lg:hidden p-2 mr-2 text-sales-slate-400 hover:text-sales-slate-100 hover:bg-sales-slate-800 rounded-full transition-colors"
+          >
+            <ArrowLeft size={20} />
+          </button>
           <h2 className="text-lg font-bold text-sales-slate-100">Previsualización de Chat</h2>
-          {searchQuery && totalMatches > 0 && (
-            <span className="text-xs text-sales-orange-light font-medium">
-              {totalMatches} {totalMatches === 1 ? 'coincidencia encontrada' : 'coincidencias encontradas'} en esta vista
-            </span>
-          )}
         </div>
+        {searchQuery && totalMatches > 0 && (
+          <span className="text-xs text-sales-orange-light font-medium bg-sales-orange/10 px-2 py-1 rounded">
+            {totalMatches} {totalMatches === 1 ? 'coincidencia' : 'coincidencias'} en esta vista
+          </span>
+        )}
       </div>
 
       {/* Messages */}
@@ -281,7 +281,7 @@ export default function ChatViewerDetail({ conversationId, targetMessageId, sear
               else if (msg.senderType === 'IA') senderLabel = '🤖 Bot (IA)';
               else if (msg.senderType === 'SYSTEM') senderLabel = '💻 Sistema';
               else if (msg.senderType === 'COORDINATOR' || msg.senderType === 'ADMIN') senderLabel = '🛡️ Coordinador';
-              else senderLabel = '👤 Asesor';
+              else senderLabel = vendorName ? 👤  : '👤 Asesor';
 
               return (
                 <React.Fragment key={`${msg.id}-${index}`}>
