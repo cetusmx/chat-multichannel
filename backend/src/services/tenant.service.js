@@ -11,7 +11,7 @@ async function getProfile(tenantId) {
       phone: true, email: true, address: true,
       status: true, createdAt: true, updatedAt: true,
       rfc: true, bankDetails: true, businessHours: true,
-      maxUsers: true,
+      maxUsers: true, logoUrl: true, theme: true,
     },
   });
 
@@ -50,12 +50,15 @@ async function updateProfile(tenantId, data) {
       rfc: data.rfc !== undefined ? data.rfc : undefined,
       bankDetails: data.bankDetails !== undefined ? data.bankDetails : undefined,
       businessHours: data.businessHours !== undefined ? data.businessHours : undefined,
+      logoUrl: data.logoUrl !== undefined ? data.logoUrl : undefined,
+      theme: data.theme !== undefined ? data.theme : undefined,
     },
     select: {
       id: true, name: true, domain: true,
       phone: true, email: true, address: true,
       status: true, createdAt: true, updatedAt: true,
       rfc: true, bankDetails: true, businessHours: true,
+      logoUrl: true, theme: true,
     },
   });
 

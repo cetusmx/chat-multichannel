@@ -29,6 +29,25 @@ router.put('/profile', authorize('ADMIN'), async (req, res, next) => {
     next(err);
   }
 });
+
+const uploadLogo = require('../middleware/uploadLogo.middleware');
+
+router.post('/profile/logo', authorize('ADMIN'), uploadLogo.single('logo'), async (req, res, next) => {
+  try {
+    if (!req.file) {
+      const error = new Error('No logo file provided');
+      error.status = 400;
+      throw error;
+    }
+    // Generate a simple URL. Assuming Express static serves the uploads folder.
+    // In production this might be S3 or Cloudinary.
+    const logoUrl = `/uploads/${req.file.filename}`;
+    const profile = await tenantService.updateProfile(req.user.tenantId, { logoUrl });
+    success(res, profile);
+  } catch (err) {
+    next(err);
+  }
+});
 /**
  * @swagger
  * /tenant/ai-config:

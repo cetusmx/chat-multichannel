@@ -81,7 +81,9 @@ model Tenant {
   isSlaEnabled           Boolean     @default(true) @map("is_sla_enabled")
   autoCloseInactiveHours Int         @default(48)   @map("auto_close_inactive_hours")
   rfc                  String?
+  logoUrl              String?     @map("logo_url")
   bankDetails          Json?       @map("bank_details")
+  theme                Json?
   maxUsers             Int         @default(-1) @map("max_users")
   maxAiTokens          Int         @default(0) @map("max_ai_tokens") /// 0 = disabled, -1 = unlimited
   currentMonthAiTokens Int         @default(0) @map("current_month_ai_tokens")

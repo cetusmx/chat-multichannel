@@ -16,7 +16,9 @@ class PdfGeneratorService {
           address: companyData?.address || 'Calle Ejemplo 123, Ciudad, País',
           rfc: companyData?.rfc || 'XAXX010101000',
           email: companyData?.email || 'ventas@empresademo.com',
-          phone: companyData?.phone || '555-123-4567'
+          phone: companyData?.phone || '555-123-4567',
+          logoUrl: companyData?.logoUrl || null,
+          theme: companyData?.theme || null
         },
         client: {
           name: clientData.name || clientData.NOMBRE || 'Cliente General',

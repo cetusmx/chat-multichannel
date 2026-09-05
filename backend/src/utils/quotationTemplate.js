@@ -1,11 +1,17 @@
 const fs = require('fs');
 const path = require('path');
 
-function getBase64Logo() {
+function getBase64Logo(customPath) {
   try {
-    const logoPath = path.join(__dirname, '../assets/Logo3tr.png');
+    const logoPath = customPath ? path.join(__dirname, '../../', customPath) : path.join(__dirname, '../assets/Logo3tr.png');
+    const ext = path.extname(logoPath).toLowerCase();
+    let mimeType = 'image/png';
+    if (ext === '.jpg' || ext === '.jpeg') mimeType = 'image/jpeg';
+    else if (ext === '.svg') mimeType = 'image/svg+xml';
+    else if (ext === '.webp') mimeType = 'image/webp';
+    
     const logoData = fs.readFileSync(logoPath);
-    return `data:image/png;base64,${logoData.toString('base64')}`;
+    return `data:${mimeType};base64,${logoData.toString('base64')}`;
   } catch (error) {
     console.error('Error loading logo:', error);
     return ''; // Fallback si no se encuentra
@@ -35,7 +41,7 @@ function generateQuotationHtml(data) {
     }
   } = data;
 
-  const logoBase64 = getBase64Logo();
+  const logoBase64 = getBase64Logo(company.logoUrl);
   
   // Format dates
   const today = new Date();
@@ -68,8 +74,8 @@ function generateQuotationHtml(data) {
     <title>Cotización ${folio}</title>
     <style>
       :root {
-        --primary: #002B59;
-        --accent: #FF0010;
+        --primary: ${company.theme?.primary || '#002B59'};`n        --secondary: ${company.theme?.secondary || '#FF0010'};`n        --tertiary: ${company.theme?.tertiary || '#FF0010'};`n        --bg-container: ${company.theme?.background || '#F8FAFC'};
+        
         --bg-color: #FFFFFF;
         --text-dark: #333333;
         --text-light: #666666;
@@ -128,7 +134,7 @@ function generateQuotationHtml(data) {
 
       .quote-folio {
         font-size: 14px;
-        color: var(--accent);
+        color: var(--tertiary);
         font-weight: 600;
         margin-bottom: 10px;
       }
@@ -138,10 +144,10 @@ function generateQuotationHtml(data) {
         display: flex;
         justify-content: space-between;
         margin-bottom: 15px;
-        background-color: #F8FAFC;
+        background-color: var(--bg-container);
         padding: 10px 15px;
         border-radius: 8px;
-        border-left: 4px solid var(--primary);
+        border-left: 4px solid var(--secondary);
       }
 
       .client-box {
@@ -220,10 +226,10 @@ function generateQuotationHtml(data) {
 
       .bank-details {
         flex: 1;
-        background-color: #F8FAFC;
+        background-color: var(--bg-container);
         padding: 15px;
         border-radius: 8px;
-        border-left: 4px solid var(--accent);
+        border-left: 4px solid var(--tertiary);
         margin-right: 40px;
       }
 
@@ -253,7 +259,7 @@ function generateQuotationHtml(data) {
       }
 
       .grand-total .amount {
-        color: var(--accent);
+        color: var(--tertiary);
       }
 
       /* --- FOOTER NOTE --- */
@@ -326,7 +332,7 @@ function generateQuotationHtml(data) {
     <!-- BOTTOM SECTION -->
     <div class="bottom-section">
       <div class="bank-details">
-        <div class="section-label" style="color: var(--accent);">Instrucciones de Pago</div>
+        <div class="section-label" style="color: var(--tertiary);">Instrucciones de Pago</div>
         <p><strong>Banco:</strong> ${bankDetails.bank}</p>
         <p><strong>Cuenta:</strong> ${bankDetails.account}</p>
         <p><strong>CLABE:</strong> ${bankDetails.clabe}</p>

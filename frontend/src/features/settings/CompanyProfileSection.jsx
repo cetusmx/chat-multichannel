@@ -1,84 +1,72 @@
-import { useState, useEffect } from 'react';
-import { get, put } from '../../services/api.js';
+import { useState, useEffect, useRef } from 'react';
+import { get, put, postFormData } from '../../services/api.js';
 
 const DAYS_MAP = [
-  { id: 1, name: 'Lunes' },
-  { id: 2, name: 'Martes' },
-  { id: 3, name: 'Miércoles' },
-  { id: 4, name: 'Jueves' },
-  { id: 5, name: 'Viernes' },
-  { id: 6, name: 'Sábado' },
-  { id: 0, name: 'Domingo' },
+  { id: 'monday', name: 'Lunes' },
+  { id: 'tuesday', name: 'Martes' },
+  { id: 'wednesday', name: 'Miercoles' },
+  { id: 'thursday', name: 'Jueves' },
+  { id: 'friday', name: 'Viernes' },
+  { id: 'saturday', name: 'Sabado' },
+  { id: 'sunday', name: 'Domingo' },
 ];
 
 const DEFAULT_SCHEDULE = {
-  1: { isOpen: true, start: '09:00', end: '18:00' },
-  2: { isOpen: true, start: '09:00', end: '18:00' },
-  3: { isOpen: true, start: '09:00', end: '18:00' },
-  4: { isOpen: true, start: '09:00', end: '18:00' },
-  5: { isOpen: true, start: '09:00', end: '18:00' },
-  6: { isOpen: false, start: '09:00', end: '14:00' },
-  0: { isOpen: false, start: '09:00', end: '14:00' },
+  monday: { isOpen: true, start: '09:00', end: '18:00' },
+  tuesday: { isOpen: true, start: '09:00', end: '18:00' },
+  wednesday: { isOpen: true, start: '09:00', end: '18:00' },
+  thursday: { isOpen: true, start: '09:00', end: '18:00' },
+  friday: { isOpen: true, start: '09:00', end: '18:00' },
+  saturday: { isOpen: false, start: '09:00', end: '14:00' },
+  sunday: { isOpen: false, start: '09:00', end: '14:00' },
 };
 
 export default function CompanyProfileSection() {
   const [profile, setProfile] = useState(null);
   const [form, setForm] = useState({
     name: '', domain: '', phone: '', email: '', address: '',
-    rfc: '', bank: '', account: '', clabe: '',
+    rfc: '', logoUrl: '', bank: '', account: '', clabe: '',
+    primaryColor: '#002B59', secondaryColor: '#FF0010', tertiaryColor: '#FF0010', backgroundColor: '#F8FAFC',
     bhTimezone: 'America/Mexico_City',
     schedule: { ...DEFAULT_SCHEDULE },
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
   const [error, setError] = useState('');
   const [saved, setSaved] = useState(false);
+  
+  const fileInputRef = useRef(null);
 
   useEffect(() => {
     get('/tenant/profile').then(async (res) => {
-      const body = await res.json();
-      if (res.ok) {
-        setProfile(body.data);
-
-        let initialSchedule = { ...DEFAULT_SCHEDULE };
-        let timezone = 'America/Mexico_City';
-
-        // Convert old legacy format to new format if needed
-        if (body.data.businessHours) {
-          const bh = body.data.businessHours;
-          timezone = bh.timezone || timezone;
-
-          if (bh.schedule) {
-            initialSchedule = { ...DEFAULT_SCHEDULE, ...bh.schedule };
-          } else if (bh.start && bh.end && bh.days) {
-            // Legacy conversion
-            const legacySched = {};
-            [0,1,2,3,4,5,6].forEach(d => {
-              const isOpen = bh.days.includes(d);
-              legacySched[d] = { isOpen, start: bh.start, end: bh.end };
-            });
-            initialSchedule = legacySched;
-          }
-        }
-
-        setForm({
-          name: body.data.name || '',
-          domain: body.data.domain || '',
-          phone: body.data.phone || '',
-          email: body.data.email || '',
-          address: body.data.address || '',
-          rfc: body.data.rfc || '',
-          bank: body.data.bankDetails?.bank || '',
-          account: body.data.bankDetails?.account || '',
-          clabe: body.data.bankDetails?.clabe || '',
-          bhTimezone: timezone,
-          schedule: initialSchedule,
-        });
-      } else {
-        setError(body.error?.message || 'Error al cargar perfil');
-      }
-    }).catch(() => setError('Error de conexión'))
-      .finally(() => setLoading(false));
+      const data = await res.json();
+      setProfile(data.data);
+      setForm(prev => ({
+        ...prev,
+        name: data.data.name || '',
+        domain: data.data.domain || '',
+        phone: data.data.phone || '',
+        email: data.data.email || '',
+        address: data.data.address || '',
+        rfc: data.data.rfc || '',
+        logoUrl: data.data.logoUrl || '',
+        bank: data.data.bankDetails?.bank || '',
+        account: data.data.bankDetails?.account || '',
+        clabe: data.data.bankDetails?.clabe || '',
+        primaryColor: data.data.theme?.primary || '#002B59',
+        secondaryColor: data.data.theme?.secondary || '#FF0010',
+        tertiaryColor: data.data.theme?.tertiary || '#FF0010',
+        backgroundColor: data.data.theme?.background || '#F8FAFC',
+        bhTimezone: data.data.businessHours?.timezone || 'America/Mexico_City',
+        schedule: data.data.businessHours?.schedule || { ...DEFAULT_SCHEDULE },
+      }));
+    }).catch(err => {
+      console.error(err);
+      setError('Error al cargar perfil');
+    }).finally(() => {
+      setLoading(false);
+    });
   }, []);
 
   const handleDayChange = (dayId, field, value) => {
@@ -88,11 +76,40 @@ export default function CompanyProfileSection() {
         ...prev.schedule,
         [dayId]: {
           ...prev.schedule[dayId],
-          [field]: value,
-        },
-      },
+          [field]: value
+        }
+      }
     }));
   };
+
+  async function handleLogoChange(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    if (file.size > 2 * 1024 * 1024) {
+      setError('El archivo no debe exceder 2MB');
+      return;
+    }
+
+    try {
+      setUploadingLogo(true);
+      setError('');
+      
+      const formData = new FormData();
+      formData.append('logo', file);
+      
+      const res = await postFormData('/tenant/profile/logo', formData);
+      const data = await res.json();
+      
+      setForm(prev => ({ ...prev, logoUrl: data.data.logoUrl }));
+      setSaved(true);
+    } catch (err) {
+      setError(err.message || 'Error al subir el logo');
+    } finally {
+      setUploadingLogo(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  }
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -110,22 +127,21 @@ export default function CompanyProfileSection() {
         bankDetails: {
           bank: form.bank,
           account: form.account,
-          clabe: form.clabe,
+          clabe: form.clabe
+        },
+        theme: {
+          primary: form.primaryColor,
+          secondary: form.secondaryColor,
+          tertiary: form.tertiaryColor,
+          background: form.backgroundColor
         },
         businessHours: {
           timezone: form.bhTimezone,
-          schedule: form.schedule,
-        },
+          schedule: form.schedule
+        }
       };
-      const res = await put('/tenant/profile', payload);
-      if (!res.ok) {
-        const body = await res.json();
-        throw new Error(body.error?.message || 'Error al guardar');
-      }
-      const body = await res.json();
-      setProfile(body.data);
+      await put('/tenant/profile', payload);
       setSaved(true);
-      setTimeout(() => setSaved(false), 3000);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -147,11 +163,79 @@ export default function CompanyProfileSection() {
 
       {saved && (
         <div className="mb-4 rounded-lg border border-green-500/30 bg-green-500/10 px-4 py-2 text-sm text-green-400">
-          Perfil y horarios actualizados correctamente
+          Perfil actualizado correctamente
         </div>
       )}
 
       <form onSubmit={handleSubmit} className="space-y-4">
+        
+        {/* Logo Section */}
+        <div className="mb-6 bg-sales-slate-800 p-4 rounded-lg border border-slate-700 flex items-center gap-6">
+          <div className="w-32 h-20 bg-slate-900 border border-slate-700 flex items-center justify-center rounded-md overflow-hidden shrink-0">
+            {form.logoUrl ? (
+              <img src={`http://localhost:3000${form.logoUrl}`} alt="Logo Empresa" className="max-w-full max-h-full object-contain" />
+            ) : (
+              <span className="text-slate-500 text-xs text-center px-2">Sin Logo</span>
+            )}
+          </div>
+          <div>
+            <h4 className="text-sm font-medium text-sales-slate-200 mb-1">Logo para Cotizaciones</h4>
+            <p className="text-xs text-sales-slate-400 mb-3 max-w-sm">
+              Se recomienda PNG con fondo transparente o SVG. Orientación horizontal. Máximo 2MB. (Ideal: 400x150px) para evitar romper el layout del PDF.
+            </p>
+            <input 
+              type="file" 
+              accept="image/png, image/jpeg, image/webp, image/svg+xml"
+              className="hidden" 
+              ref={fileInputRef}
+              onChange={handleLogoChange}
+            />
+            <button
+              type="button"
+              disabled={uploadingLogo}
+              onClick={() => fileInputRef.current?.click()}
+              className="text-xs font-medium bg-slate-700 hover:bg-slate-600 text-slate-200 px-3 py-1.5 rounded-md transition-colors disabled:opacity-50"
+            >
+              {uploadingLogo ? 'Subiendo...' : 'Cambiar Logo'}
+            </button>
+          </div>
+        </div>
+
+        {/* Colors Section */}
+        <div className="mb-6 bg-sales-slate-800 p-4 rounded-lg border border-slate-700">
+          <h4 className="text-sm font-medium text-sales-slate-200 mb-4">Colores Corporativos (Cotización)</h4>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div>
+              <label className="mb-1 block text-xs text-sales-slate-400">Color Primario (Encabezado)</label>
+              <div className="flex items-center gap-2">
+                <input type="color" value={form.primaryColor} onChange={(e) => setForm({...form, primaryColor: e.target.value})} className="w-8 h-8 rounded cursor-pointer bg-transparent border-0 p-0" />
+                <span className="text-sm text-sales-slate-300 font-mono">{form.primaryColor}</span>
+              </div>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-sales-slate-400">Color Secundario (Borde Datos)</label>
+              <div className="flex items-center gap-2">
+                <input type="color" value={form.secondaryColor} onChange={(e) => setForm({...form, secondaryColor: e.target.value})} className="w-8 h-8 rounded cursor-pointer bg-transparent border-0 p-0" />
+                <span className="text-sm text-sales-slate-300 font-mono">{form.secondaryColor}</span>
+              </div>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-sales-slate-400">Color Terciario (Instrucciones)</label>
+              <div className="flex items-center gap-2">
+                <input type="color" value={form.tertiaryColor} onChange={(e) => setForm({...form, tertiaryColor: e.target.value})} className="w-8 h-8 rounded cursor-pointer bg-transparent border-0 p-0" />
+                <span className="text-sm text-sales-slate-300 font-mono">{form.tertiaryColor}</span>
+              </div>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-sales-slate-400">Fondo Contenedores</label>
+              <div className="flex items-center gap-2">
+                <input type="color" value={form.backgroundColor} onChange={(e) => setForm({...form, backgroundColor: e.target.value})} className="w-8 h-8 rounded cursor-pointer bg-transparent border-0 p-0" />
+                <span className="text-sm text-sales-slate-300 font-mono">{form.backgroundColor}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="mb-1 block text-sm text-sales-slate-400">Nombre de la empresa</label>
@@ -168,6 +252,14 @@ export default function CompanyProfileSection() {
               value={form.domain}
               onChange={(e) => setForm({ ...form, domain: e.target.value })}
               required
+              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-sales-slate-100 focus:outline-none focus:ring-2 focus:ring-sales-coral/50"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm text-sales-slate-400">RFC</label>
+            <input
+              value={form.rfc}
+              onChange={(e) => setForm({ ...form, rfc: e.target.value })}
               className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-sales-slate-100 focus:outline-none focus:ring-2 focus:ring-sales-coral/50"
             />
           </div>
@@ -197,13 +289,38 @@ export default function CompanyProfileSection() {
               className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-sales-slate-100 focus:outline-none focus:ring-2 focus:ring-sales-coral/50"
             />
           </div>
+          <div>
+            <label className="mb-1 block text-sm text-sales-slate-400">Banco</label>
+            <input
+              value={form.bank}
+              onChange={(e) => setForm({ ...form, bank: e.target.value })}
+              placeholder="Ej. BBVA"
+              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-sales-slate-100 focus:outline-none focus:ring-2 focus:ring-sales-coral/50"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm text-sales-slate-400">Cuenta</label>
+            <input
+              value={form.account}
+              onChange={(e) => setForm({ ...form, account: e.target.value })}
+              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-sales-slate-100 focus:outline-none focus:ring-2 focus:ring-sales-coral/50"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm text-sales-slate-400">CLABE</label>
+            <input
+              value={form.clabe}
+              onChange={(e) => setForm({ ...form, clabe: e.target.value })}
+              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-sales-slate-100 focus:outline-none focus:ring-2 focus:ring-sales-coral/50"
+            />
+          </div>
         </div>
 
         <div className="mt-8">
           <div className="flex flex-col border-t border-slate-700 pt-6">
             <h4 className="mb-1 text-lg font-semibold text-sales-slate-100">Horarios de Operación (Business Hours)</h4>
             <p className="mb-6 text-sm text-sales-slate-400">
-              Define los horarios laborales. Los relojes del SLA se pausarán fuera de estos horarios y el agente IA enviará notificaciones de "Fuera de Horario".
+              Define los horarios laborales. Los relojes del SLA se pausarán fuera de estos horarios y el agente IA enviará notificaciones de Fuera de Horario.
             </p>
 
             <div className="mb-6 max-w-sm">
