@@ -10,6 +10,7 @@ import KnowledgeBaseSection from '../features/settings/KnowledgeBaseSection.jsx'
 import AssignmentRulesSection from '../features/settings/AssignmentRulesSection.jsx';
 import SlaConfigSection from '../features/settings/SlaConfigSection.jsx';
 import CannedResponsesSection from '../features/settings/CannedResponsesSection.jsx';
+import EmailConfigSection from '../features/settings/EmailConfigSection.jsx';
 
 const tabs = [
   { id: 'company', label: 'Empresa', roles: ['ADMIN', 'COORDINATOR'] },
@@ -21,6 +22,7 @@ const tabs = [
   { id: 'canned', label: 'Respuestas Rápidas', roles: ['ADMIN'] },
   { id: 'assignment', label: 'Asignación de Clientes', roles: ['ADMIN'] },
   { id: 'sla', label: 'SLA y Tiempos', roles: ['ADMIN', 'COORDINATOR'] },
+  { id: 'email', label: 'Email / SMTP', roles: ['ADMIN'] },
 ];
 
 export default function Settings() {
@@ -45,6 +47,7 @@ export default function Settings() {
       case 'canned': return <CannedResponsesSection />;
       case 'assignment': return <AssignmentRulesSection />;
       case 'sla': return <SlaConfigSection />;
+      case 'email': return <EmailConfigSection />;
       default: return null;
     }
   }

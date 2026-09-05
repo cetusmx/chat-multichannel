@@ -15,10 +15,10 @@ function getBase64Logo() {
 function generateQuotationHtml(data) {
   const {
     company = {
-      name: 'Seal Market',
+      name: 'Empresa Demo',
       address: 'Calle Ejemplo 123, Ciudad, País',
       rfc: 'XAXX010101000',
-      email: 'ventas@sealmarket.com',
+      email: 'ventas@empresademo.com',
       phone: '555-123-4567'
     },
     client = {

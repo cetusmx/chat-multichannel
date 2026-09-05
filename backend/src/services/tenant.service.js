@@ -105,4 +105,31 @@ async function updateAiConfig(tenantId, data) {
   }
 }
 
-module.exports = { getProfile, updateProfile, getAiConfig, updateAiConfig };
+async function getEmailConfig(tenantId) {
+  const config = await prisma.emailConfig.findUnique({ where: { tenantId } });
+  if (!config) {
+    return { isConfigured: false };
+  }
+  return { 
+    isConfigured: true, 
+    host: config.host, 
+    port: config.port, 
+    secure: config.secure, 
+    user: config.user, 
+    password: config.password, 
+    fromName: config.fromName, 
+    fromEmail: config.fromEmail 
+  };
+}
+
+async function updateEmailConfig(tenantId, data) {
+  const { host, port, secure, user, password, fromName, fromEmail } = data;
+  const updated = await prisma.emailConfig.upsert({
+    where: { tenantId },
+    update: { host, port: parseInt(port), secure: Boolean(secure), user, password, fromName, fromEmail },
+    create: { tenantId, host, port: parseInt(port), secure: Boolean(secure), user, password, fromName, fromEmail },
+  });
+  return updated;
+}
+
+module.exports = { getProfile, updateProfile, getAiConfig, updateAiConfig, getEmailConfig, updateEmailConfig };

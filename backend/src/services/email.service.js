@@ -1,30 +1,57 @@
 const nodemailer = require('nodemailer');
 const fs = require('fs');
 const path = require('path');
+const { PrismaClient } = require('@prisma/client');
+const prisma = new PrismaClient();
 require('dotenv').config();
 
 class EmailService {
   constructor() {
-    this.transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: process.env.SMTP_PORT,
-      secure: process.env.SMTP_SECURE === 'true', // true for 465, false for other ports
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
-      },
-    });
+    this.defaultTransporter = null;
+    if (process.env.SMTP_HOST) {
+      this.defaultTransporter = nodemailer.createTransport({
+        host: process.env.SMTP_HOST,
+        port: process.env.SMTP_PORT,
+        secure: process.env.SMTP_SECURE === 'true',
+        auth: {
+          user: process.env.SMTP_USER,
+          pass: process.env.SMTP_PASS,
+        },
+      });
+    }
   }
 
-  async sendQuotationEmail(to, clientName, pdfPath) {
-    if (!process.env.SMTP_HOST) {
-      console.warn('[EMAIL_SERVICE] SMTP_HOST no está configurado. Simulando envío de email.');
+  async sendQuotationEmail(to, clientName, pdfPath, tenantId, tenantName = 'Ventas') {
+    let transporter = this.defaultTransporter;
+    let fromEmail = process.env.SMTP_USER;
+    let fromName = tenantName;
+
+    // Check if tenant has custom EmailConfig
+    if (tenantId) {
+      const emailConfig = await prisma.emailConfig.findUnique({ where: { tenantId } });
+      if (emailConfig && emailConfig.host && emailConfig.user && emailConfig.password) {
+        transporter = nodemailer.createTransport({
+          host: emailConfig.host,
+          port: emailConfig.port,
+          secure: emailConfig.secure,
+          auth: {
+            user: emailConfig.user,
+            pass: emailConfig.password,
+          },
+        });
+        fromEmail = emailConfig.fromEmail || emailConfig.user;
+        fromName = emailConfig.fromName || tenantName;
+      }
+    }
+
+    if (!transporter) {
+      console.warn('[EMAIL_SERVICE] No hay configuración SMTP (ni default ni de tenant). Simulando envío de email.');
       return true;
     }
 
     try {
-      const info = await this.transporter.sendMail({
-        from: `"Ventas Seal Market" <${process.env.SMTP_USER}>`,
+      const info = await transporter.sendMail({
+        from: `"${fromName}" <${fromEmail}>`,
         to: to,
         subject: `Cotización - ${clientName}`,
         text: `Hola ${clientName},\n\nAdjuntamos la cotización solicitada.\n\nSaludos,\nEl equipo de ventas.`,

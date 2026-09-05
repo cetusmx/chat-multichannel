@@ -12,10 +12,10 @@ class PdfGeneratorService {
       // Map properties to match template
       const templateData = {
         company: {
-          name: companyData?.name || 'Seal Market',
+          name: companyData?.name || 'Empresa Demo',
           address: companyData?.address || 'Calle Ejemplo 123, Ciudad, País',
           rfc: companyData?.rfc || 'XAXX010101000',
-          email: companyData?.email || 'ventas@sealmarket.com',
+          email: companyData?.email || 'ventas@empresademo.com',
           phone: companyData?.phone || '555-123-4567'
         },
         client: {

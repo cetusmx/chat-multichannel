@@ -496,7 +496,7 @@ class AIService {
 
           await PdfGeneratorService.generateQuote(clientDataForPdf, cartItems, companyData, filePath);
           
-          await EmailService.sendQuotationEmail(args.email, clientDataForPdf.name, filePath);
+          await EmailService.sendQuotationEmail(args.email, clientDataForPdf.name, filePath, tenantId, companyData?.name || 'Ventas');
 
           setTimeout(() => {
             fs.unlink(filePath, (err) => {

@@ -95,6 +95,7 @@ model Tenant {
   branches        Branch[]
   whatsappConfig  WhatsAppConfig?
   aiConfig        AiConfig?
+  emailConfig     EmailConfig?
   assignmentRule  AssignmentRule?
   slaConfig       SlaConfig?
   clients         Client[]
@@ -434,4 +435,22 @@ model AiRule {
   @@unique([tenantId, term])
   @@index([tenantId])
   @@map("ai_rules")
+}
+
+model EmailConfig {
+  id        String   @id @default(cuid())
+  tenantId  String   @unique @map("tenant_id")
+  host      String
+  port      Int      @default(465)
+  secure    Boolean  @default(true)
+  user      String
+  password  String
+  fromName  String?  @map("from_name")
+  fromEmail String?  @map("from_email")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("email_configs")
 }

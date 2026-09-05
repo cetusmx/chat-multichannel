@@ -82,6 +82,24 @@ router.put('/ai-config', authorize('ADMIN'), async (req, res, next) => {
   }
 });
 
+router.get('/email-config', authorize('ADMIN'), async (req, res, next) => {
+  try {
+    const config = await tenantService.getEmailConfig(req.user.tenantId);
+    success(res, config);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.put('/email-config', authorize('ADMIN'), async (req, res, next) => {
+  try {
+    const config = await tenantService.updateEmailConfig(req.user.tenantId, req.body);
+    success(res, config);
+  } catch (err) {
+    next(err);
+  }
+});
+
 /**
  * @swagger
  * /tenant/knowledge-base:
