@@ -74,7 +74,10 @@ function generateQuotationHtml(data) {
     <title>Cotización ${folio}</title>
     <style>
       :root {
-        --primary: ${company.theme?.primary || '#002B59'};`n        --secondary: ${company.theme?.secondary || '#FF0010'};`n        --tertiary: ${company.theme?.tertiary || '#FF0010'};`n        --bg-container: ${company.theme?.background || '#F8FAFC'};
+        --primary: ${company.theme?.primary || '#002B59'};
+        --secondary: ${company.theme?.secondary || '#FF0010'};
+        --tertiary: ${company.theme?.tertiary || '#FF0010'};
+        --bg-container: ${company.theme?.background || '#F8FAFC'};
         
         --bg-color: #FFFFFF;
         --text-dark: #333333;

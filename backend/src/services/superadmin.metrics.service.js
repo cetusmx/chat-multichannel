@@ -35,6 +35,7 @@ const getGlobalMetrics = async () => {
 
 const clearCache = () => {
   cache.clear();
+  ongoingPromise = null;
 };
 
 module.exports = { getGlobalMetrics, clearCache };

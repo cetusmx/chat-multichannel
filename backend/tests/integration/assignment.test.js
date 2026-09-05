@@ -28,8 +28,10 @@ beforeAll(async () => {
     { expiresIn: '1h' },
   );
 
-  const v1 = await prisma.user.create({
-    data: {
+  const v1 = await prisma.user.upsert({
+    where: { email: 'v1@example.com' },
+    update: { tenantId: testTenantId },
+    create: {
       name: 'Vendor 1',
       email: 'v1@example.com',
       passwordHash: 'hash',
@@ -37,8 +39,10 @@ beforeAll(async () => {
       tenantId: testTenantId,
     }
   });
-  const v2 = await prisma.user.create({
-    data: {
+  const v2 = await prisma.user.upsert({
+    where: { email: 'v2@example.com' },
+    update: { tenantId: testTenantId },
+    create: {
       name: 'Vendor 2',
       email: 'v2@example.com',
       passwordHash: 'hash',
