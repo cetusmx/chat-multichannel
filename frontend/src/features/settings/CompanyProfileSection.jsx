@@ -59,7 +59,7 @@ export default function CompanyProfileSection() {
         tertiaryColor: data.data.theme?.tertiary || '#FF0010',
         backgroundColor: data.data.theme?.background || '#F8FAFC',
         bhTimezone: data.data.businessHours?.timezone || 'America/Mexico_City',
-        schedule: data.data.businessHours?.schedule || { ...DEFAULT_SCHEDULE },
+        schedule: { ...DEFAULT_SCHEDULE, ...(data.data.businessHours?.schedule || {}) },
       }));
     }).catch(err => {
       console.error(err);
@@ -341,7 +341,7 @@ export default function CompanyProfileSection() {
 
             <div className="flex flex-col gap-3">
               {DAYS_MAP.map(day => {
-                const dayConfig = form.schedule[day.id];
+                const dayConfig = form.schedule[day.id] || DEFAULT_SCHEDULE[day.id];
                 return (
                   <div key={day.id} className={`flex items-center gap-4 p-3 rounded-lg border transition-colors ${dayConfig.isOpen ? 'bg-sales-slate-800/80 border-sales-slate-700' : 'bg-sales-slate-900/50 border-sales-slate-800'}`}>
                     <div className="w-32 flex items-center gap-3">
