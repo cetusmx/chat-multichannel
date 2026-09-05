@@ -137,7 +137,7 @@ const performSearch = async ({ tenantId, query, type, filters, limit, offset, pa
           ${dateFilter}
           ${vendorFilter}
           ${rfcFilter}
-          ORDER BY c.id, m."created_at" DESC
+          ORDER BY c.id, m."created_at" ASC
         ),
         paginated_messages AS (
           SELECT *,

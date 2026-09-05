@@ -145,7 +145,7 @@ export default function SearchPage() {
                 </button>
               )}
               <h1 className="text-xl font-bold text-sales-slate-100 flex items-center gap-3">
-                {query ? `Resultados para "${query}"` : 'Búsqueda Global'}
+                {query ? `Resultados para "${query}" (${meta?.facets?.chats || 0})` : 'Búsqueda Global'}
                 {meta?.pagination?.hasMore !== undefined && (
                   <span className="text-sm font-normal text-sales-slate-400 bg-sales-slate-800 px-2 py-1 rounded-md">
                     Página {meta.pagination.page}

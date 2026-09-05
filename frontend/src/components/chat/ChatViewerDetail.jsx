@@ -11,11 +11,13 @@ export default function ChatViewerDetail({ conversationId, targetMessageId, sear
   const [error, setError] = useState(null);
   const [meta, setMeta] = useState(null);
 
-  const highlightText = (text, query) => {
-    if (!query || !text) return text;
+  const highlightText = (rawText, rawQuery) => {
+    if (!rawQuery || !rawText) return String(rawText || '');
     try {
+      const text = String(rawText);
+      const query = String(rawQuery);
       // Split query by spaces to highlight individual words (mimicking full-text search)
-      const tokens = query.split(/\s+/).filter(Boolean);
+      const tokens = query.split(/[\s*]+/).filter(Boolean); // split by spaces or asterisks
       if (tokens.length === 0) return text;
       
       let highlighted = text;
@@ -36,6 +38,31 @@ export default function ChatViewerDetail({ conversationId, targetMessageId, sear
       return text;
     }
   };
+
+  const isMessageMatch = (rawText, rawQuery) => {
+    if (!rawQuery || !rawText) return false;
+    const text = String(rawText);
+    const query = String(rawQuery);
+    const tokens = query.split(/[\s*]+/).filter(Boolean);
+    if (tokens.length === 0) return false;
+    
+    return tokens.some(token => {
+      const safeToken = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const regex = new RegExp(`(${safeToken})`, 'gi');
+      return regex.test(text);
+    });
+  };
+
+  const totalMatches = React.useMemo(() => {
+    if (!searchQuery || !messages) return 0;
+    return messages.filter(msg => msg.type !== 'separator' && isMessageMatch(msg.content, searchQuery)).length;
+  }, [messages, searchQuery]);
+
+  const firstMatchId = React.useMemo(() => {
+    if (!searchQuery || !messages) return null;
+    const match = messages.find(msg => msg.type !== 'separator' && isMessageMatch(msg.content, searchQuery));
+    return match ? match.id : null;
+  }, [messages, searchQuery]);
 
   const [loadingPrev, setLoadingPrev] = useState(false);
   const [errorPrev, setErrorPrev] = useState(false);
@@ -175,7 +202,14 @@ export default function ChatViewerDetail({ conversationId, targetMessageId, sear
         >
           <ArrowLeft size={20} />
         </button>
-        <h2 className="text-lg font-bold text-sales-slate-100">Previsualización de Chat</h2>
+        <div className="flex flex-col">
+          <h2 className="text-lg font-bold text-sales-slate-100">Previsualización de Chat</h2>
+          {searchQuery && totalMatches > 0 && (
+            <span className="text-xs text-sales-orange-light font-medium">
+              {totalMatches} {totalMatches === 1 ? 'coincidencia encontrada' : 'coincidencias encontradas'} en esta vista
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Messages */}
@@ -211,13 +245,13 @@ export default function ChatViewerDetail({ conversationId, targetMessageId, sear
                    </div>
                 );
               }
-              const isTarget = msg.id === targetMessageId;
+              const isTarget = (searchQuery && isMessageMatch(msg.content, searchQuery)) || msg.id === targetMessageId;
               const isVendor = msg.senderType === 'VENDOR' || msg.senderType === 'SYSTEM';
               
               return (
                 <div 
                   key={`${msg.id}-${index}`} 
-                  ref={isTarget ? targetMessageRef : null}
+                  ref={msg.id === firstMatchId || msg.id === targetMessageId ? targetMessageRef : null}
                   tabIndex={isTarget ? -1 : undefined}
                   className={`flex ${isVendor ? 'justify-end' : 'justify-start'} mb-4`}
                 >
