@@ -125,7 +125,7 @@ export default function SearchResultsLayout({ data, loading, error, meta, onPage
          <ChatViewerDetail 
             conversationId={selectedChatId} 
             targetMessageId={targetMessageId}
-            searchQuery={searchParams.get('query') || ''}
+            searchQuery={searchParams.get('q') || ''}
             onBack={handleBack} 
          />
       </div>

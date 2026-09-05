@@ -104,13 +104,6 @@ export default function ChatViewerDetail({ conversationId, targetMessageId, sear
       if (targetMessageId && targetMessageRef.current) {
         targetMessageRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
         targetMessageRef.current.focus();
-        targetMessageRef.current.classList.add('bg-yellow-100', 'transition-colors', 'duration-1000');
-        const timer = setTimeout(() => {
-          if (targetMessageRef.current) {
-            targetMessageRef.current.classList.remove('bg-yellow-100');
-          }
-        }, 3000);
-        return () => clearTimeout(timer);
       } else if (containerRef.current) {
         // Scroll to bottom if no target
         containerRef.current.scrollTop = containerRef.current.scrollHeight;
