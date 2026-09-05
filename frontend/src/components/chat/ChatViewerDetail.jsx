@@ -281,7 +281,7 @@ export default function ChatViewerDetail({ conversationId, targetMessageId, sear
               else if (msg.senderType === 'IA') senderLabel = '🤖 Bot (IA)';
               else if (msg.senderType === 'SYSTEM') senderLabel = '💻 Sistema';
               else if (msg.senderType === 'COORDINATOR' || msg.senderType === 'ADMIN') senderLabel = '🛡️ Coordinador';
-              else senderLabel = vendorName ? 👤  : '👤 Asesor';
+              else senderLabel = vendorName ? `👤 ${vendorName}` : '👤 Asesor';
 
               return (
                 <React.Fragment key={`${msg.id}-${index}`}>

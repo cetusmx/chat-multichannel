@@ -6,8 +6,6 @@ const ResultCard = memo(({ item, isActive, onClick }) => {
     onClick(item);
   }, [item, onClick]);
 
-  const timeAgo = (date) => { const s = Math.floor((new Date() - date) / 1000); if(s < 60) return "ahora"; if(s < 3600) return Math.floor(s/60) + "m"; if(s < 86400) return Math.floor(s/3600) + "h"; return Math.floor(s/86400) + "d"; };
-  
   let validDate = false;
   let dateStr = 'Fecha desconocida';
   try {
