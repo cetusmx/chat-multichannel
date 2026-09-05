@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { get, put } from '../../services/api';
-import toast from 'react-hot-toast';
 
 export default function EmailConfigSection() {
   const [config, setConfig] = useState({
@@ -15,6 +14,8 @@ export default function EmailConfigSection() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [isConfigured, setIsConfigured] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
 
   useEffect(() => {
     fetchConfig();
@@ -23,6 +24,7 @@ export default function EmailConfigSection() {
   const fetchConfig = async () => {
     try {
       setLoading(true);
+      setError('');
       const res = await get('/tenant/email-config');
       if (res.data?.isConfigured) {
         setConfig({
@@ -36,9 +38,9 @@ export default function EmailConfigSection() {
         });
         setIsConfigured(true);
       }
-    } catch (error) {
-      console.error('Error fetching email config:', error);
-      toast.error('Error al cargar configuración SMTP');
+    } catch (err) {
+      console.error('Error fetching email config:', err);
+      setError('Error al cargar configuración SMTP');
     } finally {
       setLoading(false);
     }
@@ -48,11 +50,13 @@ export default function EmailConfigSection() {
     e.preventDefault();
     try {
       setSaving(true);
+      setError('');
+      setSuccess('');
       const res = await put('/tenant/email-config', config);
-      toast.success('Configuración SMTP guardada');
+      setSuccess('Configuración SMTP guardada con éxito');
       setIsConfigured(true);
-    } catch (error) {
-      toast.error(error.response?.data?.message || 'Error al guardar configuración');
+    } catch (err) {
+      setError(err.response?.data?.message || err.message || 'Error al guardar configuración');
     } finally {
       setSaving(false);
     }
@@ -73,6 +77,17 @@ export default function EmailConfigSection() {
           {isConfigured ? 'Configurado' : 'Sin Configurar'}
         </div>
       </div>
+
+      {error && (
+        <div className="mb-4 rounded-lg bg-red-900/50 p-3 text-sm text-red-400 border border-red-900/50">
+          {error}
+        </div>
+      )}
+      {success && (
+        <div className="mb-4 rounded-lg bg-emerald-900/50 p-3 text-sm text-emerald-400 border border-emerald-900/50">
+          {success}
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="grid grid-cols-2 gap-4">
