@@ -4,6 +4,7 @@ import { ArrowLeft, MessageSquare } from 'lucide-react';
 import DOMPurify from 'dompurify';
 import useAuthStore from '../../stores/useAuthStore';
 import ContiguousSessionCard from './ContiguousSessionCard';
+import SecureMedia from './SecureMedia';
 
 export default function ChatViewerDetail({ conversationId, targetMessageId, searchQuery, onBack }) {
   const [messages, setMessages] = useState([]);
@@ -245,36 +246,95 @@ export default function ChatViewerDetail({ conversationId, targetMessageId, sear
                    </div>
                 );
               }
-              const isTarget = (searchQuery && isMessageMatch(msg.content, searchQuery)) || msg.id === targetMessageId;
-              const isVendor = msg.senderType === 'VENDOR' || msg.senderType === 'SYSTEM';
               
+              let showDateLabel = false;
+              if (index === 0 || messages[index - 1]?.type === 'separator') {
+                showDateLabel = true;
+              } else {
+                const prevMsg = messages[index - 1];
+                if (prevMsg && prevMsg.createdAt) {
+                  const currentDate = new Date(msg.createdAt).toDateString();
+                  const prevDate = new Date(prevMsg.createdAt).toDateString();
+                  if (currentDate !== prevDate) {
+                    showDateLabel = true;
+                  }
+                }
+              }
+              
+              const formatDateLabel = (dateString) => {
+                const date = new Date(dateString);
+                const today = new Date();
+                const yesterday = new Date(today);
+                yesterday.setDate(yesterday.getDate() - 1);
+            
+                if (date.toDateString() === today.toDateString()) return 'Hoy';
+                if (date.toDateString() === yesterday.toDateString()) return 'Ayer';
+                return date.toLocaleDateString('es-MX', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+              };
+
+              const isMyTeam = ['VENDOR', 'SYSTEM', 'COORDINATOR', 'ADMIN', 'IA'].includes(msg.senderType);
+              const isClient = msg.senderType === 'CLIENT';
+              const isTarget = (searchQuery && isMessageMatch(msg.content, searchQuery)) || msg.id === targetMessageId;
+              
+              let senderLabel = 'Asesor';
+              if (isClient) senderLabel = 'Cliente';
+              else if (msg.senderType === 'IA') senderLabel = '🤖 Bot (IA)';
+              else if (msg.senderType === 'SYSTEM') senderLabel = '💻 Sistema';
+              else if (msg.senderType === 'COORDINATOR' || msg.senderType === 'ADMIN') senderLabel = '🛡️ Coordinador';
+              else senderLabel = '👤 Asesor';
+
               return (
+                <React.Fragment key={`${msg.id}-${index}`}>
+                {showDateLabel && (
+                  <div className="flex justify-center w-full my-4">
+                    <span className="bg-sales-slate-800/80 text-sales-slate-300 text-xs px-3 py-1 rounded-md shadow-sm border border-sales-slate-700/50 uppercase tracking-wide font-medium">
+                      {formatDateLabel(msg.createdAt)}
+                    </span>
+                  </div>
+                )}
                 <div 
-                  key={`${msg.id}-${index}`} 
                   ref={msg.id === firstMatchId || msg.id === targetMessageId ? targetMessageRef : null}
                   tabIndex={isTarget ? -1 : undefined}
-                  className={`flex ${isVendor ? 'justify-end' : 'justify-start'} mb-4`}
+                  className={`flex flex-col ${isMyTeam ? 'items-end' : 'items-start'} mb-4`}
                 >
+                  <span className="text-[10px] text-sales-slate-500 mb-1 ml-1 mr-1">
+                    {senderLabel} • {new Intl.DateTimeFormat('es-MX', { timeStyle: 'short' }).format(new Date(msg.createdAt))}
+                  </span>
                   <div 
                     className={`max-w-[85%] rounded-2xl px-4 py-2 relative shadow-sm ${
                       isTarget 
                         ? 'ring-2 ring-sales-orange bg-sales-slate-800' 
-                        : isVendor 
+                        : isMyTeam 
                           ? 'bg-sales-slate-800 text-sales-slate-100 rounded-tr-none' 
                           : 'bg-sales-slate-900 border border-sales-slate-800 text-sales-slate-100 rounded-tl-none'
                     }`}
                   >
+                    {msg.attachments && msg.attachments.length > 0 && (
+                      <div className="flex flex-col gap-2 mb-2">
+                        {msg.attachments.map((att, i) => (
+                          <SecureMedia
+                            key={i}
+                            url={att.url}
+                            type={att.type}
+                            fallbackText={att.name}
+                            className="w-full max-w-sm rounded-lg"
+                          />
+                        ))}
+                      </div>
+                    )}
                     <p className="whitespace-pre-wrap text-sm leading-relaxed" dangerouslySetInnerHTML={{
                       __html: DOMPurify.sanitize(highlightText(msg.snippet || msg.content || '', searchQuery), {
                         ALLOWED_TAGS: ['b', 'i', 'em', 'strong', 'mark', 'br'],
                         ALLOWED_ATTR: ['class']
                       })
                     }} />
-                    <div className={`text-[10px] mt-1 text-right ${isVendor ? 'text-sales-slate-400' : 'text-sales-slate-500'}`}>
+                    <div className={`text-[10px] mt-1 text-right ${isMyTeam ? 'text-sales-slate-400' : 'text-sales-slate-500'}`}>
                       {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </div>
                   </div>
-                </div>);
+                </div>
+                </React.Fragment>
+              );
             })}
 
             {meta?.nextSessionId && (
