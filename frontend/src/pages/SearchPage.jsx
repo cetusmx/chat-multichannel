@@ -126,28 +126,28 @@ export default function SearchPage() {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-gray-50 overflow-hidden pt-14">
+    <div className="flex flex-col h-screen bg-sales-slate-950 overflow-hidden pt-14">
       {/* Search Header Row */}
-      <div className="bg-white border-b border-gray-200 p-4 shadow-sm z-10 flex-shrink-0">
+      <div className="bg-sales-slate-900 border-b border-sales-slate-800 p-4 shadow-sm z-10 flex-shrink-0">
         <div className="w-full px-2">
           <div className="flex justify-between items-center mb-2">
             <div className="flex items-center gap-4">
               {!sidebarOpen && (
                 <button 
-                  className="flex items-center justify-center p-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors shadow-sm"
+                  className="flex items-center justify-center p-2 bg-sales-slate-800 border border-sales-slate-700 text-sales-slate-100 rounded-lg hover:bg-sales-slate-700 transition-colors shadow-sm"
                   onClick={() => setSidebarOpen(true)}
                   title="Mostrar Filtros"
                 >
                   <Filter size={18} /> 
                   {hasActiveFilters && (
-                    <span className="absolute top-0 right-0 h-2.5 w-2.5 bg-blue-500 rounded-full border-2 border-white transform translate-x-1/2 -translate-y-1/2"></span>
+                    <span className="absolute top-0 right-0 h-2.5 w-2.5 bg-blue-500 rounded-full border-2 border-sales-slate-900 transform translate-x-1/2 -translate-y-1/2"></span>
                   )}
                 </button>
               )}
-              <h1 className="text-xl font-bold text-gray-800 flex items-center gap-3">
+              <h1 className="text-xl font-bold text-sales-slate-100 flex items-center gap-3">
                 {query ? `Resultados para "${query}"` : 'Búsqueda Global'}
                 {meta?.pagination?.hasMore !== undefined && (
-                  <span className="text-sm font-normal text-gray-500 bg-gray-100 px-2 py-1 rounded-md">
+                  <span className="text-sm font-normal text-sales-slate-400 bg-sales-slate-800 px-2 py-1 rounded-md">
                     Página {meta.pagination.page}
                   </span>
                 )}
@@ -158,7 +158,7 @@ export default function SearchPage() {
           {/* Active Filters Pills */}
           {hasActiveFilters && (
             <div className="flex flex-wrap gap-2 items-center mt-3">
-              <span className="text-sm font-medium text-gray-500 mr-1">Filtros:</span>
+              <span className="text-sm font-medium text-sales-slate-400 mr-1">Filtros:</span>
               {renderPill('vendorId', 'Asesor', getVendorName(currentFilters.vendorId))}
               {renderPill('clientId', 'Cliente', getClientName(currentFilters.clientId))}
               {renderPill('rfc', 'RFC', currentFilters.rfc)}
@@ -167,7 +167,7 @@ export default function SearchPage() {
               
               <button 
                 onClick={clearAllFilters}
-                className="text-sm text-red-500 hover:text-red-700 font-medium ml-2 hover:underline transition-all"
+                className="text-sm text-sales-coral hover:text-sales-coral-light font-medium ml-2 hover:underline transition-all"
               >
                 Limpiar todo
               </button>
@@ -186,7 +186,7 @@ export default function SearchPage() {
           facets={meta?.facets}
         />
         
-        <div className="flex-1 overflow-auto bg-gray-50 p-2 md:p-4">
+        <div className="flex-1 overflow-auto bg-sales-slate-950 p-2 md:p-4 custom-scrollbar">
           <ErrorBoundary>
             <SearchResultsLayout 
               data={data} 

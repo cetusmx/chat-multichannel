@@ -32,7 +32,7 @@ const performSearch = async ({ tenantId, query, type, filters, limit, offset, pa
   let chatsCount = 0;
   if (!skipChats) {
     const chatsCountQuery = await prisma.$queryRaw`
-      SELECT COUNT(*) as cnt
+      SELECT COUNT(DISTINCT c.id) as cnt
       FROM "messages" m
       JOIN "conversations" c ON m."conversation_id" = c.id
       JOIN "clients" cl ON c."client_id" = cl.id
@@ -120,17 +120,15 @@ const performSearch = async ({ tenantId, query, type, filters, limit, offset, pa
       const chatLimit = Math.min(limit, chatsCount - offset);
       
       const messages = await prisma.$queryRaw`
-        WITH paginated_messages AS (
-          SELECT 
+        WITH matched_messages AS (
+          SELECT DISTINCT ON (c.id)
             m.id, 
             m."conversation_id", 
             m.content, 
             m."created_at",
             c."client_id",
             cl.name as "client_name",
-            cl."phone_number",
-            ts_headline('spanish', COALESCE(m.content, ''), websearch_to_tsquery('spanish', ${query}), 'StartSel=<b>, 
-StopSel=</b>, MaxWords=20, MinWords=5') as snippet
+            cl."phone_number"
           FROM "messages" m
           JOIN "conversations" c ON m."conversation_id" = c.id
           JOIN "clients" cl ON c."client_id" = cl.id
@@ -139,7 +137,14 @@ StopSel=</b>, MaxWords=20, MinWords=5') as snippet
           ${dateFilter}
           ${vendorFilter}
           ${rfcFilter}
-          ORDER BY m."created_at" DESC
+          ORDER BY c.id, m."created_at" DESC
+        ),
+        paginated_messages AS (
+          SELECT *,
+            ts_headline('spanish', COALESCE(content, ''), websearch_to_tsquery('spanish', ${query}), 'StartSel=<b>, 
+StopSel=</b>, MaxWords=20, MinWords=5') as snippet
+          FROM matched_messages
+          ORDER BY "created_at" DESC
           LIMIT ${chatLimit} OFFSET ${offset}
         )
         SELECT 

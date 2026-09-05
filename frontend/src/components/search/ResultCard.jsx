@@ -54,24 +54,24 @@ const ResultCard = memo(({ item, isActive, onClick }) => {
       onClick={handleClick}
       className={`p-4 border rounded-lg cursor-pointer transition-colors ${
         isActive 
-          ? 'bg-blue-50 border-blue-400 shadow-sm' 
-          : 'bg-white border-gray-200 hover:border-blue-300'
+          ? 'bg-sales-slate-800 border-blue-500 shadow-md' 
+          : 'bg-sales-slate-900/60 border-sales-slate-800 hover:bg-sales-slate-800/80 shadow-sm backdrop-blur-md'
       }`}
     >
       <div className="flex justify-between items-start mb-2">
-        <h4 className="font-semibold text-gray-800">{nameStr}</h4>
-        <span className="text-xs text-gray-500 whitespace-nowrap ml-2">{dateStr}</span>
+        <h4 className="font-semibold text-sales-slate-100">{nameStr}</h4>
+        <span className="text-xs text-sales-slate-400 whitespace-nowrap ml-2">{dateStr}</span>
       </div>
       
       {item && item.type === 'chat' ? (
-        <div className="text-sm text-gray-600">
+        <div className="text-sm text-sales-slate-300">
           {prevContextStr !== '' ? (
-             <p className="text-gray-400 italic mb-1 line-clamp-1 border-l-2 border-gray-300 pl-2">
+             <p className="text-sales-slate-500 italic mb-1 line-clamp-1 border-l-2 border-sales-slate-700 pl-2">
                {prevContextStr}
              </p>
           ) : null}
           <p 
-            className="line-clamp-3 whitespace-pre-wrap" 
+            className="line-clamp-3 whitespace-pre-wrap bg-sales-slate-950/50 p-2 rounded border border-sales-slate-800/50" 
             dangerouslySetInnerHTML={{ 
               __html: DOMPurify.sanitize(snippetStr, { 
                 ALLOWED_TAGS: ['b', 'i', 'em', 'strong', 'mark', 'br'], 
@@ -83,7 +83,7 @@ const ResultCard = memo(({ item, isActive, onClick }) => {
       ) : null}
       
       {item && item.type === 'client' ? (
-        <p className="text-sm text-gray-600">Teléfono: {phoneStr}</p>
+        <p className="text-sm text-sales-slate-400">Teléfono: {phoneStr}</p>
       ) : null}
     </div>
   );

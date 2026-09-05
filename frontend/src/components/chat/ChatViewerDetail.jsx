@@ -134,42 +134,42 @@ export default function ChatViewerDetail({ conversationId, targetMessageId, onBa
 
   if (!conversationId) {
     return (
-      <div className="hidden lg:flex flex-[2] bg-gray-100 rounded-lg border border-gray-200 items-center justify-center min-h-[500px]">
+      <div className="hidden lg:flex flex-[2] bg-sales-slate-900/60 rounded-lg border border-sales-slate-800 items-center justify-center min-h-[500px] backdrop-blur-sm shadow-xl">
         <div className="text-center">
-          <MessageSquare size={48} className="mx-auto text-gray-300 mb-4" />
-          <h3 className="text-lg font-medium text-gray-500">Selecciona un chat</h3>
-          <p className="text-sm text-gray-400">El historial se mostrará aquí</p>
+          <MessageSquare size={48} className="mx-auto text-sales-slate-700 mb-4" />
+          <h3 className="text-lg font-medium text-sales-slate-400">Selecciona un chat</h3>
+          <p className="text-sm text-sales-slate-500">El historial se mostrará aquí</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col h-full bg-white rounded-lg border border-gray-200 shadow-sm flex-[2]">
+    <div className="flex flex-col h-full bg-sales-slate-900 rounded-lg border border-sales-slate-800 shadow-xl flex-[2] overflow-hidden">
       {/* Header */}
-      <div className="flex items-center p-4 border-b border-gray-200 bg-white sticky top-0 z-10">
+      <div className="flex items-center p-4 border-b border-sales-slate-800 bg-sales-slate-900/90 sticky top-0 z-10 backdrop-blur-sm">
         <button 
           onClick={onBack}
           aria-label="Volver a los resultados de búsqueda"
-          className="lg:hidden p-2 mr-2 text-gray-600 hover:bg-gray-100 rounded-full"
+          className="lg:hidden p-2 mr-2 text-sales-slate-400 hover:text-sales-slate-100 hover:bg-sales-slate-800 rounded-full transition-colors"
         >
           <ArrowLeft size={20} />
         </button>
-        <h2 className="text-lg font-bold text-gray-800">Previsualización de Chat</h2>
+        <h2 className="text-lg font-bold text-sales-slate-100">Previsualización de Chat</h2>
       </div>
 
       {/* Messages */}
-      <div ref={containerRef} className="flex-1 overflow-y-auto p-4 bg-gray-50" aria-live="polite">
+      <div ref={containerRef} className="flex-1 overflow-y-auto p-4 bg-sales-slate-950 custom-scrollbar" aria-live="polite">
         {loading ? (
           <div className="flex justify-center py-10">
-            <svg className="animate-spin h-8 w-8 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <svg className="animate-spin h-8 w-8 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
             </svg>
             <span className="sr-only">Cargando chat...</span>
           </div>
         ) : error ? (
-          <div className="text-center py-10 text-red-500">{typeof error === "object" ? JSON.stringify(error) : error}</div>
+          <div className="text-center py-10 text-sales-coral-400">{typeof error === "object" ? JSON.stringify(error) : error}</div>
         ) : (
           <div className="space-y-4">
             {meta?.previousSessionId && (
@@ -185,7 +185,7 @@ export default function ChatViewerDetail({ conversationId, targetMessageId, onBa
               if (msg.type === 'separator') {
                 return (
                    <div key={`sep-${index}`} className="flex justify-center my-4">
-                     <span className="px-3 py-1 bg-gray-200 text-xs text-gray-600 rounded-full">
+                     <span className="px-3 py-1 bg-sales-slate-800 border border-sales-slate-700 text-xs text-sales-slate-400 rounded-full">
                        {msg.text}
                      </span>
                    </div>
@@ -199,18 +199,28 @@ export default function ChatViewerDetail({ conversationId, targetMessageId, onBa
                   key={`${msg.id}-${index}`} 
                   ref={isTarget ? targetMessageRef : null}
                   tabIndex={isTarget ? -1 : undefined}
-                  className={`flex flex-col max-w-[80%] rounded-lg p-3 ${
-                    isVendor 
-                      ? 'bg-blue-100 text-blue-900 self-end ml-auto rounded-tr-none' 
-                      : 'bg-white border border-gray-200 text-gray-800 self-start mr-auto rounded-tl-none'
-                  }`}
+                  className={`flex ${isVendor ? 'justify-end' : 'justify-start'} mb-4`}
                 >
-                  <p className="whitespace-pre-wrap text-sm">{typeof msg.content === 'object' ? JSON.stringify(msg.content) : msg.content}</p>
-                  <span className="text-[10px] text-gray-500 text-right mt-1 opacity-70">
-                    {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </span>
-                </div>
-              );
+                  <div 
+                    className={`max-w-[85%] rounded-2xl px-4 py-2 relative shadow-sm ${
+                      isTarget 
+                        ? 'ring-2 ring-blue-500 bg-sales-slate-800' 
+                        : isVendor 
+                          ? 'bg-sales-slate-800 text-sales-slate-100 rounded-tr-none' 
+                          : 'bg-sales-slate-900 border border-sales-slate-800 text-sales-slate-100 rounded-tl-none'
+                    }`}
+                  >
+                    <p className="whitespace-pre-wrap text-sm leading-relaxed" dangerouslySetInnerHTML={{
+                      __html: DOMPurify.sanitize(msg.snippet || msg.content || '', {
+                        ALLOWED_TAGS: ['b', 'i', 'em', 'strong', 'mark', 'br'],
+                        ALLOWED_ATTR: []
+                      })
+                    }} />
+                    <div className={`text-[10px] mt-1 text-right ${isVendor ? 'text-sales-slate-400' : 'text-sales-slate-500'}`}>
+                      {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </div>
+                  </div>
+                </div>);
             })}
 
             {meta?.nextSessionId && (
