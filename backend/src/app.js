@@ -59,7 +59,12 @@ app.use(express.urlencoded({ extended: true }));
 const authenticate = require('./middleware/auth');
 
 // Serve uploads securely
-app.use('/uploads', authenticate, (req, res, next) => {
+app.use('/uploads', (req, res, next) => {
+  if (req.path.startsWith('/logo-')) {
+    return next();
+  }
+  return authenticate(req, res, next);
+}, (req, res, next) => {
   res.setHeader('Content-Security-Policy', "default-src 'none'; img-src 'self' data: blob:; media-src 'self' blob:; style-src 'unsafe-inline'");
   res.setHeader('X-Content-Type-Options', 'nosniff');
   next();

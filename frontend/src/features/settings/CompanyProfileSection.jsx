@@ -169,73 +169,6 @@ export default function CompanyProfileSection() {
 
       <form onSubmit={handleSubmit} className="space-y-4">
         
-        {/* Logo Section */}
-        <div className="mb-6 bg-sales-slate-800 p-4 rounded-lg border border-slate-700 flex items-center gap-6">
-          <div className="w-32 h-20 bg-slate-900 border border-slate-700 flex items-center justify-center rounded-md overflow-hidden shrink-0">
-            {form.logoUrl ? (
-              <img src={`http://localhost:3000${form.logoUrl}`} alt="Logo Empresa" className="max-w-full max-h-full object-contain" />
-            ) : (
-              <span className="text-slate-500 text-xs text-center px-2">Sin Logo</span>
-            )}
-          </div>
-          <div>
-            <h4 className="text-sm font-medium text-sales-slate-200 mb-1">Logo para Cotizaciones</h4>
-            <p className="text-xs text-sales-slate-400 mb-3 max-w-sm">
-              Se recomienda PNG con fondo transparente o SVG. Orientación horizontal. Máximo 2MB. (Ideal: 400x150px) para evitar romper el layout del PDF.
-            </p>
-            <input 
-              type="file" 
-              accept="image/png, image/jpeg, image/webp, image/svg+xml"
-              className="hidden" 
-              ref={fileInputRef}
-              onChange={handleLogoChange}
-            />
-            <button
-              type="button"
-              disabled={uploadingLogo}
-              onClick={() => fileInputRef.current?.click()}
-              className="text-xs font-medium bg-slate-700 hover:bg-slate-600 text-slate-200 px-3 py-1.5 rounded-md transition-colors disabled:opacity-50"
-            >
-              {uploadingLogo ? 'Subiendo...' : 'Cambiar Logo'}
-            </button>
-          </div>
-        </div>
-
-        {/* Colors Section */}
-        <div className="mb-6 bg-sales-slate-800 p-4 rounded-lg border border-slate-700">
-          <h4 className="text-sm font-medium text-sales-slate-200 mb-4">Colores Corporativos (Cotización)</h4>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div>
-              <label className="mb-1 block text-xs text-sales-slate-400">Color Primario (Encabezado)</label>
-              <div className="flex items-center gap-2">
-                <input type="color" value={form.primaryColor} onChange={(e) => setForm({...form, primaryColor: e.target.value})} className="w-8 h-8 rounded cursor-pointer bg-transparent border-0 p-0" />
-                <span className="text-sm text-sales-slate-300 font-mono">{form.primaryColor}</span>
-              </div>
-            </div>
-            <div>
-              <label className="mb-1 block text-xs text-sales-slate-400">Color Secundario (Borde Datos)</label>
-              <div className="flex items-center gap-2">
-                <input type="color" value={form.secondaryColor} onChange={(e) => setForm({...form, secondaryColor: e.target.value})} className="w-8 h-8 rounded cursor-pointer bg-transparent border-0 p-0" />
-                <span className="text-sm text-sales-slate-300 font-mono">{form.secondaryColor}</span>
-              </div>
-            </div>
-            <div>
-              <label className="mb-1 block text-xs text-sales-slate-400">Color Terciario (Instrucciones)</label>
-              <div className="flex items-center gap-2">
-                <input type="color" value={form.tertiaryColor} onChange={(e) => setForm({...form, tertiaryColor: e.target.value})} className="w-8 h-8 rounded cursor-pointer bg-transparent border-0 p-0" />
-                <span className="text-sm text-sales-slate-300 font-mono">{form.tertiaryColor}</span>
-              </div>
-            </div>
-            <div>
-              <label className="mb-1 block text-xs text-sales-slate-400">Fondo Contenedores</label>
-              <div className="flex items-center gap-2">
-                <input type="color" value={form.backgroundColor} onChange={(e) => setForm({...form, backgroundColor: e.target.value})} className="w-8 h-8 rounded cursor-pointer bg-transparent border-0 p-0" />
-                <span className="text-sm text-sales-slate-300 font-mono">{form.backgroundColor}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="mb-1 block text-sm text-sales-slate-400">Nombre de la empresa</label>
@@ -289,7 +222,13 @@ export default function CompanyProfileSection() {
               className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-sales-slate-100 focus:outline-none focus:ring-2 focus:ring-sales-coral/50"
             />
           </div>
-          <div>
+          </div>
+
+          <div className="mt-8">
+            <div className="flex flex-col border-t border-slate-700 pt-6">
+              <h4 className="mb-4 text-lg font-semibold text-sales-slate-100">Datos bancarios</h4>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
             <label className="mb-1 block text-sm text-sales-slate-400">Banco</label>
             <input
               value={form.bank}
@@ -314,9 +253,86 @@ export default function CompanyProfileSection() {
               className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-sales-slate-100 focus:outline-none focus:ring-2 focus:ring-sales-coral/50"
             />
           </div>
-        </div>
+              </div>
+            </div>
+          </div>
 
-        <div className="mt-8">
+
+          <div className="mt-8">
+            <div className="flex flex-col border-t border-slate-700 pt-6">
+              <h4 className="mb-4 text-lg font-semibold text-sales-slate-100">Identidad de la empresa</h4>
+              {/* Logo Section */}
+        <div className="mb-6 bg-sales-slate-800 p-4 rounded-lg border border-slate-700 flex items-center gap-6">
+          <div className="w-32 h-20 bg-slate-900 border border-slate-700 flex items-center justify-center rounded-md overflow-hidden shrink-0">
+            {form.logoUrl ? (
+              <img src={`http://localhost:3000${form.logoUrl}`} alt="Logo Empresa" className="max-w-full max-h-full object-contain" />
+            ) : (
+              <span className="text-slate-500 text-xs text-center px-2">Sin Logo</span>
+            )}
+          </div>
+          <div>
+            <h4 className="text-sm font-medium text-sales-slate-200 mb-1">Logo para Cotizaciones</h4>
+            <p className="text-xs text-sales-slate-400 mb-3 max-w-sm">
+              Se recomienda PNG con fondo transparente o SVG. Orientación horizontal. Máximo 2MB. (Ideal: 400x150px) para evitar romper el layout del PDF.
+            </p>
+            <input 
+              type="file" 
+              accept="image/png, image/jpeg, image/webp, image/svg+xml"
+              className="hidden" 
+              ref={fileInputRef}
+              onChange={handleLogoChange}
+            />
+            <button
+              type="button"
+              disabled={uploadingLogo}
+              onClick={() => fileInputRef.current?.click()}
+              className="text-xs font-medium bg-slate-700 hover:bg-slate-600 text-slate-200 px-3 py-1.5 rounded-md transition-colors disabled:opacity-50"
+            >
+              {uploadingLogo ? 'Subiendo...' : 'Cambiar Logo'}
+            </button>
+          </div>
+        </div>
+              <div className="mt-4">
+                {/* Colors Section */}
+        <div className="mb-6 bg-sales-slate-800 p-4 rounded-lg border border-slate-700">
+          <h4 className="text-sm font-medium text-sales-slate-200 mb-4">Colores Corporativos (Cotización)</h4>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div>
+              <label className="mb-1 block text-xs text-sales-slate-400">Color Primario (Encabezado)</label>
+              <div className="flex items-center gap-2">
+                <input type="color" value={form.primaryColor} onChange={(e) => setForm({...form, primaryColor: e.target.value})} className="w-8 h-8 rounded cursor-pointer bg-transparent border-0 p-0" />
+                <span className="text-sm text-sales-slate-300 font-mono">{form.primaryColor}</span>
+              </div>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-sales-slate-400">Color Secundario (Borde Datos)</label>
+              <div className="flex items-center gap-2">
+                <input type="color" value={form.secondaryColor} onChange={(e) => setForm({...form, secondaryColor: e.target.value})} className="w-8 h-8 rounded cursor-pointer bg-transparent border-0 p-0" />
+                <span className="text-sm text-sales-slate-300 font-mono">{form.secondaryColor}</span>
+              </div>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-sales-slate-400">Color Terciario (Instrucciones)</label>
+              <div className="flex items-center gap-2">
+                <input type="color" value={form.tertiaryColor} onChange={(e) => setForm({...form, tertiaryColor: e.target.value})} className="w-8 h-8 rounded cursor-pointer bg-transparent border-0 p-0" />
+                <span className="text-sm text-sales-slate-300 font-mono">{form.tertiaryColor}</span>
+              </div>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-sales-slate-400">Fondo Contenedores</label>
+              <div className="flex items-center gap-2">
+                <input type="color" value={form.backgroundColor} onChange={(e) => setForm({...form, backgroundColor: e.target.value})} className="w-8 h-8 rounded cursor-pointer bg-transparent border-0 p-0" />
+                <span className="text-sm text-sales-slate-300 font-mono">{form.backgroundColor}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+              </div>
+            </div>
+          </div>
+
+
+          <div className="mt-8">
           <div className="flex flex-col border-t border-slate-700 pt-6">
             <h4 className="mb-1 text-lg font-semibold text-sales-slate-100">Horarios de Operación (Business Hours)</h4>
             <p className="mb-6 text-sm text-sales-slate-400">
