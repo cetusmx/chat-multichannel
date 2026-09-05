@@ -265,7 +265,7 @@ export default function CompanyProfileSection() {
         <div className="mb-6 bg-sales-slate-800 p-4 rounded-lg border border-slate-700 flex items-center gap-6">
           <div className="w-32 h-20 bg-slate-900 border border-slate-700 flex items-center justify-center rounded-md overflow-hidden shrink-0">
             {form.logoUrl ? (
-              <img src={`http://localhost:3000${form.logoUrl}`} alt="Logo Empresa" className="max-w-full max-h-full object-contain" />
+              <img src={form.logoUrl} alt="Logo Empresa" className="max-w-full max-h-full object-contain" />
             ) : (
               <span className="text-slate-500 text-xs text-center px-2">Sin Logo</span>
             )}
