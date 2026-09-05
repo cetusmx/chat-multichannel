@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef, useLayoutEffect } from 'react';
 import axios from 'axios';
 import { ArrowLeft, MessageSquare } from 'lucide-react';
+import DOMPurify from 'dompurify';
 import useAuthStore from '../../stores/useAuthStore';
 import ContiguousSessionCard from './ContiguousSessionCard';
 
