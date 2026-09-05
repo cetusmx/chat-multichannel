@@ -126,7 +126,7 @@ export default function SearchPage() {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-sales-slate-950 overflow-hidden pt-14">
+    <div className="flex flex-col h-full bg-sales-slate-950 rounded-lg border border-sales-slate-800 shadow-xl overflow-hidden min-w-0">
       {/* Search Header Row */}
       <div className="bg-sales-slate-900 border-b border-sales-slate-800 p-4 shadow-sm z-10 flex-shrink-0">
         <div className="w-full px-2">
