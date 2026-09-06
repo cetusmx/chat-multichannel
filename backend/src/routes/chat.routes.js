@@ -393,14 +393,16 @@ router.get('/history', authenticate, authorize('ADMIN', 'COORDINATOR', 'VENDOR')
     }
 
     // Format query for Postgres to_tsquery (e.g. "hola mundo" -> "hola | mundo")
-    const formattedQuery = search ? search.trim().split(/\s+/).filter(Boolean).join(' | ') : undefined;
+    const formattedQuery = search ? search.trim().split(/\s+/).filter(Boolean).map(word => `${word}:*`).join(' & ') : undefined;
+    const rawSearch = search ? search.trim() : undefined;
 
     if (formattedQuery) {
       whereClause.messages = {
         some: {
-          content: {
-            search: formattedQuery
-          }
+          OR: [
+            { content: { search: formattedQuery } },
+            { content: { contains: rawSearch, mode: 'insensitive' } }
+          ]
         }
       };
     }
@@ -413,9 +415,10 @@ router.get('/history', authenticate, authorize('ADMIN', 'COORDINATOR', 'VENDOR')
         vendor: { select: { id: true, name: true, email: true } },
         messages: formattedQuery ? {
           where: {
-            content: {
-              search: formattedQuery
-            }
+            OR: [
+              { content: { search: formattedQuery } },
+              { content: { contains: rawSearch, mode: 'insensitive' } }
+            ]
           },
           orderBy: { createdAt: 'desc' },
           take: 1

@@ -37,7 +37,10 @@ const performSearch = async ({ tenantId, query, type, filters, limit, offset, pa
       JOIN "conversations" c ON m."conversation_id" = c.id
       JOIN "clients" cl ON c."client_id" = cl.id
       WHERE c."tenant_id" = ${tenantId}
-      AND to_tsvector('spanish', COALESCE(m.content, '')) @@ websearch_to_tsquery('spanish', ${query})
+      AND (
+        to_tsvector('spanish', COALESCE(m.content, '')) @@ websearch_to_tsquery('spanish', ${query})
+        OR m.content ILIKE ${'%' + query + '%'}
+      )
       ${dateFilter}
       ${vendorFilter}
       ${rfcFilter}
@@ -57,7 +60,10 @@ const performSearch = async ({ tenantId, query, type, filters, limit, offset, pa
       JOIN "users" u ON c."vendor_id" = u.id
       WHERE c."tenant_id" = ${tenantId}
       AND c."vendor_id" IS NOT NULL
-      AND to_tsvector('spanish', COALESCE(m.content, '')) @@ websearch_to_tsquery('spanish', ${query})
+      AND (
+        to_tsvector('spanish', COALESCE(m.content, '')) @@ websearch_to_tsquery('spanish', ${query})
+        OR m.content ILIKE ${'%' + query + '%'}
+      )
       ${dateFilter}
       ${rfcFilter}
       GROUP BY u.id, u.name
@@ -77,7 +83,10 @@ const performSearch = async ({ tenantId, query, type, filters, limit, offset, pa
       JOIN "conversations" c ON m."conversation_id" = c.id
       JOIN "clients" cl ON c."client_id" = cl.id
       WHERE c."tenant_id" = ${tenantId}
-      AND to_tsvector('spanish', COALESCE(m.content, '')) @@ websearch_to_tsquery('spanish', ${query})
+      AND (
+        to_tsvector('spanish', COALESCE(m.content, '')) @@ websearch_to_tsquery('spanish', ${query})
+        OR m.content ILIKE ${'%' + query + '%'}
+      )
       ${dateFilter}
       ${vendorFilter}
       ${rfcFilter}
@@ -136,7 +145,10 @@ const performSearch = async ({ tenantId, query, type, filters, limit, offset, pa
           JOIN "clients" cl ON c."client_id" = cl.id
           LEFT JOIN "users" u ON c."vendor_id" = u.id
           WHERE c."tenant_id" = ${tenantId}
-          AND to_tsvector('spanish', COALESCE(m.content, '')) @@ websearch_to_tsquery('spanish', ${query})
+          AND (
+            to_tsvector('spanish', COALESCE(m.content, '')) @@ websearch_to_tsquery('spanish', ${query})
+            OR m.content ILIKE ${'%' + query + '%'}
+          )
           ${dateFilter}
           ${vendorFilter}
           ${rfcFilter}
