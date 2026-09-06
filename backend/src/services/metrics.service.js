@@ -208,7 +208,58 @@ const generateUsageReportCSV = async (tenantId, year, month) => {
   return '\uFEFF' + csvRows.join('\n');
 };
 
+const getAiMetrics = async (tenantId, startDate, endDate) => {
+  if (!tenantId) throw ApiError.badRequest('tenantId is required');
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  
+  // Total chats attended by AI (vendorId: null) within the date range
+  const aiChats = await prisma.conversation.groupBy({
+    by: ['status'],
+    where: {
+      tenantId,
+      createdAt: { gte: start, lte: end },
+      vendorId: null,
+      isOutbound: false
+    },
+    _count: true
+  });
+  
+  // Chats that started with AI but were later escalated or assigned to a human
+  const escalatedToHumanChats = await prisma.conversation.count({
+    where: {
+      tenantId,
+      createdAt: { gte: start, lte: end },
+      vendorId: { not: null },
+      isOutbound: false
+    }
+  });
+
+  let totalAi = 0;
+  let abandonedAi = 0;
+  
+  aiChats.forEach(item => {
+    totalAi += item._count;
+    if (item.status === 'CLOSED_INACTIVE' || item.status === 'DISCARDED') {
+      abandonedAi += item._count;
+    }
+  });
+  
+  // Actually, escalatedToHumanChats means they started with AI (since AI greets everyone) 
+  // and were successfully passed to a human.
+  // So total AI interactions = totalAi + escalatedToHumanChats.
+  // Wait, if isOutbound is true, the AI doesn't greet. Let's exclude isOutbound.
+  
+  return {
+    abandoned: abandonedAi,
+    waiting: totalAi - abandonedAi, // Still pending assignment
+    escalated: escalatedToHumanChats,
+    total: totalAi + escalatedToHumanChats
+  };
+};
+
 module.exports = {
   getVendorProductivityMetrics,
-  generateUsageReportCSV
+  generateUsageReportCSV,
+  getAiMetrics
 };

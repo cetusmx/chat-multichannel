@@ -367,7 +367,7 @@ router.get('/conversations', authenticate, authorize('ADMIN', 'COORDINATOR', 'VE
 
 router.get('/history', authenticate, authorize('ADMIN', 'COORDINATOR', 'VENDOR'), async (req, res, next) => {
   try {
-    const { search, vendorId, startDate, endDate, page = 1, limit = 20 } = req.query;
+    const { search, vendorId, startDate, endDate, aiAbandoned, page = 1, limit = 20 } = req.query;
     const tenantId = req.user.tenantId;
 
     const terminalStates = ['CLOSED', 'CLOSED_WON', 'CLOSED_INACTIVE', 'DISCARDED'];
@@ -379,6 +379,9 @@ router.get('/history', authenticate, authorize('ADMIN', 'COORDINATOR', 'VENDOR')
 
     if (req.user.role === 'VENDOR') {
       whereClause.vendorId = req.user.id;
+    } else if (aiAbandoned === 'true') {
+      whereClause.vendorId = null;
+      whereClause.status = 'CLOSED_INACTIVE';
     } else if (vendorId) {
       whereClause.vendorId = vendorId;
     }

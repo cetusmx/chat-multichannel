@@ -75,7 +75,8 @@ export default function HistoryDashboard() {
         ...(searchTerm && { search: searchTerm }),
         ...(startDate && { startDate }),
         ...(endDate && { endDate }),
-        ...(vendor && { vendorId: vendor }),
+        ...(vendor && vendor !== 'AI_ABANDONED' && { vendorId: vendor }),
+        ...(vendor === 'AI_ABANDONED' && { aiAbandoned: 'true' })
       });
       const res = await get(`/chat/history?${params.toString()}`);
       if (!res.ok) throw new Error('Error fetching history');
@@ -196,6 +197,7 @@ export default function HistoryDashboard() {
               onChange={e => { setVendor(e.target.value); setPage(1); }}
             >
               <option value="">Todos los asesores</option>
+              <option value="AI_ABANDONED">Abandonados con IA</option>
               {vendors.map(v => (
                 <option key={v.id || v._id} value={v.id || v._id}>{v.name || v.username || v.email}</option>
               ))}
@@ -255,8 +257,13 @@ export default function HistoryDashboard() {
                       break;
                     case 'CLOSED':
                     case 'CLOSED_INACTIVE':
-                      statusLabel = 'Cerrado';
-                      statusColor = 'text-slate-400';
+                      if (chat.status === 'CLOSED_INACTIVE' && !chat.vendorId && !chat.vendor) {
+                        statusLabel = 'Abandonado con IA';
+                        statusColor = 'text-orange-400';
+                      } else {
+                        statusLabel = 'Cerrado';
+                        statusColor = 'text-slate-400';
+                      }
                       break;
                   }
 

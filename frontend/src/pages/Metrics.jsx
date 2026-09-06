@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import VendorMetricsTable from '../features/metrics/components/VendorMetricsTable';
 import UsageReport from '../features/metrics/components/UsageReport';
-import { getVendorProductivityMetrics } from '../features/metrics/metricsService';
+import { getVendorProductivityMetrics, getAiMetrics } from '../features/metrics/metricsService';
 import './Metrics.css';
 
 export default function Metrics() {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [metrics, setMetrics] = useState([]);
+  const [aiMetrics, setAiMetrics] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const abortControllerRef = useRef(null);
@@ -84,8 +85,15 @@ export default function Metrics() {
         { signal: abortController.signal },
       );
 
+      const aiData = await getAiMetrics(
+        startIso,
+        endIso,
+        { signal: abortController.signal },
+      );
+
       if (isMounted.current && !abortController.signal.aborted) {
         setMetrics(data.data || []);
+        setAiMetrics(aiData.data || null);
       }
     } catch (err) {
       if (isMounted.current && err.name !== 'CanceledError' && err.name !== 'AbortError') {
@@ -147,7 +155,29 @@ export default function Metrics() {
           <div className="spinner"></div>
         </div>
       ) : (
-        <VendorMetricsTable metrics={metrics} />
+        <>
+          {aiMetrics && (
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+              <div className="bg-slate-900 border border-slate-800 p-6 rounded-xl flex flex-col justify-center">
+                <p className="text-slate-400 text-sm font-medium mb-1">Total interacciones IA</p>
+                <p className="text-3xl font-bold text-white">{aiMetrics.total || 0}</p>
+              </div>
+              <div className="bg-slate-900 border border-slate-800 p-6 rounded-xl flex flex-col justify-center">
+                <p className="text-slate-400 text-sm font-medium mb-1">Atendiendo actualmente</p>
+                <p className="text-3xl font-bold text-blue-400">{aiMetrics.waiting || 0}</p>
+              </div>
+              <div className="bg-slate-900 border border-slate-800 p-6 rounded-xl flex flex-col justify-center">
+                <p className="text-slate-400 text-sm font-medium mb-1">Transferidos a asesor</p>
+                <p className="text-3xl font-bold text-emerald-400">{aiMetrics.escalated || 0}</p>
+              </div>
+              <div className="bg-slate-900 border border-slate-800 p-6 rounded-xl flex flex-col justify-center">
+                <p className="text-slate-400 text-sm font-medium mb-1">Abandonados por cliente</p>
+                <p className="text-3xl font-bold text-orange-400">{aiMetrics.abandoned || 0}</p>
+              </div>
+            </div>
+          )}
+          <VendorMetricsTable metrics={metrics} />
+        </>
       )}
 
       <div className="mt-8">

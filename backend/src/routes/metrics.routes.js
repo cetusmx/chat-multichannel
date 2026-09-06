@@ -139,6 +139,42 @@ router.get('/productivity', authorize('ADMIN', 'COORDINATOR'), async (req, res, 
 
 /**
  * @swagger
+ * /api/metrics/ai:
+ *   get:
+ *     summary: Retrieve AI performance metrics.
+ *     tags: [Metrics]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: startDate
+ *         schema:
+ *           type: string
+ *         required: true
+ *       - in: query
+ *         name: endDate
+ *         schema:
+ *           type: string
+ *         required: true
+ *     responses:
+ *       200:
+ *         description: AI metrics retrieved successfully.
+ */
+router.get('/ai', authorize('ADMIN', 'COORDINATOR'), async (req, res, next) => {
+  try {
+    const { startDate, endDate } = req.query;
+    if (!startDate || !endDate) {
+      throw new ApiError(400, 'startDate and endDate are required');
+    }
+    const metrics = await metricsService.getAiMetrics(req.user.tenantId, startDate, endDate);
+    res.json({ data: metrics });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * @swagger
  * /api/metrics/reports/usage:
  *   get:
  *     summary: Download usage and activity report for a specific month
