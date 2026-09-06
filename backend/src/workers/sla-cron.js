@@ -29,9 +29,12 @@ async function runSlaCleanup() {
           SELECT "conversations"."id" 
           FROM "conversations" 
           JOIN "tenants" ON "conversations"."tenant_id" = "tenants"."id" 
-          WHERE "conversations"."status" = 'WAITING_CUSTOMER' 
+          WHERE (
+            "conversations"."status" = 'WAITING_CUSTOMER' 
+            OR ("conversations"."status" = 'PENDING_ASSIGNMENT' AND "conversations"."ai_pending_escalation" = false)
+          )
           AND COALESCE("tenants"."is_sla_enabled", true) = true 
-          AND "conversations"."status_updated_at" + (COALESCE("tenants"."auto_close_inactive_hours", 48) * INTERVAL '1 hour') < NOW() 
+          AND GREATEST("conversations"."status_updated_at", "conversations"."last_message_at") + (COALESCE("tenants"."auto_close_inactive_hours", 48) * INTERVAL '1 hour') < NOW() 
           LIMIT 100 
           FOR UPDATE SKIP LOCKED
         ) 
