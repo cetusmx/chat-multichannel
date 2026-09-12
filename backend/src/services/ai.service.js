@@ -233,7 +233,22 @@ class AIService {
             // Si hay 1 o 2 resultados, enviar tarjetas interactivas directamente y avisarle a la IA
             if (finalResults.length > 0 && finalResults.length <= 2) {
               const whatsappService = require('./whatsapp.service');
+              
+              // Evitar duplicados revisando las últimas tarjetas enviadas
+              const recentCards = await prisma.message.findMany({
+                where: { conversationId, type: 'PRODUCT_CARD' },
+                orderBy: { createdAt: 'desc' },
+                take: 10
+              });
+              const recentClaves = recentCards.map(m => m.metadata && m.metadata.clave).filter(Boolean);
+
+              let sentAny = false;
+
               for (const product of finalResults) {
+                if (recentClaves.includes(product.CVE_ART)) {
+                  continue; // Ya se envió esta tarjeta recientemente
+                }
+
                 const desc = product.DESC_ECOMM || product.DESCR || product.NOMBRE;
                 const priceNet = ((product.PRECIO || 0) * 1.16).toFixed(2);
                 const linea = product.LIN_PROD || '';
@@ -249,11 +264,17 @@ class AIService {
 
                 try {
                   await whatsappService.sendMessage(conversationId, '', null, 'SYSTEM', 'PRODUCT_CARD', metadata);
+                  sentAny = true;
                 } catch(e) {
                   console.error('[AI TOOL] Fallo al enviar PRODUCT_CARD:', e);
                 }
               }
-              notaAdicional = "IMPORTANTE: Ya se le enviaron automáticamente las TARJETAS INTERACTIVAS de estos productos al cliente por WhatsApp. En tu respuesta de texto, NO vuelvas a listar los productos ni des precios. Simplemente dile: 'Te he enviado las opciones aquí arriba en formato de tarjeta. ¿Te interesa alguna para agregarla a tu pedido?' o algo similar, pero muy breve.";
+
+              if (sentAny) {
+                notaAdicional = "IMPORTANTE: Ya se le enviaron automáticamente las TARJETAS INTERACTIVAS de estos productos al cliente por WhatsApp. En tu respuesta de texto, NO vuelvas a listar los productos ni des precios. Simplemente dile: 'Te he enviado las opciones aquí arriba en formato de tarjeta. ¿Te interesa alguna para agregarla a tu pedido?' o algo similar, pero muy breve.";
+              } else {
+                notaAdicional = "Nota: El cliente ya tiene las tarjetas de estos productos visibles en el chat. Procede a responderle de forma natural (ej. preguntando cuántas piezas necesita o resolviendo su duda).";
+              }
             }
 
             return { 
