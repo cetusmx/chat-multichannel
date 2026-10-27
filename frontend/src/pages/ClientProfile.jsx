@@ -10,6 +10,7 @@ import SecureMedia from '../components/SecureMedia';
 import { Avatar, Badge, Button, EmptyState, Eyebrow, IconButton, Input, Spinner, StatusPill } from '../components/ui/index.js';
 import { formatDate, formatMoney, formatTime } from '../utils/formatDate.js';
 import { cn } from '../utils/cn.js';
+import { messagePreview, stripMediaPrefix } from '../utils/whatsappFormat.jsx';
 
 const SENDER_LABELS = { IA: 'Asistente IA', SYSTEM: 'Sistema', CLIENT: 'Cliente' };
 
@@ -319,7 +320,7 @@ export default function ClientProfile() {
                                 return (
                                   <p className="mt-2 truncate rounded-md border border-border bg-surface-2 px-3 py-1.5 text-[13px] text-fg-muted">
                                     <span className="mr-2 font-mono text-[10px] uppercase tracking-wide text-fg-subtle">{prefix}</span>
-                                    {snippetMsg.content || 'Mensaje con archivo adjunto'}
+                                    {messagePreview(snippetMsg.content, 'Mensaje con archivo adjunto')}
                                   </p>
                                 );
                               })()}
@@ -331,7 +332,7 @@ export default function ClientProfile() {
                           {isChatExpanded && (
                             <div className="mt-4 max-h-96 space-y-3 overflow-y-auto pr-1 custom-scrollbar">
                               {msgsToDisplay.map(msg => {
-                                const content = msg.content;
+                                const content = stripMediaPrefix(msg.content);
                                 let displayContent = content;
                                 if (searchQuery) {
                                   const escapedQuery = searchQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

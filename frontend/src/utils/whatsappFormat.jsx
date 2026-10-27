@@ -1,6 +1,25 @@
 import { Fragment } from 'react';
 
 /**
+ * Media messages are stored as "[DOCUMENT interno] caption" / "[IMAGE enviado]".
+ * The bracketed tag is useful for search and the mobile app, but the web UI
+ * already shows the attachment, so it is stripped before rendering.
+ */
+const MEDIA_PREFIX_RE = /^\s*\[(?:IMAGE|VIDEO|AUDIO|DOCUMENT|STICKER|FILE)(?:\s+(?:interno|enviado|recibido))?\]\s*/i;
+
+export function stripMediaPrefix(text) {
+  if (!text) return '';
+  return String(text).replace(MEDIA_PREFIX_RE, '').trim();
+}
+
+/** Human preview for lists: strips the tag and falls back to a short label. */
+export function messagePreview(text, fallback = 'Archivo adjunto') {
+  if (!text) return fallback;
+  const stripped = stripMediaPrefix(text);
+  return stripped || fallback;
+}
+
+/**
  * Renders WhatsApp inline formatting (*bold*, _italic_, ~strike~, ```mono```)
  * as React nodes. Works on plain text only; never injects HTML.
  */

@@ -3,7 +3,7 @@ import { Search, MessageSquare, AlertTriangle } from 'lucide-react';
 import useChatStore from '../../../stores/useChatStore';
 import { Eyebrow, Kbd, Spinner } from '../../../components/ui/index.js';
 import { formatDate } from '../../../utils/formatDate.js';
-import { renderWhatsAppText } from '../../../utils/whatsappFormat.jsx';
+import { renderWhatsAppText, stripMediaPrefix } from '../../../utils/whatsappFormat.jsx';
 import { cn } from '../../../utils/cn.js';
 
 const CommandPalette = () => {
@@ -165,7 +165,7 @@ const CommandPalette = () => {
                       <Eyebrow tone="muted">{msg.senderType === 'CLIENT' ? 'Cliente' : 'Asesor'}</Eyebrow>
                       <span className="tnum font-mono text-[10px] text-fg-subtle">{formatDate(msg.createdAt)}</span>
                     </div>
-                    <p className="line-clamp-2 text-sm text-fg">{renderWhatsAppText(msg.content)}</p>
+                    <p className="line-clamp-2 text-sm text-fg">{renderWhatsAppText(stripMediaPrefix(msg.content))}</p>
                   </li>
                 ))}
               </ul>

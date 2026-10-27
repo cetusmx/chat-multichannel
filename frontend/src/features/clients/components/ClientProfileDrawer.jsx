@@ -6,6 +6,7 @@ import { toast } from '../../../stores/useToastStore.js';
 import { Avatar, Badge, Button, EmptyState, Eyebrow, IconButton, Spinner, StatusPill } from '../../../components/ui/index.js';
 import { formatDate } from '../../../utils/formatDate.js';
 import { cn } from '../../../utils/cn.js';
+import { messagePreview } from '../../../utils/whatsappFormat.jsx';
 
 export default function ClientProfileDrawer({ clientId, onClose }) {
   const [client, setClient] = useState(null);
@@ -165,7 +166,7 @@ export default function ClientProfileDrawer({ clientId, onClose }) {
 
                           {conv.messages && conv.messages.length > 0 && (
                             <p className="mt-2 line-clamp-2 rounded-md border border-border bg-surface px-2.5 py-1.5 text-xs text-fg-muted">
-                              {conv.messages[0].content}
+                              {messagePreview(conv.messages[0].content)}
                             </p>
                           )}
                         </div>

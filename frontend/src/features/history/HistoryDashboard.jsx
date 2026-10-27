@@ -4,6 +4,7 @@ import { get } from '../../services/api.js';
 import { Badge, Button, EmptyState, Eyebrow, IconButton, Input, PageHeader, Select, Spinner, StatusPill } from '../../components/ui/index.js';
 import { formatDate, formatTime } from '../../utils/formatDate.js';
 import { cn } from '../../utils/cn.js';
+import { messagePreview, stripMediaPrefix } from '../../utils/whatsappFormat.jsx';
 
 const SENDER_LABELS = { IA: 'Asistente IA', SYSTEM: 'Sistema', CLIENT: 'Cliente' };
 
@@ -274,7 +275,7 @@ export default function HistoryDashboard() {
                           <div className="mt-1 flex max-w-md items-start gap-1.5 whitespace-normal text-xs text-fg-muted">
                             <MessageSquare size={12} className="mt-0.5 shrink-0 text-fg-subtle" aria-hidden />
                             <span className="line-clamp-2">
-                              {highlightText(chat.messages[0].searchSnippet || chat.messages[0].content || chat.messages[0].text, searchTerm)}
+                              {highlightText(chat.messages[0].searchSnippet || messagePreview(chat.messages[0].content || chat.messages[0].text), searchTerm)}
                             </span>
                           </div>
                         )}
@@ -368,7 +369,7 @@ export default function HistoryDashboard() {
               {selectedChat?.messages?.length > 0 ? (
                 selectedChat.messages.map((msg, idx) => {
                   const isClient = msg.senderType === 'CLIENT';
-                  const textContent = msg.content || msg.text || '';
+                  const textContent = stripMediaPrefix(msg.content || msg.text || '');
                   const senderLabel = SENDER_LABELS[msg.senderType] || selectedChat?.vendor?.name || 'Asesor';
 
                   return (

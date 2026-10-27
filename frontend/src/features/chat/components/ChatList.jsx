@@ -4,6 +4,7 @@ import { Badge, Eyebrow, EmptyState } from '../../../components/ui/index.js';
 import { getStatusMeta, isClosedStatus } from '../../../utils/conversationStatus.js';
 import { formatRelativeTime } from '../../../utils/formatDate.js';
 import { getCartItems } from '../../../utils/cart.js';
+import { messagePreview } from '../../../utils/whatsappFormat.jsx';
 import { cn } from '../../../utils/cn.js';
 
 const TONE_TEXT = {
@@ -32,7 +33,7 @@ export default function ChatList({ conversations, currentConversationId, current
 
   const renderConvItem = (conv) => {
     const isSelected = selectedIds.includes(conv.id);
-    const lastMsg = conv.messages?.[0]?.content || 'Sin mensajes';
+    const lastMsg = conv.messages?.[0] ? messagePreview(conv.messages[0].content) : 'Sin mensajes';
     const unreadCount = unreadCounts?.[conv.id] || 0;
     const meta = getStatusMeta(conv.status);
     const closed = isClosedStatus(conv.status);

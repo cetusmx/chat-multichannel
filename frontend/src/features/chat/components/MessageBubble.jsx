@@ -2,7 +2,7 @@ import { memo, useState } from 'react';
 import { Lock, Share2, ShoppingCart, Plus, Minus, Tag, X, Truck, Check, Paperclip } from 'lucide-react';
 import SecureMedia from '../../../components/SecureMedia.jsx';
 import { Eyebrow, Button } from '../../../components/ui/index.js';
-import { renderWhatsAppText } from '../../../utils/whatsappFormat.jsx';
+import { renderWhatsAppText, stripMediaPrefix } from '../../../utils/whatsappFormat.jsx';
 import { formatTime, formatMoney } from '../../../utils/formatDate.js';
 import { cn } from '../../../utils/cn.js';
 
@@ -258,6 +258,7 @@ function MessageBubble({ msg, user, highlighted, highlightRef, onAddToCart, onFo
   const inverse = isTeam && !isInternal && !isRich;
   const author = authorLabel(msg);
   const eyebrow = !isInternal && SENDER_EYEBROW[msg.senderType];
+  const bodyText = stripMediaPrefix(msg.content);
 
   return (
     <div
@@ -293,8 +294,8 @@ function MessageBubble({ msg, user, highlighted, highlightRef, onAddToCart, onFo
           <CartSummaryCard msg={msg} />
         ) : msg.type === 'PRODUCT_CARD' && msg.metadata ? (
           <ProductCard msg={msg} onAddToCart={canEdit ? onAddToCart : null} />
-        ) : msg.content ? (
-          <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{renderWhatsAppText(msg.content)}</p>
+        ) : bodyText ? (
+          <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{renderWhatsAppText(bodyText)}</p>
         ) : !msg.attachments?.length ? (
           <p className="inline-flex items-center gap-1.5 text-sm italic text-fg-subtle"><Paperclip size={12} /> Sin contenido</p>
         ) : null}
