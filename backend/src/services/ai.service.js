@@ -330,6 +330,10 @@ class AIService {
                 cartData: newCartData
               });
 
+            require('./timeline.service')
+              .emitCartChanges({ id: conversationId, tenantId, vendorId: conversation.vendorId }, currentCart, newCartData, 'El cliente')
+              .catch(() => {});
+
             console.log('[AI TOOL] actualizar_carrito procesado exitosamente.');
             return { status: "success", cartData: newCartData };
           }

@@ -10,7 +10,9 @@ const { PrismaClient } = require('@prisma/client');
 
 const crypto = require('crypto');
 const socket = require('../socket');
-
+const { attachSender, attachSenders } = require('../services/messageEnricher.service');
+const timelineService = require('../services/timeline.service');
+const summaryService = require('../services/summary.service');
 
 const prisma = new PrismaClient();
 
@@ -103,6 +105,7 @@ router.post('/:conversationId/messages', authenticate, authorize('ADMIN', 'COORD
           isInternal: true
         }
       });
+      message = await attachSender(message, req.user);
       await prisma.conversation.update({
         where: { id: conversationId },
         data: { lastMessageAt: new Date(), unreadCount: 0 }
@@ -244,6 +247,7 @@ router.post('/:conversationId/media', authenticate, authorize('ADMIN', 'COORDINA
         },
         include: { attachments: true }
       });
+      result = await attachSender(result, req.user);
       
       await prisma.conversation.update({
         where: { id: conversationId },
@@ -746,6 +750,7 @@ router.get('/:conversationId/messages', authenticate, authorize('ADMIN', 'COORDI
 
       // Combine and return chronological
       let messages = [...newer, ...older].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+      messages = await attachSenders(messages);
       
       // Determine if there are more
       let hasMore = older.length > Math.floor(limit / 2);
@@ -789,7 +794,7 @@ router.get('/:conversationId/messages', authenticate, authorize('ADMIN', 'COORDI
     }
 
     // Reverse to return them in chronological order
-    messages = messages.reverse();
+    messages = await attachSenders(messages.reverse());
 
     res.json({
       data: messages,
@@ -825,11 +830,12 @@ router.patch('/:conversationId/assign', authenticate, authorize('ADMIN', 'COORDI
       return res.json({ data: conversation });
     }
 
+    let newVendor = null;
     if (normalizedVendorId) {
-      const vendor = await prisma.user.findFirst({
+      newVendor = await prisma.user.findFirst({
         where: { id: normalizedVendorId, tenantId: req.user.tenantId }
       });
-      if (!vendor) {
+      if (!newVendor) {
         return res.status(400).json({ error: 'Asesor inválido o de otro tenant' });
       }
     }
@@ -894,7 +900,42 @@ router.patch('/:conversationId/assign', authenticate, authorize('ADMIN', 'COORDI
       console.error('Failed to emit conversation_reassigned', socketErr);
     }
 
+    timelineService.emitEvent(
+      updatedConversation,
+      newVendor
+        ? `${req.user.name || 'Coordinación'} asignó la conversación a *${newVendor.name}*`
+        : `${req.user.name || 'Coordinación'} dejó la conversación sin asignar`,
+      { tone: newVendor ? 'info' : 'warning' }
+    );
+    if (newVendor) summaryService.scheduleSummary(req.user.tenantId, conversationId, { reason: 'asignación a vendedor' });
+
     res.json({ data: updatedConversation });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * @swagger
+ * /chat/{conversationId}/summary:
+ *   post:
+ *     summary: Regenera el resumen IA fijado de una conversación
+ *     tags: [Chat]
+ *     security:
+ *       - bearerAuth: []
+ */
+router.post('/:conversationId/summary', authenticate, authorize('ADMIN', 'COORDINATOR', 'VENDOR'), async (req, res, next) => {
+  try {
+    const { conversationId } = req.params;
+    const conversation = await prisma.conversation.findUnique({ where: { id: conversationId } });
+    if (!conversation || conversation.tenantId !== req.user.tenantId || (req.user.role === 'VENDOR' && conversation.vendorId !== req.user.id)) {
+      return res.status(403).json({ error: 'No autorizado' });
+    }
+    const updated = await summaryService.generateConversationSummary(req.user.tenantId, conversationId, { reason: 'solicitud manual' });
+    if (!updated) {
+      return res.status(422).json({ error: 'No fue posible generar el resumen (sin mensajes o IA no disponible)' });
+    }
+    res.json({ data: { aiSummary: updated.aiSummary, aiSummaryUpdatedAt: updated.aiSummaryUpdatedAt } });
   } catch (error) {
     next(error);
   }

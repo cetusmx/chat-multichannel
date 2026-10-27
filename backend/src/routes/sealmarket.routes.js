@@ -2,33 +2,73 @@ const express = require('express');
 const router = express.Router();
 const authenticate = require('../middleware/auth');
 
+const CATALOG_API_URL = process.env.VITE_API_BASE_URL || 'http://75.119.150.222:3010';
+const CATALOG_API_KEY = process.env.VITE_INTERNAL_SECRET || 'sm_ecommerce_x2ve9yFf0aiDxh1HelezpVeyRAcngGwgEg3ZnSZwhGg2SaZrd2gQiysiVo86R3LcUZFFxZDSMADepof1jMLSumIbiqBRcbjyhvA78haaxnLrrbOuU3zqCi0kQXJf1gSc';
+
+/**
+ * Parameter names tried, in order, when the UI sends a free-text `q`.
+ * The ERP endpoint is documented for parametric search (familia, diam_*);
+ * these are the text aliases it is expected to accept. Override with
+ * CATALOG_TEXT_PARAMS="clave,descripcion" if the ERP uses other names.
+ */
+const TEXT_PARAM_CANDIDATES = (process.env.CATALOG_TEXT_PARAMS || 'clave,q,descripcion,search').split(',').map((s) => s.trim()).filter(Boolean);
+
+async function fetchCatalog(params) {
+  const searchParams = new URLSearchParams(params);
+  searchParams.set('limit', '100');
+  const endpoint = `${CATALOG_API_URL}/api/clavesalternas/filter-v2?${searchParams.toString()}`;
+  console.log('[SEALMARKET] Fetching Catalog API:', endpoint);
+  const fetchRes = await fetch(endpoint, {
+    method: 'GET',
+    headers: { 'Content-Type': 'application/json', 'x-api-key': CATALOG_API_KEY },
+  });
+  if (!fetchRes.ok) {
+    const err = new Error(`El catálogo devolvió un error: ${fetchRes.statusText}`);
+    err.status = fetchRes.status;
+    throw err;
+  }
+  const data = await fetchRes.json();
+  return Array.isArray(data.data) ? data.data : [];
+}
+
+function normalize(s) {
+  return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
+
+/** Keeps only records where every token of `q` appears in clave or description. */
+function filterByText(results, q) {
+  const tokens = normalize(q).split(/[\s,;]+/).filter(Boolean);
+  if (tokens.length === 0) return results;
+  return results.filter((item) => {
+    const hay = normalize([item.CVE_ART, item.DESC_ECOMM, item.DESCR, item.NOMBRE, item.LIN_PROD, ...(item.claves_alternas || [])].filter(Boolean).join(' '));
+    return tokens.every((t) => hay.includes(t));
+  });
+}
+
+/** Free-text search: tries each candidate parameter until one yields matches. */
+async function searchByText(q, extraParams = {}) {
+  for (const param of TEXT_PARAM_CANDIDATES) {
+    try {
+      const raw = await fetchCatalog({ ...extraParams, [param]: q });
+      const matched = filterByText(raw, q);
+      if (matched.length > 0) return matched;
+    } catch (err) {
+      if (err.status && err.status !== 400 && err.status !== 404 && err.status !== 422) throw err;
+    }
+  }
+  return [];
+}
+
 router.get('/catalog/search', authenticate, async (req, res, next) => {
   try {
-    const searchParams = new URLSearchParams(req.query);
-    searchParams.set('limit', '100'); // Traer más registros para que el filtrado de muertos no vacíe la página
-    
-    // Config values
-    const apiUrl = process.env.VITE_API_BASE_URL || 'http://75.119.150.222:3010';
-    const apiKey = process.env.VITE_INTERNAL_SECRET || 'sm_ecommerce_x2ve9yFf0aiDxh1HelezpVeyRAcngGwgEg3ZnSZwhGg2SaZrd2gQiysiVo86R3LcUZFFxZDSMADepof1jMLSumIbiqBRcbjyhvA78haaxnLrrbOuU3zqCi0kQXJf1gSc';
-    
-    const endpoint = `${apiUrl}/api/clavesalternas/filter-v2?${searchParams.toString()}`;
-    console.log('[SEALMARKET] Fetching Catalog API:', endpoint);
-    
-    const fetchRes = await fetch(endpoint, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey
-      }
-    });
-    
-    if (!fetchRes.ok) {
-      console.error('[SEALMARKET] API HTTP Error:', fetchRes.status);
-      return res.status(fetchRes.status).json({ error: `El catálogo devolvió un error: ${fetchRes.statusText}` });
+    const { q, ...params } = req.query;
+
+    let results;
+    if (q && String(q).trim().length >= 2) {
+      results = await searchByText(String(q).trim(), params);
+    } else {
+      results = await fetchCatalog(params);
     }
-    
-    const data = await fetchRes.json();
-    let results = data.data || [];
     
     if (Array.isArray(results) && results.length > 0) {
       // 1. Omitir productos "muertos" (precio 0, sin stock, y sin fecha de última compra)
@@ -60,6 +100,7 @@ router.get('/catalog/search', authenticate, async (req, res, next) => {
     res.json({ data: results });
   } catch (error) {
     console.error('[SEALMARKET] Excepción:', error.message);
+    if (error.status) return res.status(error.status).json({ error: error.message });
     res.status(500).json({ error: 'Hubo un fallo al leer los parámetros o conectar con el catálogo' });
   }
 });

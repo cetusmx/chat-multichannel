@@ -4,6 +4,7 @@ const authenticate = require('../middleware/auth');
 const authorize = require('../middleware/rbac');
 const { PrismaClient } = require('@prisma/client');
 const { getIo } = require('../socket');
+const timelineService = require('../services/timeline.service');
 
 const prisma = new PrismaClient();
 
@@ -231,6 +232,10 @@ router.patch('/:id/cart', authenticate, async (req, res, next) => {
     } catch (socketErr) {
       console.error('Failed to emit cart_updated', socketErr);
     }
+
+    timelineService.findActiveConversationForClient(id, client.tenantId)
+      .then((conv) => conv && timelineService.emitCartChanges(conv, client.cartData, cartData, req.user.name || 'El asesor'))
+      .catch(() => {});
 
     res.json({ data: updatedClient });
   } catch (error) {

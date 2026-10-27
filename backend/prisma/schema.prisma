@@ -285,6 +285,8 @@ model Conversation {
   onHoldExpiration    DateTime?          @map("on_hold_expiration")
   assignedAt          DateTime?          @map("assigned_at")
   cartSnapshot        Json?              @map("cart_snapshot")
+  aiSummary           String?            @db.Text @map("ai_summary")
+  aiSummaryUpdatedAt  DateTime?          @map("ai_summary_updated_at")
   slaPausedMins       Int                @default(0) @map("sla_paused_mins")
   unreadCount         Int                @default(0) @map("unread_count")
   createdAt           DateTime           @default(now()) @map("created_at")

@@ -6,6 +6,9 @@ const crypto = require('crypto');
 const logger = require('../utils/logger');
 const aiService = require('./ai.service');
 const assignmentService = require('./assignment.service');
+const { attachSender } = require('./messageEnricher.service');
+const timelineService = require('./timeline.service');
+const summaryService = require('./summary.service');
 const prisma = new PrismaClient();
 
 const incomingLocks = new Map();
@@ -667,6 +670,15 @@ const whatsappService = {
                           logger.error('Error sending fallback message:', msgErr);
                         }
                       }
+
+                      const fallbackConv = fallbackResult.conversation || conversation;
+                      timelineService.emitEvent(
+                        fallbackConv,
+                        fallbackResult.vendor
+                          ? `Transferido a *${fallbackResult.vendor.name}* · ${isQuotaExceeded ? 'cuota de IA agotada' : 'IA inactiva'}`
+                          : `Transferido al equipo · ${isQuotaExceeded ? 'cuota de IA agotada' : 'IA inactiva'}`,
+                        { tone: 'warning' }
+                      );
                       return;
                     }
 
@@ -707,6 +719,16 @@ const whatsappService = {
                             where: { id: conversation.id }
                           });
                         }
+
+                        const assignedVendorName = vendor?.vendor?.name || vendor?.name;
+                        timelineService.emitEvent(
+                          updatedConv || conversation,
+                          assignedVendorName
+                            ? `La IA transfirió la conversación a *${assignedVendorName}*`
+                            : 'La IA transfirió la conversación · esperando coordinador',
+                          { tone: 'accent' }
+                        );
+                        summaryService.scheduleSummary(tenantId, conversation.id, { reason: 'transferencia de IA a humano' });
                         
                         try {
                           const io = socket.getIo();
@@ -923,7 +945,7 @@ const whatsappService = {
         throw new Error(`Meta API Error: ${metaData.error?.message || 'Unknown error'}`);
       }
       
-      const message = await prisma.message.create({
+      let message = await prisma.message.create({
         data: {
           conversationId,
           senderType: senderType || 'SYSTEM',
@@ -935,6 +957,7 @@ const whatsappService = {
           status: 'SENT'
         }
       });
+      message = await attachSender(message);
       
       await prisma.conversation.update({
         where: { id: conversationId },
@@ -1063,7 +1086,7 @@ const whatsappService = {
       await fsp.copyFile(file.path, filepath);
       
       // 4. Insert message and attachment transactionally
-      const msgRecord = await prisma.message.create({
+      let msgRecord = await prisma.message.create({
         data: {
           conversationId,
           senderType: senderId ? senderType : 'SYSTEM',
@@ -1083,6 +1106,7 @@ const whatsappService = {
         },
         include: { attachments: true }
       });
+      msgRecord = await attachSender(msgRecord);
 
       await prisma.conversation.update({
         where: { id: conversationId },
