@@ -165,7 +165,7 @@ describe('Webhook AI Auto-Response', () => {
             where: { conversationId: conversation.id },
             orderBy: { createdAt: 'asc' }
           });
-          if (messages.length === 2 && conversation.aiPendingEscalation) break;
+          if (messages.length === 3 && conversation.aiPendingEscalation) break;
         }
       }
     } finally {
@@ -174,9 +174,19 @@ describe('Webhook AI Auto-Response', () => {
 
     expect(conversation).toBeDefined();
     expect(conversation.aiPendingEscalation).toBe(true);
-    expect(messages.length).toBe(2);
-    expect(messages[1].senderType).toBe('IA');
-    expect(messages[1].content).toBe('Here is the info.');
+
+    // Conversation messages (what the customer sees): inbound + sanitized IA reply
+    const chatMessages = messages.filter(m => m.type !== 'EVENT');
+    expect(chatMessages.length).toBe(2);
+    expect(chatMessages[1].senderType).toBe('IA');
+    expect(chatMessages[1].content).toBe('Here is the info.');
+
+    // Handoff leaves an internal timeline event that never reaches WhatsApp
+    const events = messages.filter(m => m.type === 'EVENT');
+    expect(events.length).toBe(1);
+    expect(events[0].isInternal).toBe(true);
+    expect(events[0].senderType).toBe('SYSTEM');
+    expect(events[0].content).toMatch(/transfirió la conversación/);
   });
 
   afterAll(async () => {
