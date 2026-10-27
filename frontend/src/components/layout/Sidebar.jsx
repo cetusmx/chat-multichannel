@@ -3,13 +3,14 @@ import { MessageSquare, LayoutDashboard, Users, UserCog, BarChart3, Settings, Hi
 import useAuthStore from '../../stores/useAuthStore.js';
 import useChatStore from '../../stores/useChatStore.js';
 import { Logo } from '../Logo.jsx';
+import { cn } from '../../utils/cn.js';
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard', roles: ['ADMIN', 'COORDINATOR', 'VENDOR'] },
   { to: '/chat', icon: MessageSquare, label: 'Conversaciones', roles: ['ADMIN', 'COORDINATOR', 'VENDOR'], badge: true },
   { to: '/history', icon: History, label: 'Historial', roles: ['ADMIN', 'COORDINATOR'] },
-  { to: '/users', icon: UserCog, label: 'Usuarios', roles: ['ADMIN', 'COORDINATOR'] },
   { to: '/clients', icon: Users, label: 'Clientes', roles: ['ADMIN', 'COORDINATOR', 'VENDOR'] },
+  { to: '/users', icon: UserCog, label: 'Usuarios', roles: ['ADMIN', 'COORDINATOR'] },
   { to: '/metrics', icon: BarChart3, label: 'Métricas', roles: ['ADMIN', 'COORDINATOR'] },
   { to: '/settings', icon: Settings, label: 'Configuración', roles: ['ADMIN', 'COORDINATOR'] },
 ];
@@ -18,43 +19,53 @@ export default function Sidebar() {
   const user = useAuthStore((s) => s.user);
   const unreadCounts = useChatStore((s) => s.unreadCounts);
 
-  const totalUnread = Object.values(unreadCounts).reduce((acc, curr) => acc + curr, 0);
+  const totalUnread = Object.values(unreadCounts || {}).reduce((acc, curr) => acc + curr, 0);
 
-  // Filtrar los items de navegación según el rol del usuario
   const visibleNavItems = navItems.filter((item) =>
     !item.roles || (user && item.roles.includes(user.role)),
   );
 
   return (
-    <aside className="flex w-64 flex-col gap-4 border-r border-slate-800 bg-slate-900 py-4 px-3 flex-shrink-0">
-      <div className="mb-4 flex h-12 w-full items-center gap-3 px-3">
-        <Logo className="flex-shrink-0 w-10 h-10" />
-        <span className="font-bold text-white text-lg tracking-wide">SalesFlow</span>
+    <aside className="flex w-64 shrink-0 flex-col border-r border-border bg-surface">
+      <div className="flex h-14 items-center gap-2.5 border-b border-border px-4">
+        <Logo className="h-7 w-7 shrink-0" />
+        <span className="text-[15px] font-semibold tracking-tight text-fg">SalesFlow</span>
       </div>
-      <nav className="flex flex-col gap-2">
+
+      <nav className="flex flex-col gap-0.5 p-3" aria-label="Principal">
         {visibleNavItems.map((item) => (
           <NavLink
             key={item.to}
             to={item.to}
             end={item.to === '/'}
             className={({ isActive }) =>
-              `flex h-12 w-full items-center gap-3 rounded-md px-3 transition-all relative ${
+              cn(
+                'group relative flex h-9 items-center gap-3 rounded-md px-3 text-sm transition-colors',
                 isActive
-                  ? 'bg-slate-800 text-white font-medium before:absolute before:-left-[12px] before:top-[15%] before:bottom-[15%] before:w-1 before:bg-[#2f81f7] before:rounded-full'
-                  : 'text-sales-slate-400 hover:bg-slate-800/50 hover:text-sales-slate-300'
-              }`
+                  ? 'bg-surface-2 text-fg font-medium'
+                  : 'text-fg-muted hover:bg-surface-2/60 hover:text-fg',
+              )
             }
           >
-            <item.icon size={20} className="flex-shrink-0" />
-            <span className="flex-1">{item.label}</span>
-            {item.badge && totalUnread > 0 && (
-              <span className="bg-sales-coral text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-lg shadow-sales-coral/20 animate-pulse">
-                {totalUnread > 99 ? '99+' : totalUnread}
-              </span>
+            {({ isActive }) => (
+              <>
+                {isActive && <span className="absolute left-0 top-2 bottom-2 w-0.5 rounded-full bg-accent" aria-hidden />}
+                <item.icon size={16} className={cn('shrink-0', isActive ? 'text-accent' : 'text-fg-subtle group-hover:text-fg-muted')} aria-hidden />
+                <span className="flex-1 truncate">{item.label}</span>
+                {item.badge && totalUnread > 0 && (
+                  <span className="tnum font-mono text-[10px] font-semibold rounded-sm bg-accent px-1.5 py-px text-accent-fg" aria-label={`${totalUnread} sin leer`}>
+                    {totalUnread > 99 ? '99+' : totalUnread}
+                  </span>
+                )}
+              </>
             )}
           </NavLink>
         ))}
       </nav>
+
+      <div className="mt-auto border-t border-border px-4 py-3">
+        <div className="eyebrow text-fg-subtle truncate" title={user?.tenantName}>{user?.tenantName || '—'}</div>
+      </div>
     </aside>
   );
 }

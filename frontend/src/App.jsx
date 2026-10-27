@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import useAuthStore from './stores/useAuthStore.js';
 import Sidebar from './components/layout/Sidebar.jsx';
@@ -17,6 +17,9 @@ import ClientProfile from './pages/ClientProfile.jsx';
 import useChatStore from './stores/useChatStore.js';
 import useTabNotification from './hooks/useTabNotification.js';
 import CoordinatorChatView from './features/chat/components/CoordinatorChatView.jsx';
+import { Modal, Button, Toaster } from './components/ui/index.js';
+
+const UIPreview = import.meta.env.DEV ? lazy(() => import('./dev/UIPreview.jsx')) : null;
 
 function ChatRoute() {
   const user = useAuthStore(s => s.user);
@@ -24,6 +27,11 @@ function ChatRoute() {
     return <ChatView />;
   }
   return <CoordinatorChatView />;
+}
+
+/** Scrollable, padded container for document-style pages. */
+function Page({ children }) {
+  return <div className="h-full overflow-y-auto custom-scrollbar p-6">{children}</div>;
 }
 
 function AppLayout() {
@@ -39,23 +47,23 @@ function AppLayout() {
   }, []);
 
   return (
-    <div className="flex h-screen">
+    <div className="flex h-screen bg-bg text-fg">
       <Sidebar />
       <div className="flex flex-1 flex-col min-w-0">
         <Header />
-        <main className="flex-1 overflow-auto p-6 min-w-0">
+        <main className="flex-1 min-h-0 min-w-0 overflow-hidden">
           <Routes>
-            <Route path="/" element={<Dashboard />} />
+            <Route path="/" element={<Page><Dashboard /></Page>} />
             <Route path="/chat" element={<ChatRoute />} />
             <Route path="/chat/:id" element={<ChatRoute />} />
-            <Route path="/clients" element={<Clients />} />
+            <Route path="/clients" element={<Page><Clients /></Page>} />
             <Route path="/clients/:id" element={<ClientProfile />} />
-            <Route path="/users" element={<UserListPage />} />
-            <Route path="/users/new" element={<CreateUserForm onSuccess={() => window.location.href = '/users'} />} />
-            <Route path="/metrics" element={<Metrics />} />
-            <Route path="/history" element={<History />} />
+            <Route path="/users" element={<Page><UserListPage /></Page>} />
+            <Route path="/users/new" element={<Page><CreateUserForm onSuccess={() => window.location.href = '/users'} /></Page>} />
+            <Route path="/metrics" element={<Page><Metrics /></Page>} />
+            <Route path="/history" element={<Page><History /></Page>} />
             <Route path="/search" element={<SearchPage />} />
-            <Route path="/settings" element={<Settings />} />
+            <Route path="/settings" element={<Page><Settings /></Page>} />
           </Routes>
         </main>
       </div>
@@ -78,25 +86,21 @@ function UpgradePlanModal() {
     return () => window.removeEventListener('QUOTA_EXCEEDED_MODAL', handler);
   }, []);
 
-  if (!isOpen) return null;
-
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50">
-      <div className="w-full max-w-md rounded-xl border border-slate-700 bg-slate-900 p-6 shadow-2xl">
-        <h3 className="text-xl font-semibold text-sales-slate-100 mb-2">Límite de Asientos Alcanzado</h3>
-        <p className="text-sm text-sales-slate-400 mb-6">
-          Has alcanzado el límite de usuarios permitidos en tu plan actual. Para agregar más usuarios, por favor actualiza tu plan.
-        </p>
-        <div className="flex justify-end gap-3">
-          <button onClick={() => setIsOpen(false)} className="rounded-lg border border-slate-700 px-4 py-2 text-sm text-sales-slate-400 hover:bg-slate-800 transition-colors">
-            Cerrar
-          </button>
-          <button onClick={() => { setIsOpen(false); window.location.href = '/settings'; }} className="rounded-lg bg-sales-orange px-4 py-2 text-sm font-medium text-white hover:bg-sales-orange-light transition-colors">
-            Mejorar Plan
-          </button>
-        </div>
-      </div>
-    </div>
+    <Modal
+      open={isOpen}
+      onClose={() => setIsOpen(false)}
+      eyebrow="Plan"
+      title="Límite de asientos alcanzado"
+      description="Has alcanzado el número de usuarios permitidos en tu plan actual. Para agregar más usuarios, actualiza tu plan."
+      size="sm"
+      footer={
+        <>
+          <Button variant="ghost" onClick={() => setIsOpen(false)}>Cerrar</Button>
+          <Button variant="primary" onClick={() => { setIsOpen(false); window.location.href = '/settings'; }}>Mejorar plan</Button>
+        </>
+      }
+    />
   );
 }
 
@@ -107,9 +111,11 @@ export default function App() {
     <>
       <Routes>
         <Route path="/login" element={token ? <Navigate to="/" replace /> : <LoginPage />} />
+        {UIPreview && <Route path="/__ui" element={<Suspense fallback={null}><UIPreview /></Suspense>} />}
         <Route path="/*" element={<ProtectedRoute><AppLayout /></ProtectedRoute>} />
       </Routes>
       <UpgradePlanModal />
+      <Toaster />
     </>
   );
 }

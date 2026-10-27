@@ -1,10 +1,38 @@
-import { useState } from 'react';
-import { Search, Bell, LogOut, ChevronDown } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Bell, LogOut, ChevronDown, Sun, Moon } from 'lucide-react';
 import useUIStore from '../../stores/useUIStore.js';
 import useAuthStore from '../../stores/useAuthStore.js';
 import { disconnectSockets } from '../../services/socket.js';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import GlobalSearchInput from '../search/GlobalSearchInput.jsx';
+import { Avatar, Eyebrow, IconButton, EmptyState } from '../ui/index.js';
+import { ROLE_LABELS } from '../../utils/constants.js';
+import { formatTime } from '../../utils/formatDate.js';
+import { getTheme, toggleTheme } from '../../utils/theme.js';
+import { cn } from '../../utils/cn.js';
+
+const SECTION_TITLES = [
+  { match: /^\/chat/, label: 'Bandeja de ventas' },
+  { match: /^\/history/, label: 'Historial' },
+  { match: /^\/clients\/.+/, label: 'Perfil de cliente' },
+  { match: /^\/clients/, label: 'Clientes' },
+  { match: /^\/users/, label: 'Usuarios' },
+  { match: /^\/metrics/, label: 'Métricas' },
+  { match: /^\/search/, label: 'Búsqueda' },
+  { match: /^\/settings/, label: 'Configuración' },
+  { match: /^\/$/, label: 'Dashboard' },
+];
+
+function useClickOutside(ref, onOutside, active) {
+  useEffect(() => {
+    if (!active) return;
+    const handler = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) onOutside();
+    };
+    document.addEventListener('pointerdown', handler);
+    return () => document.removeEventListener('pointerdown', handler);
+  }, [ref, onOutside, active]);
+}
 
 export default function Header() {
   const notifications = useUIStore((state) => state.notifications);
@@ -12,19 +40,18 @@ export default function Header() {
   const unreadCount = notifications.filter(n => !n.read).length;
   const [showNotifications, setShowNotifications] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
+  const [theme, setTheme] = useState(getTheme());
   const user = useAuthStore((s) => s.user);
   const clearAuth = useAuthStore((s) => s.clearAuth);
   const navigate = useNavigate();
+  const location = useLocation();
+  const notifRef = useRef(null);
+  const menuRef = useRef(null);
 
-  const roleLabels = { ADMIN: 'Admin', COORDINATOR: 'Coordinador', VENDOR: 'Vendedor' };
-  const roleColors = {
-    ADMIN: 'text-sales-coral',
-    COORDINATOR: 'text-sales-orange',
-    VENDOR: 'text-sales-slate-400',
-  };
-  const initials = user?.name
-    ? user.name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()
-    : '??';
+  useClickOutside(notifRef, () => setShowNotifications(false), showNotifications);
+  useClickOutside(menuRef, () => setShowMenu(false), showMenu);
+
+  const section = SECTION_TITLES.find((s) => s.match.test(location.pathname))?.label || 'SalesFlow';
 
   function handleLogout() {
     setShowMenu(false);
@@ -34,47 +61,49 @@ export default function Header() {
   }
 
   return (
-    <header className="relative z-50 flex h-14 items-center justify-between border-b border-slate-800 bg-slate-900/50 px-6 backdrop-blur-sm">
-      <div className="flex items-center gap-4">
-        <span className="text-sm font-semibold text-sales-slate-100">{user?.tenantName}</span>
-        <div className="h-4 w-px bg-slate-700" />
-        <div className="w-64 sm:w-96">
+    <header className="relative z-50 flex h-14 shrink-0 items-center justify-between gap-4 border-b border-border bg-surface px-5">
+      <div className="flex min-w-0 items-center gap-5">
+        <Eyebrow tone="default" className="shrink-0">{section}</Eyebrow>
+        <div className="hidden w-72 md:block lg:w-96">
           <GlobalSearchInput />
         </div>
       </div>
 
-      <div className="flex items-center gap-3">
-        <div className="relative">
-          <button 
+      <div className="flex items-center gap-1">
+        <div className="relative" ref={notifRef}>
+          <IconButton
+            icon={Bell}
+            label={unreadCount > 0 ? `Notificaciones (${unreadCount} nuevas)` : 'Notificaciones'}
+            size="lg"
             onClick={() => { setShowNotifications(!showNotifications); markNotificationsAsRead(); }}
-            className="relative rounded-lg p-2 text-sales-slate-400 hover:bg-slate-800 hover:text-sales-slate-300 transition-colors"
-          >
-            <Bell size={20} />
-            {unreadCount > 0 && (
-              <span className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-sales-coral text-[10px] font-bold text-white">
-                {unreadCount}
-              </span>
-            )}
-          </button>
-          
+            aria-expanded={showNotifications}
+            className="relative"
+          />
+          {unreadCount > 0 && (
+            <span className="pointer-events-none absolute right-1.5 top-1.5 flex h-2 w-2 rounded-full bg-accent ring-2 ring-surface" aria-hidden />
+          )}
+
           {showNotifications && (
-            <div className="absolute right-0 mt-2 w-80 bg-sales-slate-900 border border-sales-slate-800 rounded-lg shadow-xl z-50 overflow-hidden">
-              <div className="p-3 border-b border-sales-slate-800 bg-sales-slate-800/50">
-                <h3 className="font-medium text-white">Notificaciones</h3>
+            <div className="absolute right-0 mt-2 w-80 overflow-hidden rounded-lg border border-border bg-surface shadow-2xl shadow-black/40">
+              <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
+                <Eyebrow tone="muted">Notificaciones</Eyebrow>
+                {notifications.length > 0 && (
+                  <button onClick={() => useUIStore.getState().clearNotifications()} className="text-xs text-fg-muted hover:text-fg">
+                    Limpiar
+                  </button>
+                )}
               </div>
-              <div className="max-h-96 overflow-y-auto">
+              <div className="max-h-96 overflow-y-auto custom-scrollbar">
                 {notifications.length === 0 ? (
-                  <div className="p-4 text-center text-sm text-sales-slate-400">
-                    No tienes notificaciones
-                  </div>
+                  <EmptyState compact icon={Bell} title="Sin notificaciones" description="Aquí verás alertas de SLA, asignaciones y escalaciones." />
                 ) : (
                   notifications.map(n => (
-                    <div key={n.id} className="p-3 border-b border-sales-slate-800/50 hover:bg-sales-slate-800/30 transition-colors">
-                      <div className="text-sm font-medium text-white mb-0.5">{n.title}</div>
-                      <div className="text-xs text-sales-slate-400 leading-relaxed">{n.message}</div>
-                      <div className="text-[10px] text-sales-slate-500 mt-2 text-right">
-                        {new Date(n.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    <div key={n.id} className="border-b border-border/60 px-4 py-3 last:border-0 hover:bg-surface-2/60">
+                      <div className="flex items-start justify-between gap-3">
+                        <p className="text-sm font-medium text-fg leading-snug">{n.title}</p>
+                        <span className="tnum shrink-0 font-mono text-[10px] text-fg-subtle">{formatTime(n.date)}</span>
                       </div>
+                      <p className="mt-0.5 text-[13px] text-fg-muted leading-snug">{n.message}</p>
                     </div>
                   ))
                 )}
@@ -83,43 +112,42 @@ export default function Header() {
           )}
         </div>
 
-        <div className="relative">
+        <div className="relative" ref={menuRef}>
           <button
             onClick={() => setShowMenu(!showMenu)}
-            className="flex items-center gap-2.5 rounded-lg py-1 pl-1 pr-2 hover:bg-slate-800 transition-colors"
+            aria-expanded={showMenu}
+            aria-haspopup="menu"
+            className="flex h-9 items-center gap-2.5 rounded-md py-1 pl-1 pr-2 transition-colors hover:bg-surface-2"
           >
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-sales-coral to-sales-orange text-xs font-bold text-white ring-2 ring-slate-700">
-              {initials}
-            </div>
-            <div className="hidden text-left sm:block">
-              <p className="text-sm font-medium leading-tight text-sales-slate-100">{user?.name}</p>
-              <p className={`text-[11px] leading-tight ${roleColors[user?.role] || 'text-sales-slate-400'}`}>
-                {roleLabels[user?.role] || user?.role}
-              </p>
-            </div>
-            <ChevronDown size={14} className="text-sales-slate-500" />
+            <Avatar name={user?.name} size="sm" />
+            <span className="hidden text-sm font-medium text-fg sm:block">{user?.name}</span>
+            <ChevronDown size={14} className={cn('text-fg-subtle transition-transform', showMenu && 'rotate-180')} aria-hidden />
           </button>
 
           {showMenu && (
-            <>
-              <div className="fixed inset-0 z-10" onClick={() => setShowMenu(false)} />
-              <div className="absolute right-0 top-full z-20 mt-2 w-56 rounded-xl border border-slate-700/50 bg-slate-900 py-2 shadow-2xl">
-                <div className="border-b border-slate-800 px-4 py-3">
-                  <p className="text-sm font-medium text-sales-slate-100">{user?.name}</p>
-                  <p className="text-xs text-sales-slate-400">{user?.email}</p>
-                  <p className="mt-1 text-xs text-sales-slate-500">{user?.tenantName}</p>
-                </div>
-                <div className="pt-1">
-                  <button
-                    onClick={handleLogout}
-                    className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm text-sales-slate-400 hover:bg-slate-800 hover:text-red-400 transition-colors"
-                  >
-                    <LogOut size={16} />
-                    Cerrar sesión
-                  </button>
-                </div>
+            <div role="menu" className="absolute right-0 top-full mt-2 w-60 overflow-hidden rounded-lg border border-border bg-surface py-1 shadow-2xl shadow-black/40">
+              <div className="border-b border-border px-4 py-3">
+                <p className="truncate text-sm font-medium text-fg">{user?.name}</p>
+                <p className="truncate text-xs text-fg-muted">{user?.email}</p>
+                <Eyebrow tone="accent" className="mt-2 block">{ROLE_LABELS[user?.role] || user?.role}</Eyebrow>
               </div>
-            </>
+              <button
+                role="menuitem"
+                onClick={() => setTheme(toggleTheme())}
+                className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm text-fg-muted transition-colors hover:bg-surface-2 hover:text-fg"
+              >
+                {theme === 'dark' ? <Sun size={15} aria-hidden /> : <Moon size={15} aria-hidden />}
+                {theme === 'dark' ? 'Tema claro' : 'Tema oscuro'}
+              </button>
+              <button
+                role="menuitem"
+                onClick={handleLogout}
+                className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm text-fg-muted transition-colors hover:bg-surface-2 hover:text-danger"
+              >
+                <LogOut size={15} aria-hidden />
+                Cerrar sesión
+              </button>
+            </div>
           )}
         </div>
       </div>

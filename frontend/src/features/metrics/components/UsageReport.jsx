@@ -1,5 +1,8 @@
-import React, { useState, useId, useMemo } from 'react';
+import { useState, useMemo } from 'react';
+import { Download } from 'lucide-react';
 import { downloadUsageReport } from '../metricsService';
+import { Button, Field, Panel, Select } from '../../../components/ui/index.js';
+import { toast } from '../../../stores/useToastStore.js';
 
 const months = [
   { value: 1, label: 'Enero' },
@@ -25,9 +28,6 @@ const UsageReport = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  const yearInputId = useId();
-  const monthInputId = useId();
-
   const years = useMemo(() => {
     return Array.from({ length: 5 }, (_, i) => currentYear - i);
   }, [currentYear]);
@@ -48,96 +48,78 @@ const UsageReport = () => {
       // Cleanup
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
+      toast.success('Reporte descargado');
     } catch (err) {
-      setError(err.message || 'Error downloading report');
+      const message = err.message || 'Error al descargar el reporte';
+      setError(message);
+      toast.error('No se pudo descargar el reporte', { description: message });
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <div className="bg-white p-6 rounded-lg shadow-sm border border-slate-200">
-      <h3 className="text-lg font-semibold text-slate-800 mb-4">Reporte de Uso y Actividad</h3>
-      <p className="text-sm text-slate-500 mb-6">
-        Descarga un reporte mensual en formato CSV con el volumen de mensajes, interacciones con IA y sesiones activas.
-      </p>
+    <Panel
+      eyebrow="Exportar"
+      title="Reporte de uso y actividad"
+      description="Descarga un reporte mensual en formato CSV con el volumen de mensajes, interacciones con IA y sesiones activas."
+    >
+      <div className="grid gap-4 sm:grid-cols-3 sm:items-end">
+        <Field label="Año">
+          {(a11y) => (
+            <Select
+              {...a11y}
+              value={year}
+              onChange={(e) => {
+                const selectedYear = Number(e.target.value);
+                setYear(selectedYear);
+                if (selectedYear === currentYear && month > currentMonth) {
+                  setMonth(currentMonth);
+                }
+              }}
+              disabled={isLoading}
+            >
+              {years.map(y => (
+                <option key={y} value={y}>{y}</option>
+              ))}
+            </Select>
+          )}
+        </Field>
 
-      {error && (
-        <div className="mb-4 p-3 bg-red-50 text-red-700 text-sm rounded-md border border-red-100">
-          {error}
-        </div>
-      )}
+        <Field label="Mes">
+          {(a11y) => (
+            <Select
+              {...a11y}
+              value={month}
+              onChange={(e) => setMonth(Number(e.target.value))}
+              disabled={isLoading}
+            >
+              {months.map(m => (
+                <option
+                  key={m.value}
+                  value={m.value}
+                  disabled={year === currentYear && m.value > currentMonth}
+                >
+                  {m.label}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
 
-      <div className="flex flex-col sm:flex-row gap-4 items-end">
-        <div className="w-full sm:w-1/3">
-          <label htmlFor={yearInputId} className="block text-sm font-medium text-slate-700 mb-1">Año</label>
-          <select
-            id={yearInputId}
-            value={year}
-            onChange={(e) => {
-              const selectedYear = Number(e.target.value);
-              setYear(selectedYear);
-              if (selectedYear === currentYear && month > currentMonth) {
-                setMonth(currentMonth);
-              }
-            }}
-            disabled={isLoading}
-            className="w-full rounded-md border border-slate-300 p-2 text-sm focus:border-coral-500 focus:outline-none focus:ring-1 focus:ring-coral-500"
-          >
-            {years.map(y => (
-              <option key={y} value={y}>{y}</option>
-            ))}
-          </select>
-        </div>
-
-        <div className="w-full sm:w-1/3">
-          <label htmlFor={monthInputId} className="block text-sm font-medium text-slate-700 mb-1">Mes</label>
-          <select
-            id={monthInputId}
-            value={month}
-            onChange={(e) => setMonth(Number(e.target.value))}
-            disabled={isLoading}
-            className="w-full rounded-md border border-slate-300 p-2 text-sm focus:border-coral-500 focus:outline-none focus:ring-1 focus:ring-coral-500"
-          >
-            {months.map(m => (
-              <option
-                key={m.value}
-                value={m.value}
-                disabled={year === currentYear && m.value > currentMonth}
-              >
-                {m.label}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="w-full sm:w-1/3">
-          <button
-            type="button"
-            onClick={handleDownload}
-            disabled={isLoading}
-            className="w-full flex items-center justify-center gap-2 rounded-md bg-coral-500 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-coral-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            {isLoading ? (
-              <>
-                <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                Descargando...
-              </>
-            ) : (
-              <>
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
-                </svg>
-                Descargar CSV
-              </>
-            )}
-          </button>
-        </div>
+        <Button
+          variant="secondary"
+          icon={Download}
+          loading={isLoading}
+          onClick={handleDownload}
+          className="w-full"
+        >
+          {isLoading ? 'Descargando' : 'Descargar CSV'}
+        </Button>
       </div>
-    </div>
+
+      {error && <p className="mt-3 text-xs text-danger">{error}</p>}
+    </Panel>
   );
 };
 

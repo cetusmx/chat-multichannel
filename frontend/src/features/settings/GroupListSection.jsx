@@ -1,7 +1,16 @@
 import { useState, useEffect } from 'react';
-import { Pencil, Trash2, X, Plus } from 'lucide-react';
+import { Pencil, Trash2, Plus, Users } from 'lucide-react';
 import { get, post, put, del } from '../../services/api.js';
 import ConfirmModal from '../../components/ConfirmModal.jsx';
+import { Panel, Modal, Field, Input, Select, Button, IconButton, EmptyState, Eyebrow, Spinner } from '../../components/ui/index.js';
+
+function ErrorAlert({ children, className = '' }) {
+  return (
+    <div role="alert" className={`rounded-md border border-danger/40 bg-danger/10 px-3 py-2.5 text-sm text-danger ${className}`}>
+      {children}
+    </div>
+  );
+}
 
 function GroupForm({ group, branches, onSave, onCancel }) {
   const [form, setForm] = useState({
@@ -33,74 +42,40 @@ function GroupForm({ group, branches, onSave, onCancel }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="w-full max-w-md rounded-xl border border-slate-700 bg-slate-900 p-6 shadow-2xl">
-        <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-sales-slate-100">
-            {group ? 'Editar Grupo' : 'Nuevo Grupo'}
-          </h3>
-          <button onClick={onCancel} className="rounded-lg p-1 text-sales-slate-400 hover:bg-slate-800 transition-colors">
-            <X size={20} />
-          </button>
-        </div>
-
-        {error && (
-          <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-400">
-            {error}
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="mb-1 block text-sm text-sales-slate-400">Nombre</label>
-            <input
-              value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
-              required
-              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-sales-slate-100 focus:outline-none focus:ring-2 focus:ring-sales-coral/50"
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-sm text-sales-slate-400">Descripción</label>
-            <input
-              value={form.description}
-              onChange={(e) => setForm({ ...form, description: e.target.value })}
-              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-sales-slate-100 focus:outline-none focus:ring-2 focus:ring-sales-coral/50"
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-sm text-sales-slate-400">Sucursal</label>
-            <select
-              value={form.branchId}
-              onChange={(e) => setForm({ ...form, branchId: e.target.value })}
-              required
-              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-sales-slate-100 focus:outline-none focus:ring-2 focus:ring-sales-coral/50"
-            >
+    <Modal
+      open
+      onClose={onCancel}
+      eyebrow="Grupo"
+      title={group ? 'Editar grupo' : 'Nuevo grupo'}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onCancel} disabled={saving}>Cancelar</Button>
+          <Button type="submit" form="group-form" variant="primary" loading={saving}>
+            {saving ? 'Guardando…' : 'Guardar'}
+          </Button>
+        </>
+      }
+    >
+      <form id="group-form" onSubmit={handleSubmit} className="space-y-4">
+        {error && <ErrorAlert>{error}</ErrorAlert>}
+        <Field label="Nombre" required>
+          {(p) => <Input {...p} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required data-autofocus />}
+        </Field>
+        <Field label="Descripción">
+          {(p) => <Input {...p} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />}
+        </Field>
+        <Field label="Sucursal" required>
+          {(p) => (
+            <Select {...p} value={form.branchId} onChange={(e) => setForm({ ...form, branchId: e.target.value })} required>
               <option value="">Seleccionar sucursal</option>
               {branches.map((b) => (
                 <option key={b.id} value={b.id}>{b.name}</option>
               ))}
-            </select>
-          </div>
-          <div className="flex gap-3 pt-2">
-            <button
-              type="submit"
-              disabled={saving}
-              className="rounded-lg bg-sales-orange px-6 py-2 text-sm font-medium text-white hover:bg-sales-orange-light transition-colors disabled:opacity-50"
-            >
-              {saving ? 'Guardando...' : 'Guardar'}
-            </button>
-            <button
-              type="button"
-              onClick={onCancel}
-              className="rounded-lg border border-slate-700 px-6 py-2 text-sm text-sales-slate-400 hover:bg-slate-800 transition-colors"
-            >
-              Cancelar
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+            </Select>
+          )}
+        </Field>
+      </form>
+    </Modal>
   );
 }
 
@@ -148,62 +123,59 @@ export default function GroupListSection() {
     }
   }
 
-  return (
-    <div>
-      <div className="mb-4 flex items-center justify-between">
-        <h3 className="text-lg font-semibold text-sales-slate-100">Grupos</h3>
-        <button
-          onClick={() => { setEditingGroup(null); setShowForm(true); }}
-          className="flex items-center gap-1 rounded-lg bg-sales-orange px-3 py-1.5 text-sm font-medium text-white hover:bg-sales-orange-light transition-colors"
-        >
-          <Plus size={16} /> Nuevo
-        </button>
-      </div>
+  const newButton = (
+    <Button variant="primary" size="sm" icon={Plus} onClick={() => { setEditingGroup(null); setShowForm(true); }}>
+      Nuevo grupo
+    </Button>
+  );
 
-      {error && (
-        <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-400">{error}</div>
-      )}
+  return (
+    <Panel
+      eyebrow="Organización"
+      title="Grupos"
+      description="Equipos de venta con su coordinador y vendedores asignados."
+      actions={newButton}
+      padded={false}
+    >
+      {error && <ErrorAlert className="m-5">{error}</ErrorAlert>}
 
       {loading ? (
-        <p className="text-sm text-sales-slate-400">Cargando...</p>
+        <div className="flex justify-center py-12">
+          <Spinner size={20} />
+        </div>
       ) : groups.length === 0 ? (
-        <p className="text-sm text-sales-slate-400">No hay grupos registrados.</p>
+        <EmptyState
+          compact
+          icon={Users}
+          title="Sin grupos"
+          description="Crea un grupo para agrupar vendedores bajo un coordinador."
+        />
       ) : (
-        <div className="overflow-hidden rounded-lg border border-slate-800">
+        <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-slate-800 text-sales-slate-400">
+            <thead>
               <tr>
-                <th className="px-4 py-3 text-left font-medium">Nombre</th>
-                <th className="px-4 py-3 text-left font-medium">Descripción</th>
-                <th className="px-4 py-3 text-left font-medium">Sucursal</th>
-                <th className="px-4 py-3 text-left font-medium">Coordinador</th>
-                <th className="px-4 py-3 text-center font-medium">Vendedores</th>
-                <th className="px-4 py-3 text-right font-medium">Acciones</th>
+                <th className="border-b border-border px-4 py-2.5 text-left"><Eyebrow tone="muted">Nombre</Eyebrow></th>
+                <th className="border-b border-border px-4 py-2.5 text-left"><Eyebrow tone="muted">Descripción</Eyebrow></th>
+                <th className="border-b border-border px-4 py-2.5 text-left"><Eyebrow tone="muted">Sucursal</Eyebrow></th>
+                <th className="border-b border-border px-4 py-2.5 text-left"><Eyebrow tone="muted">Coordinador</Eyebrow></th>
+                <th className="border-b border-border px-4 py-2.5 text-right"><Eyebrow tone="muted">Vendedores</Eyebrow></th>
+                <th className="border-b border-border px-4 py-2.5"><span className="sr-only">Acciones</span></th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-800">
+            <tbody>
               {groups.map((g) => (
-                <tr key={g.id} className="text-sales-slate-300 hover:bg-slate-800/50">
-                  <td className="px-4 py-3 font-medium text-sales-slate-100">{g.name}</td>
-                  <td className="px-4 py-3">{g.description || '—'}</td>
-                  <td className="px-4 py-3 text-sales-slate-400">{g.branch?.name || '—'}</td>
-                  <td className="px-4 py-3 text-sales-slate-300">{g.coordinator?.name || '—'}</td>
-                  <td className="px-4 py-3 text-center">{g.vendorCount}</td>
-                  <td className="px-4 py-3 text-right">
-                    <button
-                      onClick={() => { setEditingGroup(g); setShowForm(true); }}
-                      className="rounded-lg p-1.5 text-sales-slate-400 hover:bg-slate-700 hover:text-sales-slate-200 transition-colors"
-                      title="Editar grupo"
-                    >
-                      <Pencil size={16} />
-                    </button>
-                    <button
-                      onClick={() => setConfirmDelete(g)}
-                      className="rounded-lg p-1.5 text-sales-slate-400 hover:bg-slate-700 hover:text-red-400 transition-colors"
-                      title="Eliminar grupo"
-                    >
-                      <Trash2 size={16} />
-                    </button>
+                <tr key={g.id} className="border-b border-border/70 last:border-0 hover:bg-surface-2/60">
+                  <td className="px-4 py-3 font-medium text-fg">{g.name}</td>
+                  <td className="px-4 py-3 text-fg-muted">{g.description || '—'}</td>
+                  <td className="px-4 py-3 text-fg-muted">{g.branch?.name || '—'}</td>
+                  <td className="px-4 py-3 text-fg-muted">{g.coordinator?.name || '—'}</td>
+                  <td className="tnum px-4 py-3 text-right font-mono text-fg-muted">{g.vendorCount}</td>
+                  <td className="px-4 py-3">
+                    <div className="flex justify-end gap-1">
+                      <IconButton icon={Pencil} label="Editar grupo" size="sm" onClick={() => { setEditingGroup(g); setShowForm(true); }} />
+                      <IconButton icon={Trash2} label="Eliminar grupo" size="sm" variant="danger" onClick={() => setConfirmDelete(g)} />
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -212,14 +184,12 @@ export default function GroupListSection() {
         </div>
       )}
 
-      {deleteError && (
-        <div className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-400">{deleteError}</div>
-      )}
+      {deleteError && <ErrorAlert className="m-5">{deleteError}</ErrorAlert>}
 
       <ConfirmModal
         open={!!confirmDelete}
         title="Eliminar grupo"
-        message={`¿Estás seguro de eliminar el grupo "${confirmDelete?.name}"? Esta acción no se puede deshacer.`}
+        message={`¿Eliminar el grupo "${confirmDelete?.name}"? Esta acción no se puede deshacer.`}
         onConfirm={() => handleDelete(confirmDelete)}
         onCancel={() => setConfirmDelete(null)}
       />
@@ -232,6 +202,6 @@ export default function GroupListSection() {
           onCancel={() => setShowForm(false)}
         />
       )}
-    </div>
+    </Panel>
   );
 }

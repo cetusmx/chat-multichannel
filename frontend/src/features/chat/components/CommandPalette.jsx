@@ -1,6 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Search, Loader2, MessageSquare } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Search, MessageSquare, AlertTriangle } from 'lucide-react';
 import useChatStore from '../../../stores/useChatStore';
+import { Eyebrow, Kbd, Spinner } from '../../../components/ui/index.js';
+import { formatDate } from '../../../utils/formatDate.js';
+import { renderWhatsAppText } from '../../../utils/whatsappFormat.jsx';
+import { cn } from '../../../utils/cn.js';
 
 const CommandPalette = () => {
   const [isOpen, setIsOpen] = useState(false);
@@ -9,6 +13,12 @@ const CommandPalette = () => {
   const { searchMessages, searchResults, isSearching, searchError, clearSearchResults, selectConversation, setHighlightedMessageId } = useChatStore();
   const inputRef = useRef(null);
   const abortControllerRef = useRef(null);
+
+  const handleResultClick = (result) => {
+    selectConversation(result.conversationId, result.id);
+    setHighlightedMessageId(result.id);
+    setIsOpen(false);
+  };
 
   // Reset selected index when search changes
   useEffect(() => {
@@ -85,76 +95,93 @@ const CommandPalette = () => {
 
   if (!isOpen) return null;
 
-  const handleResultClick = (result) => {
-    selectConversation(result.conversationId, result.id);
-    setHighlightedMessageId(result.id);
-    setIsOpen(false);
-  };
-
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[20vh] bg-black/50 backdrop-blur-sm" onClick={() => setIsOpen(false)}>
+    <div
+      className="fixed inset-0 z-[100] flex items-start justify-center bg-black/60 px-4 pt-[18vh]"
+      onClick={() => setIsOpen(false)}
+      role="presentation"
+    >
       <div
-        className="w-full max-w-2xl bg-white rounded-xl shadow-2xl overflow-hidden flex flex-col"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Buscar en el historial de chats"
+        className="flex w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-2xl shadow-black/40"
         onClick={e => e.stopPropagation()}
       >
-        <div className="flex items-center px-4 py-3 border-b border-gray-100">
-          <Search className="w-5 h-5 text-gray-400 mr-3" />
+        <div className="flex items-center gap-3 border-b border-border px-4 py-3">
+          <Search size={16} className="shrink-0 text-fg-subtle" aria-hidden />
           <input
             ref={inputRef}
             type="text"
-            className="flex-1 bg-transparent outline-none text-gray-800 placeholder-gray-400 text-lg"
-            placeholder="Search in chat history..."
+            className="h-9 flex-1 bg-transparent text-base text-fg placeholder:text-fg-subtle focus:outline-none"
+            placeholder="Buscar en el historial de chats"
+            aria-label="Buscar en el historial de chats"
+            aria-controls="command-palette-results"
+            aria-expanded={searchResults.length > 0}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
-          <div className="text-xs text-gray-400 px-2 py-1 bg-gray-100 rounded">ESC</div>
+          <Kbd>ESC</Kbd>
         </div>
 
         {query && (
-          <div className="max-h-96 overflow-y-auto">
+          <div id="command-palette-results" className="max-h-96 overflow-y-auto custom-scrollbar">
             {isSearching && searchResults.length === 0 && (
-              <div className="flex items-center justify-center py-8 text-gray-500">
-                <Loader2 className="w-6 h-6 animate-spin mr-2" />
-                Searching...
+              <div className="flex items-center justify-center gap-2 py-8 text-sm text-fg-muted">
+                <Spinner />
+                Buscando
               </div>
             )}
 
             {searchError && (
-              <div className="px-4 py-3 text-red-500 bg-red-50">
-                Error: {searchError}
+              <div className="m-3 flex items-start gap-2 rounded-md border border-danger/40 bg-danger/10 px-3 py-2.5 text-sm text-danger">
+                <AlertTriangle size={14} className="mt-0.5 shrink-0" aria-hidden />
+                <span>{searchError}</span>
               </div>
             )}
 
             {!isSearching && searchResults.length === 0 && !searchError && (
-              <div className="px-4 py-8 text-center text-gray-500">
-                No results found for "{query}"
+              <div className="px-4 py-8 text-center text-sm text-fg-subtle">
+                Sin resultados para “{query}”
               </div>
             )}
 
             {searchResults.length > 0 && (
-              <div className="py-2">
+              <ul role="listbox" className="py-1">
                 {searchResults.map((msg, index) => (
-                  <button
+                  <li
                     key={msg.id}
-                    className={`w-full text-left px-4 py-3 focus:outline-none border-b border-gray-50 last:border-0 transition-colors ${index === selectedIndex ? 'bg-gray-100 ring-1 ring-sales-cyan-400' : 'hover:bg-gray-50'}`}
+                    role="option"
+                    aria-selected={index === selectedIndex}
+                    className={cn(
+                      'cursor-pointer border-l-2 px-4 py-2.5 transition-colors',
+                      index === selectedIndex ? 'border-accent bg-surface-2' : 'border-transparent hover:bg-surface-2/60',
+                    )}
                     onClick={() => handleResultClick(msg)}
                     onMouseEnter={() => setSelectedIndex(index)}
                   >
-                    <div className="flex items-start justify-between">
-                      <div className="flex items-center text-sm text-gray-500 mb-1">
-                        <MessageSquare className="w-4 h-4 mr-1.5" />
-                        {msg.senderType === 'CLIENT' ? 'Client' : 'Vendor'}
-                        <span className="mx-2">•</span>
-                        {new Date(msg.createdAt).toLocaleString()}
-                      </div>
+                    <div className="mb-1 flex items-center gap-2">
+                      <MessageSquare size={12} className="shrink-0 text-fg-subtle" aria-hidden />
+                      <Eyebrow tone="muted">{msg.senderType === 'CLIENT' ? 'Cliente' : 'Asesor'}</Eyebrow>
+                      <span className="tnum font-mono text-[10px] text-fg-subtle">{formatDate(msg.createdAt)}</span>
                     </div>
-                    <p className="text-gray-800 line-clamp-2 text-sm">{msg.content}</p>
-                  </button>
+                    <p className="line-clamp-2 text-sm text-fg">{renderWhatsAppText(msg.content)}</p>
+                  </li>
                 ))}
-              </div>
+              </ul>
             )}
           </div>
         )}
+
+        <div className="flex items-center justify-between border-t border-border px-4 py-2">
+          <span className="flex items-center gap-1.5 text-[10px] text-fg-subtle">
+            <Kbd>↑↓</Kbd> navegar
+            <Kbd className="ml-2">↵</Kbd> abrir
+          </span>
+          <span className="flex items-center gap-1.5 text-[10px] text-fg-subtle">
+            <Kbd>ESC</Kbd> cerrar
+          </span>
+        </div>
       </div>
     </div>
   );

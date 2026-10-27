@@ -1,15 +1,30 @@
-import SlaBadge from '../../metrics/SlaBadge';
+import { Inbox } from 'lucide-react';
 import useChatStore from '../../../stores/useChatStore';
+import { Badge, Eyebrow, EmptyState } from '../../../components/ui/index.js';
+import { getStatusMeta, isClosedStatus } from '../../../utils/conversationStatus.js';
+import { formatRelativeTime } from '../../../utils/formatDate.js';
+import { getCartItems } from '../../../utils/cart.js';
+import { cn } from '../../../utils/cn.js';
+
+const TONE_TEXT = {
+  neutral: 'text-fg-subtle',
+  accent: 'text-accent',
+  success: 'text-success',
+  warning: 'text-warning',
+  danger: 'text-danger',
+  info: 'text-info',
+};
 
 /**
- * ChatList - Muestra las conversaciones en el panel izquierdo o en un grid de vista previa
+ * ChatList - Conversations in a vertical list, grid or kanban column.
  *
  * @component
  */
 export default function ChatList({ conversations, currentConversationId, currentConversationIds = [], onSelect, layout = 'list', groupByVendor = false, vendorMap = {} }) {
-  const unreadCounts = useChatStore(state => state.unreadCounts);
+  const unreadCounts = useChatStore((state) => state.unreadCounts);
+
   if (!conversations || conversations.length === 0) {
-    return <div className="text-sales-slate-400 p-6 text-sm text-center">No hay conversaciones.</div>;
+    return <EmptyState compact icon={Inbox} title="Sin conversaciones" description="Cuando lleguen mensajes aparecerán aquí." />;
   }
 
   const selectedIds = currentConversationId ? [currentConversationId] : currentConversationIds;
@@ -17,160 +32,97 @@ export default function ChatList({ conversations, currentConversationId, current
 
   const renderConvItem = (conv) => {
     const isSelected = selectedIds.includes(conv.id);
-    const lastMsg = conv.messages?.[0]?.content || 'Sin mensajes...';
-    const isSlaBreached = conv.isSlaBreached;
-    const breachType = conv.breachType;
-    const isFirstResponse = breachType === 'firstResponse';
-    const unreadCount = unreadCounts[conv.id] || 0;
+    const lastMsg = conv.messages?.[0]?.content || 'Sin mensajes';
+    const unreadCount = unreadCounts?.[conv.id] || 0;
+    const meta = getStatusMeta(conv.status);
+    const closed = isClosedStatus(conv.status);
+    const breached = conv.isSlaBreached && !closed;
+    const firstResponseBreach = conv.breachType === 'firstResponse';
+    const cartCount = getCartItems(conv.client).length;
 
-    let gridStyles = isSelected
-      ? 'border-sales-coral-400 bg-sales-slate-800/80 shadow-md shadow-sales-coral-500/10'
-      : 'border-sales-slate-700 bg-sales-slate-800/40';
-
-    let listStyles = isSelected ? 'bg-sales-slate-800 border-l-4 border-sales-coral-400' : '';
-
-    if (isSlaBreached) {
-      const borderColor = isFirstResponse ? 'border-orange-500/60' : 'border-red-500/60';
-      const shadowColor = isFirstResponse ? 'shadow-orange-500/10' : 'shadow-red-500/10';
-      if (isGrid) {
-         gridStyles = `${borderColor} bg-sales-slate-800/50 shadow-md ${shadowColor} ${isSelected ? 'ring-1 ring-sales-coral-400' : ''}`;
-      } else {
-         const borderList = isFirstResponse ? 'border-orange-500' : 'border-red-500';
-         listStyles = `border-l-4 ${borderList} ${isSelected ? 'bg-sales-slate-800' : 'bg-sales-slate-800/30'}`;
-      }
-    }
-
-    if (conv.status.startsWith('CLOSED')) {
-      listStyles += ' opacity-75 grayscale-[0.2]';
-      gridStyles += ' opacity-75 grayscale-[0.2]';
-    }
+    let statusLine = meta.label;
+    if (conv.status === 'PENDING_ASSIGNMENT') statusLine = conv.aiPendingEscalation ? 'Transferido por IA' : 'IA atendiendo';
+    if (conv.status === 'ACTIVE' && conv.vendorId && vendorMap[conv.vendorId]) statusLine = `Atiende ${vendorMap[conv.vendorId].split(' ')[0]}`;
 
     return (
       <div
         key={conv.id}
+        role="button"
+        tabIndex={0}
+        aria-current={isSelected ? 'true' : undefined}
         onClick={() => {
           useChatStore.getState().clearUnreadCount(conv.id);
           onSelect(conv.id);
         }}
-        className={`cursor-pointer transition-all ${
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            useChatStore.getState().clearUnreadCount(conv.id);
+            onSelect(conv.id);
+          }
+        }}
+        className={cn(
+          'group relative cursor-pointer transition-colors outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent',
+          isGrid ? 'rounded-lg border bg-surface p-3.5 hover:bg-surface-2/70' : 'border-l-2 px-4 py-3 hover:bg-surface-2/60',
           isGrid
-            ? `p-4 rounded-xl border backdrop-blur-md hover:bg-sales-slate-800/70 ${gridStyles}`
-            : `p-4 hover:bg-sales-slate-800 ${listStyles}`
-        }`}
+            ? isSelected ? 'border-accent/60 bg-accent/[0.06]' : breached ? (firstResponseBreach ? 'border-warning/60' : 'border-danger/60') : 'border-border'
+            : isSelected ? 'border-accent bg-accent/[0.08]' : breached ? (firstResponseBreach ? 'border-warning' : 'border-danger') : 'border-transparent',
+          closed && 'opacity-60',
+        )}
       >
-        <div className="flex justify-between items-start mb-1">
-          <span className="font-semibold text-sales-slate-100 pr-2 flex flex-wrap items-center gap-2 min-w-0">
-            <span className="truncate">{conv.client?.name || conv.client?.phoneNumber}</span>
-            {conv.status === 'PENDING_ASSIGNMENT' && (
-              <span
-                className="flex-shrink-0 px-1.5 py-0.5 rounded bg-sales-cyan-500/20 text-sales-cyan-400 border border-sales-cyan-500/30 text-[10px] font-bold uppercase tracking-wider"
-                title="Nuevo chat sin asesor asignado"
-              >
-                Nuevo
-              </span>
+        <div className="flex items-start justify-between gap-2">
+          <span className="min-w-0 truncate text-sm font-semibold text-fg">{conv.client?.name || conv.client?.phoneNumber}</span>
+          <span className="flex shrink-0 items-center gap-1.5 pt-0.5">
+            {conv.lastMessageAt && <span className="tnum font-mono text-[10px] text-fg-subtle">{formatRelativeTime(conv.lastMessageAt)}</span>}
+            {unreadCount > 0 && (
+              <span className="flex h-2 w-2 rounded-full bg-accent" aria-label={`${unreadCount} mensajes sin leer`} title={`${unreadCount} sin leer`} />
             )}
-            {(conv.status === 'CLOSED' || conv.status === 'CLOSED_INACTIVE') && (
-              <span
-                className="flex-shrink-0 px-1.5 py-0.5 rounded bg-sales-slate-700/50 text-sales-slate-400 border border-sales-slate-600 text-[10px] font-bold uppercase tracking-wider"
-                title="Chat finalizado sin venta"
-              >
-                Cerrado
-              </span>
-            )}
-            {conv.status === 'CLOSED_WON' && (
-              <span
-                className="flex-shrink-0 px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[10px] font-bold uppercase tracking-wider"
-                title="Venta concretada"
-              >
-                Cerrado (Venta)
-              </span>
-            )}
-            {conv.status === 'DISCARDED' && (
-              <span
-                className="flex-shrink-0 px-1.5 py-0.5 rounded bg-sales-slate-800 text-sales-slate-500 border border-sales-slate-700 text-[10px] font-bold uppercase tracking-wider line-through"
-                title="Chat descartado"
-              >
-                Descartado
-              </span>
-            )}
-            {conv.status === 'ESCALATED' && (
-              <span
-                className="flex-shrink-0 px-1.5 py-0.5 rounded bg-red-500 text-white shadow-sm shadow-red-500/20 text-[10px] font-bold uppercase tracking-wider"
-                title="Este chat requiere atención de un coordinador"
-                aria-label="Chat escalado"
-              >
-                Escalado
-              </span>
-            )}
-            {conv.status === 'WAITING_CUSTOMER' && (
-                <span
-                  className="flex-shrink-0 px-1.5 py-0.5 rounded bg-sales-amber-500/20 text-sales-amber-400 border border-sales-amber-500/30 text-[10px] font-bold uppercase tracking-wider"
-                  title="Esperando al cliente"
-                >
-                  Esp. Cliente
-                </span>
-              )}
-              {conv.status === 'ON_HOLD' && (
-                <span
-                  className="flex-shrink-0 px-1.5 py-0.5 rounded bg-sales-purple-500/20 text-sales-purple-400 border border-sales-purple-500/30 text-[10px] font-bold uppercase tracking-wider"
-                  title="Pausado / En Espera"
-                >
-                  En Espera
-                </span>
-              )}
-              {conv.status === 'SCHEDULED' && (
-                <span
-                  className="flex-shrink-0 px-1.5 py-0.5 rounded bg-sales-cyan-500/20 text-sales-cyan-400 border border-sales-cyan-500/30 text-[10px] font-bold uppercase tracking-wider"
-                  title="Programado"
-                >
-                  Programado
-                </span>
-              )}
           </span>
         </div>
-        <div className="flex justify-between items-center gap-2">
-          <p className={`text-sm text-sales-slate-400 min-w-0 flex-1 ${isGrid ? 'line-clamp-2' : 'truncate'}`} title={lastMsg}>
-            {lastMsg}
-          </p>
-          {unreadCount > 0 && (
-            <span className="bg-emerald-500 text-white text-[10px] font-bold h-5 min-w-[20px] flex items-center justify-center rounded-full px-1.5 shadow-md shadow-emerald-500/30 flex-shrink-0">
-              {unreadCount > 99 ? '99+' : unreadCount}
-            </span>
+
+        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+          {conv.status === 'ESCALATED' ? (
+            <Badge tone="solid-danger" aria-label="Chat escalado" title={meta.description}>Escalado</Badge>
+          ) : (
+            <Eyebrow className={cn(TONE_TEXT[meta.tone] || TONE_TEXT.neutral)} title={meta.description}>{statusLine}</Eyebrow>
+          )}
+          {breached && (
+            <Badge tone={firstResponseBreach ? 'warning' : 'danger'} dot title={firstResponseBreach ? 'Primera respuesta fuera de SLA' : 'SLA excedido'}>SLA</Badge>
           )}
         </div>
+
+        <p className={cn('mt-1 text-[13px] text-fg-muted', isGrid ? 'line-clamp-2' : 'truncate')} title={lastMsg}>
+          {cartCount > 0 && <span className="text-fg">Carrito listo · {cartCount} {cartCount === 1 ? 'partida' : 'partidas'} · </span>}
+          {lastMsg}
+        </p>
       </div>
     );
   };
 
+  const gridClass = layout === 'kanban' ? 'flex flex-col gap-2' : isGrid ? 'grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4' : 'divide-y divide-border/70';
+
   if (groupByVendor) {
     const groups = {};
-    conversations.forEach(c => {
-      const vName = c.vendorId ? (vendorMap[c.vendorId] || 'Asesor Desconocido') : 'Sin Asignar (Bolsa de Trabajo)';
+    conversations.forEach((c) => {
+      const vName = c.vendorId ? vendorMap[c.vendorId] || 'Asesor desconocido' : 'Sin asignar';
       if (!groups[vName]) groups[vName] = [];
       groups[vName].push(c);
     });
 
     return (
-      <div className="flex flex-col gap-6 p-2 pb-8">
+      <div className="flex flex-col gap-5 pb-8">
         {Object.entries(groups).sort(([a], [b]) => a.localeCompare(b)).map(([vendorName, chats]) => (
-          <div key={vendorName} className="flex flex-col gap-3 bg-sales-slate-800/20 p-3 rounded-xl border border-sales-slate-700/30">
-            <div className={layout === 'kanban' ? 'flex flex-col gap-3' : isGrid ? 'grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4' : 'divide-y divide-sales-slate-800'}>
-              {chats.map(renderConvItem)}
+          <section key={vendorName} className="flex flex-col gap-2">
+            <div className={cn('flex items-center justify-between', isGrid ? 'px-1' : 'px-4 pt-2')}>
+              <Eyebrow tone="muted">{vendorName}</Eyebrow>
+              <span className="tnum font-mono text-[10px] text-fg-subtle">{chats.length}</span>
             </div>
-            <div className="flex justify-center pt-2 mt-1 border-t border-sales-slate-700/30">
-              <span className="text-[10px] font-bold text-sales-slate-400 uppercase tracking-widest">
-                {vendorName} ({chats.length})
-              </span>
-            </div>
-          </div>
+            <div className={gridClass}>{chats.map(renderConvItem)}</div>
+          </section>
         ))}
       </div>
     );
   }
 
-  return (
-    <div className={layout === 'kanban' ? 'flex flex-col gap-3' : isGrid ? 'grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4 p-2' : 'divide-y divide-sales-slate-800'}>
-      {conversations.map(renderConvItem)}
-    </div>
-  );
+  return <div className={gridClass}>{conversations.map(renderConvItem)}</div>;
 }

@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { getAiConfig, updateAiConfig } from '../../services/api.js';
+import { Panel, Field, Input, Select, Switch, Button, Badge, Spinner } from '../../components/ui/index.js';
+import { toast } from '../../stores/useToastStore.js';
 
 /**
  * @component AiConfigSection
@@ -14,7 +16,6 @@ export default function AiConfigSection() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
 
   useEffect(() => {
     async function fetchConfig() {
@@ -37,18 +38,17 @@ export default function AiConfigSection() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!apiKey || !apiKey.trim()) {
-      setError('API Key is required');
+      setError('La API key es obligatoria');
       return;
     }
     setSaving(true);
     setError('');
-    setSuccess('');
     try {
       await updateAiConfig({ provider, apiKey, isActive });
       setIsConfigured(true);
       setProvider(provider);
       setApiKey(''); // Clear for security
-      setSuccess('AI Configuration saved successfully');
+      toast.success('Configuración del asistente guardada');
     } catch (err) {
       setError(err.message);
     } finally {
@@ -56,88 +56,70 @@ export default function AiConfigSection() {
     }
   };
 
-  if (loading) return <div className="text-sales-slate-400">Loading AI configuration...</div>;
+  if (loading) {
+    return (
+      <div className="flex justify-center py-16">
+        <Spinner size={20} />
+      </div>
+    );
+  }
 
   return (
-    <div className="rounded-xl border border-slate-800 bg-slate-900 p-6">
-      <h2 className="mb-4 text-lg font-medium text-sales-slate-100">Configuración de Inteligencia Artificial</h2>
-
-      <div className="mb-6 rounded-lg bg-slate-800/50 p-4">
-        <p className="text-sm text-sales-slate-300">
-          Estado: {isConfigured ? (
-            <span className="font-semibold text-emerald-400">Configurado ({provider})</span>
-          ) : (
-            <span className="font-semibold text-amber-400">No Configurado</span>
-          )}
-        </p>
-      </div>
-
-      <form onSubmit={handleSubmit} className="space-y-4 max-w-xl">
+    <Panel
+      eyebrow="Asistente IA"
+      title="Proveedor y credenciales"
+      description="Conecta el modelo que atiende a los clientes y genera el carrito automático."
+      actions={
+        isConfigured
+          ? <Badge tone="success" dot>Configurado · {provider}</Badge>
+          : <Badge tone="warning" dot>Sin configurar</Badge>
+      }
+    >
+      <form onSubmit={handleSubmit} className="space-y-5">
         {error && (
-          <div className="rounded-lg bg-red-900/50 p-3 text-sm text-red-400 border border-red-900/50">
+          <div role="alert" className="rounded-md border border-danger/40 bg-danger/10 px-3 py-2.5 text-sm text-danger">
             {error}
           </div>
         )}
-        {success && (
-          <div className="rounded-lg bg-emerald-900/50 p-3 text-sm text-emerald-400 border border-emerald-900/50">
-            {success}
-          </div>
-        )}
 
-        <div>
-          <label className="mb-1 block text-sm font-medium text-sales-slate-300">
-            Proveedor de IA
-          </label>
-          <select
-            value={provider}
-            onChange={(e) => setProvider(e.target.value)}
-            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sales-slate-100 focus:border-sales-coral focus:outline-none"
-          >
-            <option value="gemini">Google Gemini</option>
-          </select>
-        </div>
-
-        <div className="flex items-center justify-between bg-slate-800 p-4 rounded-lg border border-slate-700">
-          <div>
-            <label className="block text-sm font-medium text-sales-slate-100">
-              Estado de la Inteligencia Artificial
-            </label>
-            <p className="text-xs text-sales-slate-400 mt-1">
-              Si está inactiva, los chats se escalarán y se ocultará el carrito automático, permitiendo al vendedor hacerlo manual.
+        <div className="flex items-start justify-between gap-6 rounded-md border border-border bg-surface-2/60 px-4 py-3.5">
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-fg">Asistente activo</p>
+            <p className="mt-1 text-[13px] leading-relaxed text-fg-muted">
+              Si está inactivo, los chats se escalan al equipo y se oculta el carrito automático para que el vendedor lo arme manualmente.
             </p>
           </div>
-          <label className="relative inline-flex items-center cursor-pointer">
-            <input
-              type="checkbox"
-              className="sr-only peer"
-              checked={isActive}
-              onChange={(e) => setIsActive(e.target.checked)}
-            />
-            <div className="w-11 h-6 bg-slate-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sales-cyan-500"></div>
-          </label>
+          <Switch checked={isActive} onChange={setIsActive} className="mt-0.5 shrink-0" />
         </div>
 
-        <div>
-          <label className="mb-1 block text-sm font-medium text-sales-slate-300">
-            API Key {isConfigured && '(Sobrescribirá la actual)'}
-          </label>
-          <input
-            type="password"
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-            placeholder={isConfigured ? '••••••••••••••••••••••••' : 'Ingresa la API Key'}
-            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sales-slate-100 focus:border-sales-coral focus:outline-none"
-          />
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Proveedor">
+            {(p) => (
+              <Select {...p} value={provider} onChange={(e) => setProvider(e.target.value)}>
+                <option value="gemini">Google Gemini</option>
+              </Select>
+            )}
+          </Field>
+          <Field label="API key" hint={isConfigured ? 'Al guardar se sobrescribirá la clave actual.' : undefined}>
+            {(p) => (
+              <Input
+                {...p}
+                type="password"
+                mono
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                placeholder={isConfigured ? '••••••••••••••••••••••••' : 'Ingresa la API key'}
+              />
+            )}
+          </Field>
         </div>
 
-        <button
-          type="submit"
-          disabled={saving || !apiKey}
-          className="rounded-lg bg-sales-coral px-4 py-2 font-medium text-white transition-colors hover:bg-sales-coral/90 disabled:opacity-50"
-        >
-          {saving ? 'Validando y Guardando...' : 'Guardar Configuración'}
-        </button>
+        <div className="flex justify-end">
+          <Button type="submit" variant="primary" loading={saving} disabled={!apiKey}>
+            {saving ? 'Validando y guardando…' : 'Guardar configuración'}
+          </Button>
+        </div>
       </form>
-    </div>
+    </Panel>
   );
 }

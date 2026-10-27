@@ -1,10 +1,24 @@
 import React, { useEffect, useState, useRef, useLayoutEffect } from 'react';
 import axios from 'axios';
-import { ArrowLeft, MessageSquare } from 'lucide-react';
+import { ArrowLeft, MessageSquare, AlertTriangle } from 'lucide-react';
 import DOMPurify from 'dompurify';
 import useAuthStore from '../../stores/useAuthStore';
 import ContiguousSessionCard from './ContiguousSessionCard';
 import SecureMedia from '../SecureMedia';
+import { Badge, EmptyState, Eyebrow, IconButton, Spinner } from '../ui/index.js';
+import { formatTime, formatDayLabel } from '../../utils/formatDate.js';
+import { cn } from '../../utils/cn.js';
+
+const MARK_CLASS = 'bg-accent/25 text-fg rounded-sm px-0.5';
+const TEAM_SENDERS = ['VENDOR', 'SYSTEM', 'COORDINATOR', 'ADMIN', 'IA'];
+
+function senderLabel(msg, vendorName) {
+  if (msg.senderType === 'CLIENT') return 'Cliente';
+  if (msg.senderType === 'IA') return 'Asistente IA';
+  if (msg.senderType === 'SYSTEM') return 'Automático';
+  if (msg.senderType === 'COORDINATOR' || msg.senderType === 'ADMIN') return 'Coordinador';
+  return vendorName || 'Asesor';
+}
 
 export default function ChatViewerDetail({ conversationId, targetMessageId, searchQuery, vendorName, onBack }) {
   const [messages, setMessages] = useState([]);
@@ -14,13 +28,13 @@ export default function ChatViewerDetail({ conversationId, targetMessageId, sear
 
   const highlightText = (rawText, rawQuery) => {
     if (!rawQuery || !rawText) return String(rawText || '');
+    const text = String(rawText);
     try {
-      const text = String(rawText);
       const query = String(rawQuery);
       // Split query by spaces to highlight individual words (mimicking full-text search)
       const tokens = query.split(/[\s*]+/).filter(Boolean); // split by spaces or asterisks
       if (tokens.length === 0) return text;
-      
+
       let highlighted = text;
       tokens.forEach(token => {
         const safeToken = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -31,11 +45,11 @@ export default function ChatViewerDetail({ conversationId, targetMessageId, sear
       });
 
       // Replace placeholders with actual HTML
-      highlighted = highlighted.replace(/%%%HIGHLIGHT%%%/g, '<mark class="bg-sales-orange/30 text-sales-orange-light px-1 rounded font-bold">');
+      highlighted = highlighted.replace(/%%%HIGHLIGHT%%%/g, `<mark class="${MARK_CLASS}">`);
       highlighted = highlighted.replace(/%%%ENDHIGHLIGHT%%%/g, '</mark>');
-      
+
       return highlighted;
-    } catch(e) {
+    } catch {
       return text;
     }
   };
@@ -46,7 +60,7 @@ export default function ChatViewerDetail({ conversationId, targetMessageId, sear
     const query = String(rawQuery);
     const tokens = query.split(/[\s*]+/).filter(Boolean);
     if (tokens.length === 0) return false;
-    
+
     return tokens.some(token => {
       const safeToken = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       const regex = new RegExp(`(${safeToken})`, 'gi');
@@ -67,14 +81,14 @@ export default function ChatViewerDetail({ conversationId, targetMessageId, sear
 
   const [loadingPrev, setLoadingPrev] = useState(false);
   const [errorPrev, setErrorPrev] = useState(false);
-  
+
   const [loadingNext, setLoadingNext] = useState(false);
   const [errorNext, setErrorNext] = useState(false);
 
   const containerRef = useRef(null);
   const targetMessageRef = useRef(null);
   const isFirstLoad = useRef(true);
-  
+
   // For preserving scroll
   const prevHeightRef = useRef(0);
   const isPrependingRef = useRef(false);
@@ -93,12 +107,12 @@ export default function ChatViewerDetail({ conversationId, targetMessageId, sear
       try {
         const url = new URL(`/api/chat/${conversationId}/messages`, window.location.origin);
         if (targetMessageId) url.searchParams.append('aroundMessageId', targetMessageId);
-        
+
         const res = await axios.get(url.toString(), {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
-          signal: controller.signal
+          signal: controller.signal,
         });
-        
+
         setMessages(res.data.data);
         setMeta(res.data.meta);
       } catch (err) {
@@ -127,7 +141,7 @@ export default function ChatViewerDetail({ conversationId, targetMessageId, sear
   useLayoutEffect(() => {
     if (isFirstLoad.current && !loading && messages.length > 0) {
       isFirstLoad.current = false;
-      
+
       // Handle auto-scroll to target message
       if (targetMessageId && targetMessageRef.current) {
         targetMessageRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -142,30 +156,35 @@ export default function ChatViewerDetail({ conversationId, targetMessageId, sear
   const loadAdjacentSession = async (type) => {
     const sessionId = type === 'previous' ? meta?.previousSessionId : meta?.nextSessionId;
     if (!sessionId) return;
-    
-    type === 'previous' ? setLoadingPrev(true) : setLoadingNext(true);
-    type === 'previous' ? setErrorPrev(false) : setErrorNext(false);
-    
+
+    if (type === 'previous') {
+      setLoadingPrev(true);
+      setErrorPrev(false);
+    } else {
+      setLoadingNext(true);
+      setErrorNext(false);
+    }
+
     try {
       const url = new URL(`/api/chat/${sessionId}/messages`, window.location.origin);
       url.searchParams.append('limit', '50');
-      
+
       const res = await axios.get(url.toString(), {
-        headers: token ? { Authorization: `Bearer ${token}` } : {}
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
-      
+
       const newMessages = res.data.data;
-      if(newMessages.length === 0) {
+      if (newMessages.length === 0) {
         if (type === 'previous') setMeta(prev => ({ ...prev, previousSessionId: null }));
         else setMeta(prev => ({ ...prev, nextSessionId: null }));
         return;
       }
       const newMeta = res.data.meta;
-      
+
       if (type === 'previous') {
         if (containerRef.current) {
-           prevHeightRef.current = containerRef.current.scrollHeight;
-           isPrependingRef.current = true;
+          prevHeightRef.current = containerRef.current.scrollHeight;
+          isPrependingRef.current = true;
         }
         setMessages(prev => [...newMessages, { type: 'separator', text: 'Sesión anterior' }, ...prev]);
         setMeta(prev => ({ ...prev, previousSessionId: newMeta.previousSessionId }));
@@ -173,80 +192,84 @@ export default function ChatViewerDetail({ conversationId, targetMessageId, sear
         setMessages(prev => [...prev, { type: 'separator', text: 'Siguiente sesión' }, ...newMessages]);
         setMeta(prev => ({ ...prev, nextSessionId: newMeta.nextSessionId }));
       }
-    } catch (err) {
-      type === 'previous' ? setErrorPrev(true) : setErrorNext(true);
+    } catch {
+      if (type === 'previous') setErrorPrev(true);
+      else setErrorNext(true);
     } finally {
-      type === 'previous' ? setLoadingPrev(false) : setLoadingNext(false);
+      if (type === 'previous') setLoadingPrev(false);
+      else setLoadingNext(false);
     }
   };
 
   if (!conversationId) {
     return (
-      <div className="hidden lg:flex flex-[2] bg-sales-slate-900/60 rounded-lg border border-sales-slate-800 items-center justify-center min-h-[500px] backdrop-blur-sm shadow-xl">
-        <div className="text-center">
-          <MessageSquare size={48} className="mx-auto text-sales-slate-700 mb-4" />
-          <h3 className="text-lg font-medium text-sales-slate-400">Selecciona un chat</h3>
-          <p className="text-sm text-sales-slate-500">El historial se mostrará aquí</p>
-        </div>
+      <div className="flex h-full min-h-[320px] w-full items-center justify-center rounded-lg border border-border bg-surface">
+        <EmptyState
+          icon={MessageSquare}
+          title="Selecciona un chat"
+          description="El historial de la conversación se mostrará aquí."
+        />
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col h-full bg-sales-slate-900 rounded-lg border border-sales-slate-800 shadow-xl flex-[2] overflow-hidden">
-      {/* Header */}
-      <div className="flex justify-between items-center p-4 border-b border-sales-slate-800 bg-sales-slate-900/90 sticky top-0 z-10 backdrop-blur-sm">
-        <div className="flex items-center">
-          <button 
+    <div className="flex h-full w-full flex-col overflow-hidden rounded-lg border border-border bg-surface">
+      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-4 py-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <IconButton
+            icon={ArrowLeft}
+            label="Volver a los resultados de búsqueda"
+            size="md"
             onClick={onBack}
-            aria-label="Volver a los resultados de búsqueda"
-            className="lg:hidden p-2 mr-2 text-sales-slate-400 hover:text-sales-slate-100 hover:bg-sales-slate-800 rounded-full transition-colors"
-          >
-            <ArrowLeft size={20} />
-          </button>
-          <h2 className="text-lg font-bold text-sales-slate-100">Previsualización de Chat</h2>
+            className="lg:hidden"
+          />
+          <div className="min-w-0">
+            <Eyebrow tone="muted">Vista previa</Eyebrow>
+            <h2 className="truncate text-sm font-semibold text-fg leading-tight">Conversación</h2>
+          </div>
         </div>
         {searchQuery && totalMatches > 0 && (
-          <span className="text-xs text-sales-orange-light font-medium bg-sales-orange/10 px-2 py-1 rounded">
-            {totalMatches} {totalMatches === 1 ? 'coincidencia' : 'coincidencias'} en esta vista
-          </span>
+          <Badge tone="accent" className="shrink-0">
+            {totalMatches} {totalMatches === 1 ? 'coincidencia' : 'coincidencias'}
+          </Badge>
         )}
       </div>
 
-      {/* Messages */}
-      <div ref={containerRef} className="flex-1 overflow-y-auto p-4 bg-sales-slate-950 custom-scrollbar" aria-live="polite">
+      <div ref={containerRef} className="flex-1 overflow-y-auto bg-bg p-4 custom-scrollbar" aria-live="polite">
         {loading ? (
           <div className="flex justify-center py-10">
-            <svg className="animate-spin h-8 w-8 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
-            <span className="sr-only">Cargando chat...</span>
+            <Spinner size={20} label="Cargando chat" />
           </div>
         ) : error ? (
-          <div className="text-center py-10 text-sales-coral-400">{typeof error === "object" ? JSON.stringify(error) : error}</div>
+          <EmptyState
+            compact
+            icon={AlertTriangle}
+            title="No se pudo cargar el chat"
+            description={typeof error === 'object' ? JSON.stringify(error) : error}
+          />
         ) : (
-          <div className="space-y-4">
+          <div className="space-y-3">
             {meta?.previousSessionId && (
-              <ContiguousSessionCard 
-                type="previous" 
-                loading={loadingPrev} 
-                error={errorPrev} 
-                onClick={() => loadAdjacentSession('previous')} 
+              <ContiguousSessionCard
+                type="previous"
+                loading={loadingPrev}
+                error={errorPrev}
+                onClick={() => loadAdjacentSession('previous')}
               />
             )}
-            
+
             {messages.map((msg, index) => {
               if (msg.type === 'separator') {
                 return (
-                   <div key={`sep-${index}`} className="flex justify-center my-4">
-                     <span className="px-3 py-1 bg-sales-slate-800 border border-sales-slate-700 text-xs text-sales-slate-400 rounded-full">
-                       {msg.text}
-                     </span>
-                   </div>
+                  <div key={`sep-${index}`} className="my-4 flex items-center gap-3">
+                    <span className="h-px flex-1 bg-border" aria-hidden />
+                    <Eyebrow tone="muted">{msg.text}</Eyebrow>
+                    <span className="h-px flex-1 bg-border" aria-hidden />
+                  </div>
                 );
               }
-              
+
               let showDateLabel = false;
               if (index === 0 || messages[index - 1]?.type === 'separator') {
                 showDateLabel = true;
@@ -260,89 +283,75 @@ export default function ChatViewerDetail({ conversationId, targetMessageId, sear
                   }
                 }
               }
-              
-              const formatDateLabel = (dateString) => {
-                const date = new Date(dateString);
-                const today = new Date();
-                const yesterday = new Date(today);
-                yesterday.setDate(yesterday.getDate() - 1);
-            
-                if (date.toDateString() === today.toDateString()) return 'Hoy';
-                if (date.toDateString() === yesterday.toDateString()) return 'Ayer';
-                return date.toLocaleDateString('es-MX', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-              };
 
-              const isMyTeam = ['VENDOR', 'SYSTEM', 'COORDINATOR', 'ADMIN', 'IA'].includes(msg.senderType);
-              const isClient = msg.senderType === 'CLIENT';
+              const isMyTeam = TEAM_SENDERS.includes(msg.senderType);
               const isTarget = (searchQuery && isMessageMatch(msg.content, searchQuery)) || msg.id === targetMessageId;
-              
-              let senderLabel = 'Asesor';
-              if (isClient) senderLabel = 'Cliente';
-              else if (msg.senderType === 'IA') senderLabel = '🤖 Bot (IA)';
-              else if (msg.senderType === 'SYSTEM') senderLabel = '💻 Sistema';
-              else if (msg.senderType === 'COORDINATOR' || msg.senderType === 'ADMIN') senderLabel = '🛡️ Coordinador';
-              else senderLabel = vendorName ? `👤 ${vendorName}` : '👤 Asesor';
+              const inverse = isMyTeam && !isTarget;
 
               return (
                 <React.Fragment key={`${msg.id}-${index}`}>
-                {showDateLabel && (
-                  <div className="flex justify-center w-full my-4">
-                    <span className="bg-sales-slate-800/80 text-sales-slate-300 text-xs px-3 py-1 rounded-md shadow-sm border border-sales-slate-700/50 uppercase tracking-wide font-medium">
-                      {formatDateLabel(msg.createdAt)}
-                    </span>
-                  </div>
-                )}
-                <div 
-                  ref={msg.id === firstMatchId || msg.id === targetMessageId ? targetMessageRef : null}
-                  tabIndex={isTarget ? -1 : undefined}
-                  className={`flex flex-col ${isMyTeam ? 'items-end' : 'items-start'} mb-4`}
-                >
-                  <span className="text-[10px] text-sales-slate-500 mb-1 ml-1 mr-1">
-                    {senderLabel} • {new Intl.DateTimeFormat('es-MX', { timeStyle: 'short' }).format(new Date(msg.createdAt))}
-                  </span>
-                  <div 
-                    className={`max-w-[85%] rounded-2xl px-4 py-2 relative shadow-sm ${
-                      isTarget 
-                        ? 'ring-2 ring-sales-orange bg-sales-slate-800' 
-                        : isMyTeam 
-                          ? 'bg-sales-slate-800 text-sales-slate-100 rounded-tr-none' 
-                          : 'bg-sales-slate-900 border border-sales-slate-800 text-sales-slate-100 rounded-tl-none'
-                    }`}
+                  {showDateLabel && (
+                    <div className="my-4 flex w-full justify-center">
+                      <span className="rounded-md border border-border bg-surface px-2.5 py-1">
+                        <Eyebrow tone="muted">{formatDayLabel(msg.createdAt)}</Eyebrow>
+                      </span>
+                    </div>
+                  )}
+                  <div
+                    ref={msg.id === firstMatchId || msg.id === targetMessageId ? targetMessageRef : null}
+                    tabIndex={isTarget ? -1 : undefined}
+                    className={cn('flex flex-col outline-none', isMyTeam ? 'items-end' : 'items-start')}
                   >
-                    {msg.attachments && msg.attachments.length > 0 && (
-                      <div className="flex flex-col gap-2 mb-2">
-                        {msg.attachments.map((att, i) => (
-                          <SecureMedia
-                            key={i}
-                            url={att.url}
-                            type={att.type}
-                            fallbackText={att.name}
-                            className="w-full max-w-sm rounded-lg"
-                          />
-                        ))}
+                    <span className="mb-1 px-1 font-mono text-[10px] text-fg-subtle">
+                      {senderLabel(msg, vendorName)} · {formatTime(msg.createdAt)}
+                    </span>
+                    <div
+                      className={cn(
+                        'relative max-w-[85%] rounded-lg px-3.5 py-2.5',
+                        isTarget
+                          ? 'bg-surface-2 text-fg ring-2 ring-accent'
+                          : inverse
+                            ? 'rounded-br-sm bg-surface-inverse text-fg-inverse'
+                            : 'rounded-bl-sm bg-surface-3 text-fg',
+                      )}
+                    >
+                      {msg.attachments && msg.attachments.length > 0 && (
+                        <div className="mb-2 flex flex-col gap-2">
+                          {msg.attachments.map((att, i) => (
+                            <SecureMedia
+                              key={i}
+                              url={att.url}
+                              type={att.type}
+                              fallbackText={att.name}
+                              className="w-full max-w-sm rounded-md"
+                            />
+                          ))}
+                        </div>
+                      )}
+                      <p
+                        className="whitespace-pre-wrap break-words text-sm leading-relaxed"
+                        dangerouslySetInnerHTML={{
+                          __html: DOMPurify.sanitize(highlightText(msg.snippet || msg.content || '', searchQuery), {
+                            ALLOWED_TAGS: ['b', 'i', 'em', 'strong', 'mark', 'br'],
+                            ALLOWED_ATTR: ['class'],
+                          }),
+                        }}
+                      />
+                      <div className={cn('tnum mt-1.5 text-right font-mono text-[10px]', inverse ? 'text-fg-inverse/55' : 'text-fg-subtle')}>
+                        {formatTime(msg.createdAt)}
                       </div>
-                    )}
-                    <p className="whitespace-pre-wrap text-sm leading-relaxed" dangerouslySetInnerHTML={{
-                      __html: DOMPurify.sanitize(highlightText(msg.snippet || msg.content || '', searchQuery), {
-                        ALLOWED_TAGS: ['b', 'i', 'em', 'strong', 'mark', 'br'],
-                        ALLOWED_ATTR: ['class']
-                      })
-                    }} />
-                    <div className={`text-[10px] mt-1 text-right ${isMyTeam ? 'text-sales-slate-400' : 'text-sales-slate-500'}`}>
-                      {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </div>
                   </div>
-                </div>
                 </React.Fragment>
               );
             })}
 
             {meta?.nextSessionId && (
-              <ContiguousSessionCard 
-                type="next" 
-                loading={loadingNext} 
-                error={errorNext} 
-                onClick={() => loadAdjacentSession('next')} 
+              <ContiguousSessionCard
+                type="next"
+                loading={loadingNext}
+                error={errorNext}
+                onClick={() => loadAdjacentSession('next')}
               />
             )}
           </div>

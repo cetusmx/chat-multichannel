@@ -1,13 +1,17 @@
 import { useState, useEffect, useRef } from 'react';
+import { ImageIcon, Upload } from 'lucide-react';
 import { get, put, postFormData } from '../../services/api.js';
+import { Panel, Field, Input, Textarea, Select, Switch, Button, Spinner } from '../../components/ui/index.js';
+import { toast } from '../../stores/useToastStore.js';
+import { cn } from '../../utils/cn.js';
 
 const DAYS_MAP = [
   { id: 'monday', name: 'Lunes' },
   { id: 'tuesday', name: 'Martes' },
-  { id: 'wednesday', name: 'Miercoles' },
+  { id: 'wednesday', name: 'Miércoles' },
   { id: 'thursday', name: 'Jueves' },
   { id: 'friday', name: 'Viernes' },
-  { id: 'saturday', name: 'Sabado' },
+  { id: 'saturday', name: 'Sábado' },
   { id: 'sunday', name: 'Domingo' },
 ];
 
@@ -21,8 +25,23 @@ const DEFAULT_SCHEDULE = {
   sunday: { isOpen: false, start: '09:00', end: '14:00' },
 };
 
+const COLOR_FIELDS = [
+  { key: 'primaryColor', label: 'Primario', hint: 'Encabezado' },
+  { key: 'secondaryColor', label: 'Secundario', hint: 'Borde de datos' },
+  { key: 'tertiaryColor', label: 'Terciario', hint: 'Instrucciones' },
+  { key: 'backgroundColor', label: 'Fondo', hint: 'Contenedores' },
+];
+
+function ErrorAlert({ children }) {
+  return (
+    <div role="alert" className="rounded-md border border-danger/40 bg-danger/10 px-3 py-2.5 text-sm text-danger">
+      {children}
+    </div>
+  );
+}
+
 export default function CompanyProfileSection() {
-  const [profile, setProfile] = useState(null);
+  const [, setProfile] = useState(null);
   const [form, setForm] = useState({
     name: '', domain: '', phone: '', email: '', address: '',
     rfc: '', logoUrl: '', bank: '', account: '', clabe: '',
@@ -34,8 +53,7 @@ export default function CompanyProfileSection() {
   const [saving, setSaving] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [error, setError] = useState('');
-  const [saved, setSaved] = useState(false);
-  
+
   const fileInputRef = useRef(null);
 
   useEffect(() => {
@@ -76,9 +94,9 @@ export default function CompanyProfileSection() {
         ...prev.schedule,
         [dayId]: {
           ...prev.schedule[dayId],
-          [field]: value
-        }
-      }
+          [field]: value,
+        },
+      },
     }));
   };
 
@@ -94,15 +112,15 @@ export default function CompanyProfileSection() {
     try {
       setUploadingLogo(true);
       setError('');
-      
-      const formData = new FormData();
+
+      const formData = new window.FormData();
       formData.append('logo', file);
-      
+
       const res = await postFormData('/tenant/profile/logo', formData);
       const data = await res.json();
-      
+
       setForm(prev => ({ ...prev, logoUrl: data.data.logoUrl }));
-      setSaved(true);
+      toast.success('Logo actualizado');
     } catch (err) {
       setError(err.message || 'Error al subir el logo');
     } finally {
@@ -114,7 +132,6 @@ export default function CompanyProfileSection() {
   async function handleSubmit(e) {
     e.preventDefault();
     setError('');
-    setSaved(false);
     setSaving(true);
     try {
       const payload = {
@@ -127,21 +144,21 @@ export default function CompanyProfileSection() {
         bankDetails: {
           bank: form.bank,
           account: form.account,
-          clabe: form.clabe
+          clabe: form.clabe,
         },
         theme: {
           primary: form.primaryColor,
           secondary: form.secondaryColor,
           tertiary: form.tertiaryColor,
-          background: form.backgroundColor
+          background: form.backgroundColor,
         },
         businessHours: {
           timezone: form.bhTimezone,
-          schedule: form.schedule
-        }
+          schedule: form.schedule,
+        },
       };
       await put('/tenant/profile', payload);
-      setSaved(true);
+      toast.success('Perfil actualizado');
     } catch (err) {
       setError(err.message);
     } finally {
@@ -149,268 +166,182 @@ export default function CompanyProfileSection() {
     }
   }
 
-  if (loading) return <p className="text-sm text-sales-slate-400">Cargando...</p>;
+  if (loading) {
+    return (
+      <div className="flex justify-center py-16">
+        <Spinner size={20} />
+      </div>
+    );
+  }
 
   return (
-    <div>
-      <h3 className="mb-4 text-lg font-semibold text-sales-slate-100">Perfil de la Empresa</h3>
+    <form onSubmit={handleSubmit} className="space-y-6">
+      {error && <ErrorAlert>{error}</ErrorAlert>}
 
-      {error && (
-        <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-400">
-          {error}
+      <Panel eyebrow="Empresa" title="Datos generales" description="Identidad fiscal y de contacto que aparece en cotizaciones.">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Nombre de la empresa" required>
+            {(p) => <Input {...p} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />}
+          </Field>
+          <Field label="Dominio" required>
+            {(p) => <Input {...p} value={form.domain} onChange={(e) => setForm({ ...form, domain: e.target.value })} required />}
+          </Field>
+          <Field label="RFC">
+            {(p) => <Input {...p} mono value={form.rfc} onChange={(e) => setForm({ ...form, rfc: e.target.value })} />}
+          </Field>
+          <Field label="Teléfono">
+            {(p) => <Input {...p} value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />}
+          </Field>
+          <Field label="Correo de contacto">
+            {(p) => <Input {...p} type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />}
+          </Field>
+          <Field label="Dirección" className="sm:col-span-2">
+            {(p) => <Textarea {...p} rows={2} value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />}
+          </Field>
         </div>
-      )}
+      </Panel>
 
-      {saved && (
-        <div className="mb-4 rounded-lg border border-green-500/30 bg-green-500/10 px-4 py-2 text-sm text-green-400">
-          Perfil actualizado correctamente
+      <Panel eyebrow="Pagos" title="Datos bancarios" description="Se incluyen en las cotizaciones y en la respuesta rápida de pago.">
+        <div className="grid gap-4 sm:grid-cols-3">
+          <Field label="Banco">
+            {(p) => <Input {...p} value={form.bank} onChange={(e) => setForm({ ...form, bank: e.target.value })} placeholder="Ej. BBVA" />}
+          </Field>
+          <Field label="Cuenta">
+            {(p) => <Input {...p} mono value={form.account} onChange={(e) => setForm({ ...form, account: e.target.value })} />}
+          </Field>
+          <Field label="CLABE">
+            {(p) => <Input {...p} mono value={form.clabe} onChange={(e) => setForm({ ...form, clabe: e.target.value })} />}
+          </Field>
         </div>
-      )}
+      </Panel>
 
-      <form onSubmit={handleSubmit} className="space-y-4">
-        
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="mb-1 block text-sm text-sales-slate-400">Nombre de la empresa</label>
-            <input
-              value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
-              required
-              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-sales-slate-100 focus:outline-none focus:ring-2 focus:ring-sales-coral/50"
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-sm text-sales-slate-400">Dominio</label>
-            <input
-              value={form.domain}
-              onChange={(e) => setForm({ ...form, domain: e.target.value })}
-              required
-              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-sales-slate-100 focus:outline-none focus:ring-2 focus:ring-sales-coral/50"
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-sm text-sales-slate-400">RFC</label>
-            <input
-              value={form.rfc}
-              onChange={(e) => setForm({ ...form, rfc: e.target.value })}
-              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-sales-slate-100 focus:outline-none focus:ring-2 focus:ring-sales-coral/50"
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-sm text-sales-slate-400">Teléfono</label>
-            <input
-              value={form.phone}
-              onChange={(e) => setForm({ ...form, phone: e.target.value })}
-              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-sales-slate-100 focus:outline-none focus:ring-2 focus:ring-sales-coral/50"
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-sm text-sales-slate-400">Email de contacto</label>
-            <input
-              type="email"
-              value={form.email}
-              onChange={(e) => setForm({ ...form, email: e.target.value })}
-              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-sales-slate-100 focus:outline-none focus:ring-2 focus:ring-sales-coral/50"
-            />
-          </div>
-          <div className="col-span-2">
-            <label className="mb-1 block text-sm text-sales-slate-400">Dirección</label>
-            <textarea
-              value={form.address}
-              onChange={(e) => setForm({ ...form, address: e.target.value })}
-              rows={2}
-              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-sales-slate-100 focus:outline-none focus:ring-2 focus:ring-sales-coral/50"
-            />
-          </div>
-          </div>
-
-          <div className="mt-8">
-            <div className="flex flex-col border-t border-slate-700 pt-6">
-              <h4 className="mb-4 text-lg font-semibold text-sales-slate-100">Datos bancarios</h4>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-            <label className="mb-1 block text-sm text-sales-slate-400">Banco</label>
-            <input
-              value={form.bank}
-              onChange={(e) => setForm({ ...form, bank: e.target.value })}
-              placeholder="Ej. BBVA"
-              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-sales-slate-100 focus:outline-none focus:ring-2 focus:ring-sales-coral/50"
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-sm text-sales-slate-400">Cuenta</label>
-            <input
-              value={form.account}
-              onChange={(e) => setForm({ ...form, account: e.target.value })}
-              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-sales-slate-100 focus:outline-none focus:ring-2 focus:ring-sales-coral/50"
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-sm text-sales-slate-400">CLABE</label>
-            <input
-              value={form.clabe}
-              onChange={(e) => setForm({ ...form, clabe: e.target.value })}
-              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-sales-slate-100 focus:outline-none focus:ring-2 focus:ring-sales-coral/50"
-            />
-          </div>
-              </div>
-            </div>
-          </div>
-
-
-          <div className="mt-8">
-            <div className="flex flex-col border-t border-slate-700 pt-6">
-              <h4 className="mb-4 text-lg font-semibold text-sales-slate-100">Identidad de la empresa</h4>
-              {/* Logo Section */}
-        <div className="mb-6 bg-sales-slate-800 p-4 rounded-lg border border-slate-700 flex items-center gap-6">
-          <div className="w-32 h-20 bg-slate-900 border border-slate-700 flex items-center justify-center rounded-md overflow-hidden shrink-0">
+      <Panel eyebrow="Marca" title="Identidad visual" description="Logo y colores que se usan en el PDF de cotización.">
+        <div className="flex flex-col gap-5 sm:flex-row sm:items-start">
+          <div className="flex h-24 w-40 shrink-0 items-center justify-center overflow-hidden rounded-md border border-border bg-surface-2">
             {form.logoUrl ? (
-              <img src={form.logoUrl} alt="Logo Empresa" className="max-w-full max-h-full object-contain" />
+              <img src={form.logoUrl} alt="Logo de la empresa" className="max-h-full max-w-full object-contain" />
             ) : (
-              <span className="text-slate-500 text-xs text-center px-2">Sin Logo</span>
+              <ImageIcon size={20} className="text-fg-subtle" aria-hidden />
             )}
           </div>
-          <div>
-            <h4 className="text-sm font-medium text-sales-slate-200 mb-1">Logo para Cotizaciones</h4>
-            <p className="text-xs text-sales-slate-400 mb-3 max-w-sm">
-              Se recomienda PNG con fondo transparente o SVG. Orientación horizontal. Máximo 2MB. (Ideal: 400x150px) para evitar romper el layout del PDF.
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium text-fg">Logo para cotizaciones</p>
+            <p className="mt-1 max-w-md text-[13px] leading-relaxed text-fg-muted">
+              PNG con fondo transparente o SVG, orientación horizontal, máximo 2 MB. Ideal 400×150 px.
             </p>
-            <input 
-              type="file" 
+            <input
+              type="file"
               accept="image/png, image/jpeg, image/webp, image/svg+xml"
-              className="hidden" 
+              className="hidden"
               ref={fileInputRef}
               onChange={handleLogoChange}
             />
-            <button
-              type="button"
-              disabled={uploadingLogo}
+            <Button
+              variant="outline"
+              size="sm"
+              icon={Upload}
+              loading={uploadingLogo}
               onClick={() => fileInputRef.current?.click()}
-              className="text-xs font-medium bg-slate-700 hover:bg-slate-600 text-slate-200 px-3 py-1.5 rounded-md transition-colors disabled:opacity-50"
+              className="mt-3"
             >
-              {uploadingLogo ? 'Subiendo...' : 'Cambiar Logo'}
-            </button>
+              {uploadingLogo ? 'Subiendo…' : 'Cambiar logo'}
+            </Button>
           </div>
         </div>
-              <div className="mt-4">
-                {/* Colors Section */}
-        <div className="mb-6 bg-sales-slate-800 p-4 rounded-lg border border-slate-700">
-          <h4 className="text-sm font-medium text-sales-slate-200 mb-4">Colores Corporativos (Cotización)</h4>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div>
-              <label className="mb-1 block text-xs text-sales-slate-400">Color Primario (Encabezado)</label>
-              <div className="flex items-center gap-2">
-                <input type="color" value={form.primaryColor} onChange={(e) => setForm({...form, primaryColor: e.target.value})} className="w-8 h-8 rounded cursor-pointer bg-transparent border-0 p-0" />
-                <span className="text-sm text-sales-slate-300 font-mono">{form.primaryColor}</span>
-              </div>
-            </div>
-            <div>
-              <label className="mb-1 block text-xs text-sales-slate-400">Color Secundario (Borde Datos)</label>
-              <div className="flex items-center gap-2">
-                <input type="color" value={form.secondaryColor} onChange={(e) => setForm({...form, secondaryColor: e.target.value})} className="w-8 h-8 rounded cursor-pointer bg-transparent border-0 p-0" />
-                <span className="text-sm text-sales-slate-300 font-mono">{form.secondaryColor}</span>
-              </div>
-            </div>
-            <div>
-              <label className="mb-1 block text-xs text-sales-slate-400">Color Terciario (Instrucciones)</label>
-              <div className="flex items-center gap-2">
-                <input type="color" value={form.tertiaryColor} onChange={(e) => setForm({...form, tertiaryColor: e.target.value})} className="w-8 h-8 rounded cursor-pointer bg-transparent border-0 p-0" />
-                <span className="text-sm text-sales-slate-300 font-mono">{form.tertiaryColor}</span>
-              </div>
-            </div>
-            <div>
-              <label className="mb-1 block text-xs text-sales-slate-400">Fondo Contenedores</label>
-              <div className="flex items-center gap-2">
-                <input type="color" value={form.backgroundColor} onChange={(e) => setForm({...form, backgroundColor: e.target.value})} className="w-8 h-8 rounded cursor-pointer bg-transparent border-0 p-0" />
-                <span className="text-sm text-sales-slate-300 font-mono">{form.backgroundColor}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-              </div>
-            </div>
-          </div>
 
-
-          <div className="mt-8">
-          <div className="flex flex-col border-t border-slate-700 pt-6">
-            <h4 className="mb-1 text-lg font-semibold text-sales-slate-100">Horarios de Operación (Business Hours)</h4>
-            <p className="mb-6 text-sm text-sales-slate-400">
-              Define los horarios laborales. Los relojes del SLA se pausarán fuera de estos horarios y el agente IA enviará notificaciones de Fuera de Horario.
-            </p>
-
-            <div className="mb-6 max-w-sm">
-              <label className="mb-1 block text-sm font-medium text-sales-slate-300">Zona Horaria de Operación</label>
-              <select
-                value={form.bhTimezone}
-                onChange={(e) => setForm({ ...form, bhTimezone: e.target.value })}
-                className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-sales-slate-100 focus:outline-none focus:ring-2 focus:ring-sales-cyan-500/50"
-              >
-                <option value="America/Mexico_City">Ciudad de México / Centro</option>
-                <option value="America/Tijuana">Tijuana / Pacífico</option>
-                <option value="America/Mazatlan">Mazatlán / Montaña</option>
-                <option value="America/Cancun">Cancún / Sureste</option>
-                <option value="America/Bogota">Bogotá / Lima / Quito</option>
-                <option value="America/Argentina/Buenos_Aires">Buenos Aires</option>
-              </select>
-            </div>
-
-            <div className="flex flex-col gap-3">
-              {DAYS_MAP.map(day => {
-                const dayConfig = form.schedule[day.id] || DEFAULT_SCHEDULE[day.id];
-                return (
-                  <div key={day.id} className={`flex items-center gap-4 p-3 rounded-lg border transition-colors ${dayConfig.isOpen ? 'bg-sales-slate-800/80 border-sales-slate-700' : 'bg-sales-slate-900/50 border-sales-slate-800'}`}>
-                    <div className="w-32 flex items-center gap-3">
-                      <label className="relative inline-flex items-center cursor-pointer">
-                        <input
-                          type="checkbox"
-                          className="sr-only peer"
-                          checked={dayConfig.isOpen}
-                          onChange={(e) => handleDayChange(day.id, 'isOpen', e.target.checked)}
-                        />
-                        <div className="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-sales-cyan-500"></div>
-                      </label>
-                      <span className={`text-sm font-medium ${dayConfig.isOpen ? 'text-sales-slate-200' : 'text-sales-slate-500'}`}>{day.name}</span>
-                    </div>
-
-                    <div className="flex-1 flex items-center gap-3">
-                      {dayConfig.isOpen ? (
-                        <>
-                          <input
-                            type="time"
-                            value={dayConfig.start}
-                            onChange={(e) => handleDayChange(day.id, 'start', e.target.value)}
-                            className="rounded-md border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm text-sales-slate-100 focus:outline-none focus:ring-1 focus:ring-sales-cyan-500"
-                          />
-                          <span className="text-sales-slate-500">a</span>
-                          <input
-                            type="time"
-                            value={dayConfig.end}
-                            onChange={(e) => handleDayChange(day.id, 'end', e.target.value)}
-                            className="rounded-md border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm text-sales-slate-100 focus:outline-none focus:ring-1 focus:ring-sales-cyan-500"
-                          />
-                        </>
-                      ) : (
-                        <span className="text-sm font-medium text-sales-slate-500/70 italic px-2">Cerrado</span>
-                      )}
-                    </div>
+        <div className="mt-6 border-t border-border pt-5">
+          <p className="mb-3 text-sm font-medium text-fg">Colores corporativos</p>
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+            {COLOR_FIELDS.map(({ key, label, hint }) => (
+              <Field key={key} label={label} hint={hint}>
+                {(p) => (
+                  <div className="flex h-9 items-center gap-2.5 rounded-md border border-border bg-surface-2 px-2">
+                    <input
+                      {...p}
+                      type="color"
+                      value={form[key]}
+                      onChange={(e) => setForm({ ...form, [key]: e.target.value })}
+                      aria-label={`Color ${label.toLowerCase()}`}
+                      className="h-6 w-6 shrink-0 cursor-pointer rounded-sm border-0 bg-transparent p-0"
+                    />
+                    <span className="tnum font-mono text-xs uppercase text-fg-muted">{form[key]}</span>
                   </div>
-                );
-              })}
-            </div>
+                )}
+              </Field>
+            ))}
           </div>
         </div>
+      </Panel>
 
-        <div className="mt-8 pt-6 border-t border-slate-800">
-          <button
-            type="submit"
-            disabled={saving}
-            className="rounded-lg bg-blue-600 px-6 py-2.5 text-sm font-bold text-white hover:bg-blue-500 transition-colors shadow-md disabled:opacity-50"
-          >
-            {saving ? 'Guardando...' : 'Guardar Configuración Global'}
-          </button>
+      <Panel
+        eyebrow="Operación"
+        title="Horario de atención"
+        description="Fuera de este horario los relojes de SLA se pausan y el asistente avisa al cliente."
+      >
+        <Field label="Zona horaria" className="mb-5 max-w-sm">
+          {(p) => (
+            <Select {...p} value={form.bhTimezone} onChange={(e) => setForm({ ...form, bhTimezone: e.target.value })}>
+              <option value="America/Mexico_City">Ciudad de México / Centro</option>
+              <option value="America/Tijuana">Tijuana / Pacífico</option>
+              <option value="America/Mazatlan">Mazatlán / Montaña</option>
+              <option value="America/Cancun">Cancún / Sureste</option>
+              <option value="America/Bogota">Bogotá / Lima / Quito</option>
+              <option value="America/Argentina/Buenos_Aires">Buenos Aires</option>
+            </Select>
+          )}
+        </Field>
+
+        <div className="divide-y divide-border/70 rounded-md border border-border">
+          {DAYS_MAP.map(day => {
+            const dayConfig = form.schedule[day.id] || DEFAULT_SCHEDULE[day.id];
+            return (
+              <div key={day.id} className={cn('flex items-center gap-4 px-4 py-3', !dayConfig.isOpen && 'bg-surface-2/40')}>
+                <div className="flex w-36 shrink-0 items-center gap-3">
+                  <Switch
+                    checked={dayConfig.isOpen}
+                    onChange={(checked) => handleDayChange(day.id, 'isOpen', checked)}
+                    label={day.name}
+                  />
+                </div>
+
+                <div className="flex flex-1 items-center gap-3">
+                  {dayConfig.isOpen ? (
+                    <>
+                      <Input
+                        type="time"
+                        size="sm"
+                        mono
+                        value={dayConfig.start}
+                        onChange={(e) => handleDayChange(day.id, 'start', e.target.value)}
+                        aria-label={`Apertura ${day.name}`}
+                        className="w-28"
+                      />
+                      <span className="text-xs text-fg-subtle">a</span>
+                      <Input
+                        type="time"
+                        size="sm"
+                        mono
+                        value={dayConfig.end}
+                        onChange={(e) => handleDayChange(day.id, 'end', e.target.value)}
+                        aria-label={`Cierre ${day.name}`}
+                        className="w-28"
+                      />
+                    </>
+                  ) : (
+                    <span className="text-[13px] text-fg-subtle">Cerrado</span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
-      </form>
-    </div>
+      </Panel>
+
+      <div className="flex justify-end">
+        <Button type="submit" variant="primary" loading={saving}>
+          {saving ? 'Guardando…' : 'Guardar cambios'}
+        </Button>
+      </div>
+    </form>
   );
 }

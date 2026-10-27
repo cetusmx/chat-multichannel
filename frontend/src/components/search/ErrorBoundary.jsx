@@ -1,4 +1,5 @@
 import React from 'react';
+import { AlertTriangle } from 'lucide-react';
 
 export default class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -11,24 +12,29 @@ export default class ErrorBoundary extends React.Component {
   }
 
   componentDidCatch(error, errorInfo) {
-    console.error("ErrorBoundary caught an error", error, errorInfo);
+    console.error('ErrorBoundary caught an error', error, errorInfo);
     this.setState({ errorInfo });
   }
 
   render() {
     if (this.state.hasError) {
       return (
-        <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-red-800 m-4 overflow-auto">
-          <h2 className="text-lg font-bold mb-2">Something went wrong.</h2>
-          <details className="whitespace-pre-wrap text-sm">
-            <summary>Show details</summary>
-            {this.state.error ? String(this.state.error) : 'No error msg'}
-            <br />
-            {this.state.errorInfo && this.state.errorInfo.componentStack ? String(this.state.errorInfo.componentStack) : 'No stack'}
+        <div className="m-4 overflow-auto rounded-lg border border-danger/40 bg-danger/10 p-5 text-fg">
+          <div className="flex items-center gap-2">
+            <AlertTriangle size={16} className="shrink-0 text-danger" aria-hidden />
+            <h2 className="text-sm font-semibold">Algo salió mal</h2>
+          </div>
+          <details className="mt-3 whitespace-pre-wrap text-xs text-fg-muted">
+            <summary className="cursor-pointer text-[13px] text-fg-muted hover:text-fg">Ver detalles</summary>
+            <pre className="mt-2 overflow-auto font-mono text-[11px] leading-relaxed text-fg-subtle custom-scrollbar">
+              {this.state.error ? String(this.state.error) : 'Sin mensaje de error'}
+              {'\n'}
+              {this.state.errorInfo && this.state.errorInfo.componentStack ? String(this.state.errorInfo.componentStack) : 'Sin traza'}
+            </pre>
           </details>
         </div>
       );
     }
-    return this.props.children; 
+    return this.props.children;
   }
 }

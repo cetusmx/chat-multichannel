@@ -1,33 +1,224 @@
 @import "tailwindcss";
+@import "@fontsource-variable/inter";
+@import "@fontsource-variable/jetbrains-mono";
 
-@theme {
-  --color-sales-slate-950: #0F172A;
-  --color-sales-slate-900: #1E293B;
-  --color-sales-slate-800: #334155;
-  --color-sales-slate-700: #475569;
-  --color-sales-slate-600: #64748B;
-  --color-sales-slate-400: #94A3B8;
-  --color-sales-slate-300: #CBD5E1;
-  --color-sales-slate-100: #F1F5F9;
-  --color-sales-coral: #FB7185;
-  --color-sales-coral-light: #FDA4AF;
-  --color-sales-orange: #F97316;
-  --color-sales-orange-light: #FB923C;
+/* ---------------------------------------------------------------------------
+   Semantic design tokens
+   Dark is the default theme. Light is available via <html data-theme="light">.
+   Components must use semantic names (bg, surface, fg, accent...) and never
+   raw palette values, so switching theme is a one-attribute change.
+   --------------------------------------------------------------------------- */
+:root,
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg: #0b0d12;
+  --bg-grid: rgba(255, 255, 255, 0.035);
+  --surface: #11141b;
+  --surface-2: #171b24;
+  --surface-3: #1f2430;
+  --border: #242a36;
+  --border-strong: #323a49;
+
+  --fg: #f4f5f7;
+  --fg-muted: #9aa3b2;
+  --fg-subtle: #697183;
+  --fg-inverse: #0b0d12;
+  --surface-inverse: #f7f7f8;
+
+  --accent: #f4551f;
+  --accent-hover: #ff6a35;
+  --accent-fg: #ffffff;
+
+  --success: #2fbf7a;
+  --warning: #e8a33d;
+  --danger: #e5484d;
+  --info: #7c8db0;
+
+  --ring: rgba(244, 85, 31, 0.55);
+  --shadow-color: rgba(0, 0, 0, 0.6);
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+
+  --bg: #f5f5f3;
+  --bg-grid: rgba(0, 0, 0, 0.04);
+  --surface: #ffffff;
+  --surface-2: #f3f3f1;
+  --surface-3: #ebebe8;
+  --border: #e4e4e0;
+  --border-strong: #cfcfca;
+
+  --fg: #15171c;
+  --fg-muted: #5c6370;
+  --fg-subtle: #8a919e;
+  --fg-inverse: #ffffff;
+  --surface-inverse: #15171c;
+
+  --accent: #ef4f1a;
+  --accent-hover: #d9430f;
+  --accent-fg: #ffffff;
+
+  --success: #1f9d5c;
+  --warning: #c17d12;
+  --danger: #d4373c;
+  --info: #4e6584;
+
+  --ring: rgba(239, 79, 26, 0.45);
+  --shadow-color: rgba(20, 20, 30, 0.12);
+}
+
+@theme inline {
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-surface-inverse: var(--surface-inverse);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+
+  --color-fg: var(--fg);
+  --color-fg-muted: var(--fg-muted);
+  --color-fg-subtle: var(--fg-subtle);
+  --color-fg-inverse: var(--fg-inverse);
+
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-fg: var(--accent-fg);
+
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-info: var(--info);
+
+  --color-ring: var(--ring);
+
+  /* ---- Legacy aliases ----------------------------------------------------
+     Older components reference these names. They map onto the semantic tokens
+     so nothing renders unstyled while the migration finishes. New code must
+     not use them. */
+  --color-sales-slate-950: var(--bg);
+  --color-sales-slate-900: var(--surface);
+  --color-sales-slate-800: var(--surface-2);
+  --color-sales-slate-700: var(--surface-3);
+  --color-sales-slate-600: var(--border-strong);
+  --color-sales-slate-500: var(--fg-subtle);
+  --color-sales-slate-400: var(--fg-muted);
+  --color-sales-slate-300: var(--fg-muted);
+  --color-sales-slate-200: var(--fg);
+  --color-sales-slate-100: var(--fg);
+
+  --color-sales-coral: var(--accent);
+  --color-sales-coral-light: var(--accent-hover);
+  --color-sales-coral-200: var(--accent-hover);
+  --color-sales-coral-400: var(--accent);
+  --color-sales-coral-500: var(--accent);
+  --color-sales-coral-600: var(--accent);
+
+  --color-sales-orange: var(--accent);
+  --color-sales-orange-light: var(--accent-hover);
+  --color-sales-orange-100: var(--fg);
+  --color-sales-orange-400: var(--accent);
+  --color-sales-orange-500: var(--accent);
+  --color-sales-orange-600: var(--accent-hover);
+
+  --color-sales-cyan-50: var(--fg);
+  --color-sales-cyan-100: var(--fg);
+  --color-sales-cyan-300: var(--info);
+  --color-sales-cyan-400: var(--info);
+  --color-sales-cyan-500: var(--info);
+  --color-sales-cyan-600: var(--info);
+  --color-sales-cyan-700: var(--border-strong);
+  --color-sales-cyan-800: var(--border-strong);
+  --color-sales-cyan-900: var(--surface-3);
+  --color-sales-cyan-950: var(--surface-2);
+
+  --color-sales-blue-400: var(--info);
+  --color-sales-blue-500: var(--info);
+  --color-sales-blue-600: var(--info);
+  --color-sales-blue-900: var(--surface-3);
+
+  --color-sales-amber-400: var(--warning);
+  --color-sales-amber-500: var(--warning);
+  --color-sales-purple-400: var(--info);
+  --color-sales-purple-500: var(--info);
+}
+
+/* ---------------------------------------------------------------------------
+   Base
+   --------------------------------------------------------------------------- */
+html {
+  font-family: var(--font-sans);
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 body {
-  background-color: #0F172A;
-  color: #F1F5F9;
+  background-color: var(--bg);
+  color: var(--fg);
 }
 
-/* Custom Scrollbar */
+::selection {
+  background: color-mix(in oklab, var(--accent) 35%, transparent);
+}
+
+/* Keyboard focus is visible everywhere; pointer focus stays quiet.
+   Form controls draw their own focus border, so they are excluded. */
+:where(button, a, [role="button"], [tabindex]):not(input, select, textarea):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+:where(input, select, textarea):focus-visible {
+  outline: none;
+}
+
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* ---------------------------------------------------------------------------
+   Utilities
+   --------------------------------------------------------------------------- */
+
+/* Mono uppercase micro label used for metadata and section eyebrows. */
+@utility eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.2;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-weight: 500;
+}
+
+/* Subtle grid backdrop used behind chat canvases. */
+@utility bg-grid {
+  background-color: var(--bg);
+  background-image:
+    linear-gradient(var(--bg-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--bg-grid) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+/* Tabular numerals for prices, counters and timestamps. */
+@utility tnum {
+  font-variant-numeric: tabular-nums;
+}
+
 .custom-scrollbar::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 
 .custom-scrollbar::-webkit-scrollbar-track {
-  background: transparent; 
+  background: transparent;
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb {
@@ -36,14 +227,13 @@ body {
 }
 
 .custom-scrollbar:hover::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.2);
+  background: color-mix(in oklab, var(--fg-muted) 25%, transparent);
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: rgba(148, 163, 184, 0.4);
+  background: color-mix(in oklab, var(--fg-muted) 45%, transparent);
 }
 
-/* Firefox */
 .custom-scrollbar {
   scrollbar-width: thin;
   scrollbar-color: transparent transparent;
@@ -51,6 +241,20 @@ body {
 }
 
 .custom-scrollbar:hover {
-  scrollbar-color: rgba(148, 163, 184, 0.2) transparent;
+  scrollbar-color: color-mix(in oklab, var(--fg-muted) 25%, transparent) transparent;
 }
 
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-toast-in {
+  animation: toast-in 180ms ease-out;
+}

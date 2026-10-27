@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Search, X, Clock } from 'lucide-react';
 import { useSearchStore } from '../../stores/searchStore';
+import { Input, Eyebrow } from '../ui/index.js';
 
 export default function GlobalSearchInput() {
   const [searchParams] = useSearchParams();
@@ -57,64 +58,62 @@ export default function GlobalSearchInput() {
   const showDropdown = isFocused && recentSearches.length > 0;
 
   return (
-    <div ref={containerRef} className="relative w-full max-w-md mx-auto">
+    <div ref={containerRef} className="relative w-full">
       <form onSubmit={handleSubmit} role="search" className="relative">
-        <div className="relative flex items-center w-full">
-          <div className="absolute left-3 text-gray-400">
-            <Search size={18} />
-          </div>
-          <input
-            type="text"
-            value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
-            onFocus={() => setIsFocused(true)}
-            placeholder="Buscar chats, clientes o pedidos..."
-            aria-label="Buscar en toda la aplicación"
-            aria-expanded={showDropdown}
-            aria-controls="history-dropdown-id"
-            maxLength={100}
-            className="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
-          />
-          {inputValue && (
-            <button
-              type="button"
-              onClick={handleClear}
-              className="absolute right-3 text-gray-400 hover:text-gray-600"
-              aria-label="Limpiar búsqueda"
-            >
-              <X size={16} />
-            </button>
-          )}
-        </div>
+        <Input
+          type="text"
+          leftIcon={Search}
+          value={inputValue}
+          onChange={(e) => setInputValue(e.target.value)}
+          onFocus={() => setIsFocused(true)}
+          placeholder="Buscar chats, clientes o pedidos"
+          aria-label="Buscar en toda la aplicación"
+          aria-expanded={showDropdown}
+          aria-controls="history-dropdown-id"
+          maxLength={100}
+          className="pr-9"
+        />
+        {inputValue && (
+          <button
+            type="button"
+            onClick={handleClear}
+            className="absolute right-2 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-fg-subtle transition-colors hover:bg-surface-3 hover:text-fg"
+            aria-label="Limpiar búsqueda"
+          >
+            <X size={14} />
+          </button>
+        )}
       </form>
 
       {showDropdown && (
-        <div 
-          id="history-dropdown-id" 
-          className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-50 py-1"
+        <div
+          id="history-dropdown-id"
+          className="absolute left-0 right-0 top-full z-50 mt-1.5 overflow-hidden rounded-lg border border-border bg-surface shadow-2xl shadow-black/40"
         >
-          <div className="flex justify-between items-center px-4 py-2 border-b border-gray-100">
-            <span className="text-xs font-semibold text-gray-500 uppercase">Búsquedas Recientes</span>
-            <button 
+          <div className="flex items-center justify-between border-b border-border px-3.5 py-2">
+            <Eyebrow tone="muted">Búsquedas recientes</Eyebrow>
+            <button
+              type="button"
               onMouseDown={(e) => { e.preventDefault(); clearHistory(); }}
-              className="text-xs text-blue-600 hover:text-blue-800"
+              className="text-xs text-fg-muted transition-colors hover:text-fg"
             >
               Borrar historial
             </button>
           </div>
-          <ul className="max-h-64 overflow-y-auto">
+          <ul className="max-h-64 overflow-y-auto py-1 custom-scrollbar">
             {recentSearches.map((term, idx) => (
-              <li key={idx} className="flex justify-between items-center hover:bg-gray-50 px-4 py-2 cursor-pointer group">
-                <div 
-                  className="flex items-center gap-2 flex-grow"
+              <li key={idx} className="group flex cursor-pointer items-center justify-between gap-2 px-3.5 py-2 transition-colors hover:bg-surface-2/60">
+                <div
+                  className="flex min-w-0 flex-1 items-center gap-2"
                   onMouseDown={(e) => { e.preventDefault(); handleHistoryClick(term); }}
                 >
-                  <Clock size={14} className="text-gray-400" />
-                  <span className="text-sm text-gray-700">{term}</span>
+                  <Clock size={14} className="shrink-0 text-fg-subtle" aria-hidden />
+                  <span className="truncate text-sm text-fg">{term}</span>
                 </div>
                 <button
+                  type="button"
                   onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); removeSearchTerm(term); }}
-                  className="text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity p-1"
+                  className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-fg-subtle opacity-0 transition-opacity hover:text-danger group-hover:opacity-100 focus-visible:opacity-100"
                   aria-label={`Eliminar ${term} del historial`}
                 >
                   <X size={14} />

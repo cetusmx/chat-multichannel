@@ -1,24 +1,29 @@
 import { useEffect, useState } from 'react';
+import { LayoutGrid, Focus } from 'lucide-react';
 import useAuthStore from '../../../stores/useAuthStore';
 import useChatStore from '../../../stores/useChatStore';
 import useUIStore from '../../../stores/useUIStore';
 import ChatList from './ChatList';
 import FocusPanel from './FocusPanel';
-import { motion } from 'framer-motion';
 import * as api from '../../../services/api';
+import { Tabs, Eyebrow, Button, EmptyState } from '../../../components/ui/index.js';
+import { FILTER_LABELS } from '../../../utils/conversationStatus.js';
 
-const FilterButton = ({ label, count, isActive, onClick }) => (
-  <button
-    onClick={onClick}
-    className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors border-b-2 ${
-      isActive
-        ? 'border-sales-cyan-500 text-sales-cyan-400 bg-sales-slate-800/50'
-        : 'border-transparent text-sales-slate-400 hover:text-sales-slate-200 hover:bg-sales-slate-800/30'
-    }`}
-  >
-    {label} <span className="ml-1 opacity-70 text-xs">({count})</span>
-  </button>
-);
+const KANBAN_COLUMNS = {
+  PENDING: [
+    { title: 'Nuevos · sin asignar', statuses: ['PENDING_ASSIGNMENT'] },
+    { title: 'Escalados · piden ayuda', statuses: ['ESCALATED'] },
+  ],
+  ON_HOLD: [
+    { title: 'Esperando al cliente', statuses: ['WAITING_CUSTOMER'] },
+    { title: 'Pausados · terceros', statuses: ['ON_HOLD'] },
+  ],
+  CLOSED: [
+    { title: 'Ventas cerradas', statuses: ['CLOSED_WON'] },
+    { title: 'Cerrados e inactivos', statuses: ['CLOSED', 'CLOSED_INACTIVE'] },
+    { title: 'Descartados · spam', statuses: ['DISCARDED'] },
+  ],
+};
 
 export default function CoordinatorChatView() {
   const user = useAuthStore(s => s.user);
@@ -64,7 +69,6 @@ export default function CoordinatorChatView() {
     scheduled: conversations.filter(c => c.status === 'SCHEDULED').length,
     slaRisk: conversations.filter(c => c.isSlaBreached && !c.status?.startsWith('CLOSED')).length,
     closed: conversations.filter(c => c.status?.startsWith('CLOSED') || c.status === 'DISCARDED').length,
-    sales: conversations.filter(c => c.status === 'CLOSED_WON').length,
   };
 
   const filteredConversations = conversations.filter(c => {
@@ -79,125 +83,86 @@ export default function CoordinatorChatView() {
   });
 
   const shouldGroup = isCoordinator;
+  const isKanban = Object.prototype.hasOwnProperty.call(KANBAN_COLUMNS, filter);
+
+  const tabs = [
+    { id: 'ALL', label: 'Todos', count: metrics.total },
+    { id: 'PENDING', label: 'Sin asignar', count: metrics.pending },
+    { id: 'ON_HOLD', label: 'En seguimiento', count: metrics.onHold },
+    { id: 'SCHEDULED', label: 'Agendados', count: metrics.scheduled },
+    { id: 'SLA', label: 'SLA en riesgo', count: metrics.slaRisk },
+    { id: 'CLOSED', label: 'Cerrados', count: metrics.closed },
+  ];
 
   return (
-    <div className="flex flex-col relative w-full h-full bg-sales-slate-900 text-sales-slate-100 rounded-lg border border-sales-slate-800 shadow-xl overflow-hidden">
-      {/* Filters Ribbon */}
-      <div className="flex px-4 pt-2 border-b border-sales-slate-800 bg-sales-slate-900/95 shrink-0 z-20 shadow-sm relative gap-2 overflow-x-auto custom-scrollbar">
-        <FilterButton label="Todos" count={metrics.total} isActive={filter === 'ALL'} onClick={() => setFilter('ALL')} />
-        <FilterButton label="Sin Asignar" count={metrics.pending} isActive={filter === 'PENDING'} onClick={() => setFilter('PENDING')} />
-        <FilterButton label="En Seguimiento" count={metrics.onHold} isActive={filter === 'ON_HOLD'} onClick={() => setFilter('ON_HOLD')} />
-        <FilterButton label="Agendados" count={metrics.scheduled} isActive={filter === 'SCHEDULED'} onClick={() => setFilter('SCHEDULED')} />
-        <FilterButton label="SLA en Riesgo" count={metrics.slaRisk} isActive={filter === 'SLA'} onClick={() => setFilter('SLA')} />
-        <FilterButton label="Cerrados" count={metrics.closed} isActive={filter === 'CLOSED'} onClick={() => setFilter('CLOSED')} />
+    <div className="flex h-full w-full flex-col bg-bg">
+      <div className="flex shrink-0 items-center justify-between gap-4 border-b border-border bg-surface px-4">
+        <Tabs items={tabs} value={filter} onChange={setFilter} className="border-b-0" />
+        <div className="flex shrink-0 items-center gap-1">
+          <Button variant={coordinatorViewMode === 'preview' ? 'secondary' : 'ghost'} size="sm" icon={LayoutGrid} onClick={() => useUIStore.getState().setCoordinatorViewMode('preview')} aria-pressed={coordinatorViewMode === 'preview'}>
+            Vista previa
+          </Button>
+          <Button variant={coordinatorViewMode === 'focus' ? 'secondary' : 'ghost'} size="sm" icon={Focus} onClick={() => useUIStore.getState().setCoordinatorViewMode('focus')} aria-pressed={coordinatorViewMode === 'focus'} disabled={focusedChatIds.length === 0} title={focusedChatIds.length === 0 ? 'Selecciona un chat para enfocar' : 'Modo enfoque'}>
+            Enfoque{focusedChatIds.length > 0 && ` · ${focusedChatIds.length}`}
+          </Button>
+        </div>
       </div>
 
-      {/* Main Work Area */}
-      <div className="flex-1 flex overflow-hidden relative z-10">
+      <div className="relative flex flex-1 overflow-hidden">
         {coordinatorViewMode === 'preview' ? (
-          <motion.div
-            layout
-            className="w-full h-full overflow-hidden flex flex-col p-4"
-          >
-            {!['PENDING', 'ON_HOLD', 'CLOSED'].includes(filter) && (
-              <div className="flex items-center justify-between mb-4 px-4 shrink-0">
-                <h2 className="text-xl font-bold bg-gradient-to-r from-sales-slate-100 to-sales-slate-300 bg-clip-text text-transparent flex items-center gap-2">
-                  {filter === 'ALL' ? (isCoordinator ? 'Vista Global' : 'Mis Tickets Activos') :
-                   filter === 'SLA' ? (isCoordinator ? 'Tickets Críticos' : 'Mis Tickets Críticos') :
-                   filter === 'CLOSED_WON' ? (isCoordinator ? 'Ventas Cerradas' : 'Mis Ventas Cerradas') :
-                   (isCoordinator ? 'Agendados' : 'Mis Tickets Agendados')}
-                </h2>
-                <div className="text-sm font-medium text-sales-slate-400 bg-sales-slate-800/50 px-3 py-1 rounded-full border border-sales-slate-700/50">
-                  {filteredConversations.length} {filteredConversations.length === 1 ? 'resultado' : 'resultados'}
-                </div>
+          <div className="flex h-full w-full flex-col overflow-hidden">
+            <div className="flex shrink-0 items-center justify-between px-6 pt-5 pb-3">
+              <div>
+                <Eyebrow tone="muted">{isCoordinator ? 'Vista global' : 'Mis tickets'}</Eyebrow>
+                <h2 className="mt-1 text-lg font-semibold tracking-tight text-fg">{FILTER_LABELS[filter] || 'Conversaciones'}</h2>
               </div>
-            )}
-            
-            {['PENDING', 'ON_HOLD', 'CLOSED'].includes(filter) ? (
-              <div className="flex gap-6 w-full h-full overflow-x-auto custom-scrollbar pb-2 px-2 items-start">
-                {(filter === 'PENDING' ? [
-                  { title: 'Nuevos (Sin Asignar)', statuses: ['PENDING_ASSIGNMENT'] },
-                  { title: 'Escalados (Ayuda)', statuses: ['ESCALATED'] }
-                ] : filter === 'ON_HOLD' ? [
-                  { title: 'Esperando al Cliente', statuses: ['WAITING_CUSTOMER'] },
-                  { title: 'Pausados (Terceros)', statuses: ['ON_HOLD'] }
-                ] : [
-                  { title: 'Ventas Cerradas', statuses: ['CLOSED_WON'] },
-                  { title: 'Cerrados e Inactivos', statuses: ['CLOSED', 'CLOSED_INACTIVE'] },
-                  { title: 'Descartados / Spam', statuses: ['DISCARDED'] }
-                ]).map(col => {
+              <span className="tnum font-mono text-[11px] text-fg-subtle">
+                {filteredConversations.length} {filteredConversations.length === 1 ? 'resultado' : 'resultados'}
+              </span>
+            </div>
+
+            {isKanban ? (
+              <div className="flex h-full w-full items-start gap-4 overflow-x-auto px-6 pb-4 custom-scrollbar">
+                {KANBAN_COLUMNS[filter].map(col => {
                   const colChats = filteredConversations.filter(c => col.statuses.includes(c.status));
                   if (colChats.length === 0) return null;
-                  
                   return (
-                    <div key={col.title} className="flex flex-col min-w-[320px] max-w-[400px] flex-1 shrink-0 max-h-full px-2">
-                      <div className="flex items-center justify-between border-b border-sales-slate-700/50 pb-3 mb-4 shrink-0">
-                        <h3 className="text-sm font-bold text-sales-slate-300 uppercase tracking-wider">{col.title}</h3>
-                        <span className="bg-sales-slate-800 text-sales-slate-400 px-2.5 py-0.5 rounded-full text-xs font-bold shadow-inner border border-sales-slate-700/50">
-                          {colChats.length}
-                        </span>
+                    <div key={col.title} className="flex max-h-full min-w-[320px] max-w-[400px] flex-1 shrink-0 flex-col rounded-lg border border-border bg-surface/50">
+                      <div className="flex shrink-0 items-center justify-between border-b border-border px-3.5 py-2.5">
+                        <Eyebrow>{col.title}</Eyebrow>
+                        <span className="tnum font-mono text-[11px] text-fg-subtle">{colChats.length}</span>
                       </div>
-                      <div className="flex-1 overflow-y-auto custom-scrollbar -mx-2 px-2">
-                        <ChatList
-                          conversations={colChats}
-                          currentConversationIds={focusedChatIds}
-                          onSelect={toggleFocusedChat}
-                          layout="kanban"
-                          groupByVendor={shouldGroup}
-                          vendorMap={vendorsMap}
-                        />
+                      <div className="flex-1 overflow-y-auto p-2 custom-scrollbar">
+                        <ChatList conversations={colChats} currentConversationIds={focusedChatIds} onSelect={toggleFocusedChat} layout="kanban" groupByVendor={shouldGroup} vendorMap={vendorsMap} />
                       </div>
                     </div>
                   );
                 })}
+                {filteredConversations.length === 0 && (
+                  <div className="flex w-full justify-center"><EmptyState icon={LayoutGrid} title="Nada por aquí" description="No hay conversaciones en esta categoría ahora mismo." /></div>
+                )}
               </div>
             ) : (
-              <div className="flex-1 overflow-y-auto custom-scrollbar px-2">
-                <ChatList
-                  conversations={filteredConversations}
-                  currentConversationIds={focusedChatIds}
-                  onSelect={toggleFocusedChat}
-                  layout="grid"
-                  groupByVendor={shouldGroup}
-                  vendorMap={vendorsMap}
-                />
+              <div className="flex-1 overflow-y-auto px-6 pb-6 custom-scrollbar">
+                <ChatList conversations={filteredConversations} currentConversationIds={focusedChatIds} onSelect={toggleFocusedChat} layout="grid" groupByVendor={shouldGroup} vendorMap={vendorsMap} />
               </div>
             )}
-          </motion.div>
+          </div>
         ) : (
-          <motion.div
-            layout
-            className="flex w-full h-full"
-          >
-            {/* Left panel: narrow list */}
-            <div className="flex flex-col shrink-0 z-10 w-80 h-full bg-sales-slate-900/60 border-r border-sales-slate-800 shadow-xl backdrop-blur-xl relative">
-              <div className="flex items-center justify-between p-4 bg-sales-slate-900/80 border-b border-sales-slate-800 shrink-0">
-                <h2 className="text-sm font-bold text-sales-slate-200 uppercase tracking-wider">
-                  {filter === 'ALL' ? 'Todos los Chats' : filter}
-                </h2>
-                <button
-                  onClick={() => useUIStore.getState().setCoordinatorViewMode('preview')}
-                  className="text-xs px-2.5 py-1.5 bg-sales-slate-800 text-sales-slate-300 rounded hover:text-white hover:bg-sales-slate-700 transition-colors shadow-sm border border-sales-slate-700/50"
-                >
-                  Ver Grid
-                </button>
+          <div className="flex h-full w-full">
+            <aside className="relative flex h-full w-80 shrink-0 flex-col border-r border-border bg-surface">
+              <div className="flex h-12 shrink-0 items-center justify-between border-b border-border px-4">
+                <Eyebrow>{FILTER_LABELS[filter] || 'Chats'}</Eyebrow>
+                <span className="tnum font-mono text-[11px] text-fg-subtle">{filteredConversations.length}</span>
               </div>
               <div className="flex-1 overflow-y-auto custom-scrollbar">
-                <ChatList
-                  conversations={filteredConversations}
-                  currentConversationIds={focusedChatIds}
-                  onSelect={toggleFocusedChat}
-                  layout="list"
-                  groupByVendor={shouldGroup}
-                  vendorMap={vendorsMap}
-                />
+                <ChatList conversations={filteredConversations} currentConversationIds={focusedChatIds} onSelect={toggleFocusedChat} layout="list" groupByVendor={shouldGroup} vendorMap={vendorsMap} />
               </div>
+            </aside>
+            <div className="h-full min-w-0 flex-1 overflow-hidden">
+              <FocusPanel vendorMap={vendorsMap} />
             </div>
-            {/* Right panel: Focus Panel */}
-            <div className="flex-1 h-full min-w-0 overflow-hidden bg-[#0A0F1A]">
-              <FocusPanel />
-            </div>
-          </motion.div>
+          </div>
         )}
       </div>
     </div>

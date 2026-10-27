@@ -1,21 +1,32 @@
 import { useEffect, useState } from 'react';
-import { Pencil, X, Trash2 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Pencil, Trash2, Search, Plus, Users, ShieldOff } from 'lucide-react';
 import { get, put } from '../../services/api.js';
 import useAuthStore from '../../stores/useAuthStore.js';
+import { toast } from '../../stores/useToastStore.js';
+import { ROLE_LABELS } from '../../utils/constants.js';
+import ConfirmModal from '../../components/ConfirmModal.jsx';
+import {
+  Badge,
+  Button,
+  EmptyState,
+  Eyebrow,
+  Field,
+  IconButton,
+  Input,
+  Modal,
+  PageHeader,
+  Select,
+  Spinner,
+  Switch,
+} from '../../components/ui/index.js';
 
-const roleLabels = { ADMIN: 'Admin', COORDINATOR: 'Coordinador', VENDOR: 'Vendedor' };
-const badgeColors = {
-  ADMIN: 'bg-sales-coral/20 text-sales-coral',
-  COORDINATOR: 'bg-sales-orange/20 text-sales-orange',
-  VENDOR: 'bg-slate-700 text-sales-slate-300',
-};
+const ROLE_TONES = { ADMIN: 'accent', COORDINATOR: 'info', VENDOR: 'neutral' };
 
 function ConfirmDeactivateModal({ user, onClose, onSaved }) {
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
 
   async function handleConfirm() {
-    setError('');
     setLoading(true);
     try {
       const payload = { isActive: false };
@@ -24,49 +35,26 @@ function ConfirmDeactivateModal({ user, onClose, onSaved }) {
         const body = await res.json();
         throw new Error(body.error?.message || 'Error al borrar usuario');
       }
+      toast.success('Usuario desactivado', { description: user.name });
       onSaved();
       onClose();
     } catch (err) {
-      setError(err.message);
+      toast.error('No se pudo desactivar el usuario', { description: err.message });
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="w-full max-w-sm rounded-xl border border-slate-700 bg-slate-900 p-6 shadow-2xl">
-        <h3 className="text-lg font-semibold text-sales-slate-100 mb-2">Confirmar Eliminación</h3>
-        <p className="text-sm text-sales-slate-400 mb-6">
-          ¿Estás seguro de que deseas desactivar (borrar) al usuario <strong>{user.name}</strong>?
-        </p>
-
-        {error && (
-          <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-400">
-            {error}
-          </div>
-        )}
-
-        <div className="flex gap-3 justify-end">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={loading}
-            className="rounded-lg border border-slate-700 px-4 py-2 text-sm text-sales-slate-400 hover:bg-slate-800 transition-colors"
-          >
-            Cancelar
-          </button>
-          <button
-            type="button"
-            onClick={handleConfirm}
-            disabled={loading}
-            className="rounded-lg bg-red-500/20 px-4 py-2 text-sm font-medium text-red-400 hover:bg-red-500/30 border border-red-500/30 transition-colors disabled:opacity-50"
-          >
-            {loading ? 'Borrando...' : 'Borrar'}
-          </button>
-        </div>
-      </div>
-    </div>
+    <ConfirmModal
+      open
+      title="Desactivar usuario"
+      message={`¿Seguro que deseas desactivar a ${user.name}? Dejará de tener acceso a la plataforma.`}
+      confirmText="Desactivar"
+      onConfirm={handleConfirm}
+      onCancel={onClose}
+      loading={loading}
+    />
   );
 }
 
@@ -132,6 +120,7 @@ function EditUserModal({ user, onClose, onSaved }) {
         const body = await res.json();
         throw new Error(body.error?.message || 'Error al actualizar');
       }
+      toast.success('Usuario actualizado');
       onSaved();
       onClose();
     } catch (err) {
@@ -142,148 +131,105 @@ function EditUserModal({ user, onClose, onSaved }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="w-full max-w-md rounded-xl border border-slate-700 bg-slate-900 p-6 shadow-2xl">
-        <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-sales-slate-100">Editar Usuario</h3>
-          <button onClick={onClose} className="rounded-lg p-1 text-sales-slate-400 hover:bg-slate-800 transition-colors">
-            <X size={20} />
-          </button>
-        </div>
-
-        {error && (
-          <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-400">
-            {error}
-          </div>
-        )}
-
-        <div className="mb-4 flex items-center gap-3">
-          <span className={`inline-block rounded-full px-3 py-1 text-xs font-medium ${badgeColors[role] || ''}`}>
-            {roleLabels[role] || role}
+    <Modal
+      open
+      onClose={onClose}
+      eyebrow="Usuarios"
+      title="Editar usuario"
+      size="lg"
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose} disabled={loading}>Cancelar</Button>
+          <Button variant="primary" type="submit" form="edit-user-form" loading={loading}>Guardar</Button>
+        </>
+      }
+    >
+      <div className="mb-4 flex items-center gap-3">
+        <Badge tone={ROLE_TONES[role] || 'neutral'}>{ROLE_LABELS[role] || role}</Badge>
+        {role === 'COORDINATOR' && (
+          <span className="text-xs text-fg-muted">
+            {vendorCount} vendedor{vendorCount !== 1 ? 'es' : ''} asignado{vendorCount !== 1 ? 's' : ''}
           </span>
-          {role === 'COORDINATOR' && (
-            <span className="text-xs text-sales-slate-400">
-              {vendorCount} vendedor{vendorCount !== 1 ? 'es' : ''} asignado{vendorCount !== 1 ? 's' : ''}
-            </span>
-          )}
+        )}
+      </div>
+
+      {error && (
+        <div className="mb-4 rounded-md border border-danger/40 bg-danger/10 px-3.5 py-2.5 text-sm text-danger" role="alert">
+          {error}
+        </div>
+      )}
+
+      <form id="edit-user-form" onSubmit={handleSubmit} className="space-y-4">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Nombre" required>
+            {(a) => <Input {...a} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />}
+          </Field>
+          <Field label="Correo" required>
+            {(a) => <Input {...a} type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required />}
+          </Field>
+          <Field label="Teléfono">
+            {(a) => <Input {...a} value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />}
+          </Field>
+          <Field label="Contraseña" hint="Déjala en blanco para no cambiarla">
+            {(a) => (
+              <Input
+                {...a}
+                type="password"
+                value={form.password}
+                onChange={(e) => setForm({ ...form, password: e.target.value })}
+                placeholder="Nueva contraseña"
+                autoComplete="new-password"
+              />
+            )}
+          </Field>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="mb-1 block text-sm text-sales-slate-400">Nombre</label>
-            <input
-              value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
-              required
-              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-sales-slate-100 focus:outline-none focus:ring-2 focus:ring-sales-coral/50"
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-sm text-sales-slate-400">Email</label>
-            <input
-              type="email"
-              value={form.email}
-              onChange={(e) => setForm({ ...form, email: e.target.value })}
-              required
-              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-sales-slate-100 focus:outline-none focus:ring-2 focus:ring-sales-coral/50"
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-sm text-sales-slate-400">Teléfono</label>
-            <input
-              value={form.phone}
-              onChange={(e) => setForm({ ...form, phone: e.target.value })}
-              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-sales-slate-100 focus:outline-none focus:ring-2 focus:ring-sales-coral/50"
-            />
-          </div>
+        <Switch checked={isActive} onChange={setIsActive} label="Usuario activo" />
 
-          <div>
-            <label className="mb-1 block text-sm text-sales-slate-400">Contraseña <span className="text-xs text-sales-slate-500">(Dejar en blanco para no cambiarla)</span></label>
-            <input
-              type="password"
-              value={form.password}
-              onChange={(e) => setForm({ ...form, password: e.target.value })}
-              placeholder="Nueva contraseña"
-              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-sales-slate-100 focus:outline-none focus:ring-2 focus:ring-sales-coral/50"
-            />
-          </div>
-
-          <div className="flex items-center gap-3">
-            <input
-              type="checkbox"
-              id="isActiveToggle"
-              checked={isActive}
-              onChange={(e) => setIsActive(e.target.checked)}
-              className="h-4 w-4 rounded border-slate-700 bg-slate-800 text-sales-coral focus:ring-sales-coral/50"
-            />
-            <label htmlFor="isActiveToggle" className="text-sm text-sales-slate-100">
-              Usuario Activo
-            </label>
-          </div>
-
-          {user.role === 'VENDOR' && (
-            <p className="text-xs text-sales-slate-500">
-              El coordinador se asigna automáticamente según el grupo seleccionado.
-            </p>
-          )}
-          {user.role !== 'ADMIN' && allGroups.length > 0 && (
-            <div>
-              <label className="mb-2 block text-sm text-sales-slate-400">
-                {user.role === 'VENDOR' ? 'Grupo' : 'Grupos'}
-              </label>
-              {user.role === 'VENDOR' ? (
-                <select
-                  value={groupIds[0] || ''}
-                  onChange={(e) => handleGroupChange(e.target.value)}
-                  className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-sales-slate-100 focus:outline-none focus:ring-2 focus:ring-sales-coral/50"
-                >
+        {user.role !== 'ADMIN' && allGroups.length > 0 && (
+          <Field
+            label={user.role === 'VENDOR' ? 'Grupo' : 'Grupos'}
+            hint={user.role === 'VENDOR' ? 'El coordinador se asigna automáticamente según el grupo seleccionado.' : undefined}
+          >
+            {(a) =>
+              user.role === 'VENDOR' ? (
+                <Select {...a} value={groupIds[0] || ''} onChange={(e) => handleGroupChange(e.target.value)}>
                   <option value="">Seleccionar grupo</option>
                   {allGroups.map((g) => (
                     <option key={g.id} value={g.id}>{g.name}</option>
                   ))}
-                </select>
+                </Select>
               ) : (
                 <div className="flex flex-wrap gap-2">
                   {allGroups.map((g) => (
-                    <button
+                    <Button
                       key={g.id}
-                      type="button"
+                      size="sm"
+                      variant={groupIds.includes(g.id) ? 'chip-accent' : 'chip'}
                       onClick={() => handleGroupChange(g.id)}
-                      className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-                        groupIds.includes(g.id)
-                          ? 'bg-sales-coral/20 text-sales-coral ring-1 ring-sales-coral/50'
-                          : 'bg-slate-800 text-sales-slate-400 hover:bg-slate-700'
-                      }`}
+                      aria-pressed={groupIds.includes(g.id)}
                     >
                       {g.name}
-                    </button>
+                    </Button>
                   ))}
                 </div>
-              )}
-            </div>
-          )}
-
-          <div className="flex gap-3 pt-2 w-full">
-            <button
-              type="submit"
-              disabled={loading}
-              className="rounded-lg bg-sales-orange px-6 py-2 text-sm font-medium text-white hover:bg-sales-orange-light transition-colors disabled:opacity-50"
-            >
-              {loading ? 'Guardando...' : 'Guardar'}
-            </button>
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-lg border border-slate-700 px-6 py-2 text-sm text-sales-slate-400 hover:bg-slate-800 transition-colors"
-            >
-              Cancelar
-            </button>
-            
-          </div>
-        </form>
-      </div>
-    </div>
+              )
+            }
+          </Field>
+        )}
+      </form>
+    </Modal>
   );
+}
+
+function SkeletonRows({ rows = 5 }) {
+  return Array.from({ length: rows }).map((_, i) => (
+    <tr key={i} className="border-b border-border/70">
+      <td colSpan={7} className="px-4 py-3">
+        <div className="h-5 animate-pulse rounded-md bg-surface-2" />
+      </td>
+    </tr>
+  ));
 }
 
 export default function UserListPage() {
@@ -297,6 +243,7 @@ export default function UserListPage() {
   const [deactivatingUser, setDeactivatingUser] = useState(null);
   const [tenantProfile, setTenantProfile] = useState(null);
   const user = useAuthStore((s) => s.user);
+  const navigate = useNavigate();
 
   async function loadTenantProfile() {
     try {
@@ -305,7 +252,9 @@ export default function UserListPage() {
         const body = await res.json();
         setTenantProfile(body.data);
       }
-    } catch (err) {}
+    } catch {
+      /* silent */
+    }
   }
 
   async function loadUsers(page = 1) {
@@ -327,7 +276,7 @@ export default function UserListPage() {
       }
       setUsers(body.data || []);
       setMeta(body.meta || { total: 0, page: 1, limit: 20 });
-    } catch (err) {
+    } catch {
       setError('Error de conexión. Intenta de nuevo.');
       setUsers([]);
     } finally {
@@ -348,171 +297,149 @@ export default function UserListPage() {
     loadTenantProfile();
   }, []);
 
+  const hasSeatLimit = tenantProfile && tenantProfile.maxUsers !== -1;
+  const seatsFull = hasSeatLimit && tenantProfile.currentUsersCount >= tenantProfile.maxUsers;
+  const isVendor = user?.role === 'VENDOR';
+
   return (
-    <div>
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-sales-slate-100">Usuarios</h1>
-
-        {user?.role !== 'VENDOR' && (
-          <div className="flex items-center gap-4">
-            {tenantProfile && tenantProfile.maxUsers !== -1 && (
-              <span className="text-sm font-medium text-sales-slate-300">
-                Asientos: {tenantProfile.currentUsersCount}/{tenantProfile.maxUsers}
-              </span>
-            )}
-            {tenantProfile && tenantProfile.maxUsers !== -1 && tenantProfile.currentUsersCount >= tenantProfile.maxUsers ? (
-              <a
-                href={undefined}
-                aria-disabled={true}
-                className="rounded-lg bg-slate-700 px-4 py-2 text-sm font-medium text-sales-slate-400 cursor-not-allowed"
-                title="Límite de asientos alcanzado"
-                onClick={(e) => e.preventDefault()}
+    <div className="mx-auto max-w-6xl">
+      <PageHeader
+        eyebrow="Equipo"
+        title="Usuarios"
+        description="Administra las cuentas, roles y grupos de tu equipo."
+        actions={
+          !isVendor && (
+            <>
+              {hasSeatLimit && (
+                <Badge tone={seatsFull ? 'warning' : 'neutral'}>
+                  Asientos {tenantProfile.currentUsersCount}/{tenantProfile.maxUsers}
+                </Badge>
+              )}
+              <Button
+                variant="primary"
+                size="sm"
+                icon={Plus}
+                disabled={!!seatsFull}
+                title={seatsFull ? 'Límite de asientos alcanzado' : undefined}
+                onClick={() => navigate('/users/new')}
               >
-                + Nuevo Usuario
-              </a>
-            ) : (
-              <a
-                href="/users/new"
-                className="rounded-lg bg-sales-orange px-4 py-2 text-sm font-medium text-white hover:bg-sales-orange-light transition-colors"
-              >
-                + Nuevo Usuario
-              </a>
-            )}
-          </div>
-        )}
-      </div>
+                Nuevo usuario
+              </Button>
+            </>
+          )
+        }
+      />
 
-      {user?.role === 'VENDOR' ? (
-        <div className="rounded-lg border border-slate-800 p-8 text-center">
-          <p className="text-sales-slate-400">No tienes acceso a la gestión de usuarios.</p>
+      {isVendor ? (
+        <div className="rounded-lg border border-border bg-surface">
+          <EmptyState icon={ShieldOff} title="Sin acceso" description="No tienes acceso a la gestión de usuarios." />
         </div>
       ) : (
         <>
-          <div className="mb-4 flex gap-3">
-            <input
-              type="text"
-              placeholder="Buscar por nombre o email..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && loadUsers()}
-              className="flex-1 rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-sales-slate-100 placeholder-sales-slate-400 focus:outline-none focus:ring-2 focus:ring-sales-coral/50"
-            />
-            <select
-              value={role}
-              onChange={(e) => setRole(e.target.value)}
-              className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-sales-slate-100 focus:outline-none focus:ring-2 focus:ring-sales-coral/50"
-            >
-              <option value="">Todos los roles</option>
-              <option value="ADMIN">Admin</option>
-              <option value="COORDINATOR">Coordinador</option>
-              <option value="VENDOR">Vendedor</option>
-            </select>
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row">
+            <div className="flex-1">
+              <Input
+                leftIcon={Search}
+                placeholder="Buscar por nombre o correo"
+                aria-label="Buscar usuarios"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && loadUsers()}
+              />
+            </div>
+            <div className="sm:w-52">
+              <Select aria-label="Filtrar por rol" value={role} onChange={(e) => setRole(e.target.value)}>
+                <option value="">Todos los roles</option>
+                <option value="ADMIN">{ROLE_LABELS.ADMIN}</option>
+                <option value="COORDINATOR">{ROLE_LABELS.COORDINATOR}</option>
+                <option value="VENDOR">{ROLE_LABELS.VENDOR}</option>
+              </Select>
+            </div>
           </div>
 
           {error && (
-            <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-400">
+            <div className="mb-4 rounded-md border border-danger/40 bg-danger/10 px-3.5 py-2.5 text-sm text-danger" role="alert">
               {error}
             </div>
           )}
 
-          <div className="overflow-hidden rounded-lg border border-slate-800">
-            <table className="w-full text-sm">
-              <thead className="bg-slate-800 text-sales-slate-400">
-                <tr>
-                  <th className="px-4 py-3 text-left font-medium">Nombre</th>
-                  <th className="px-4 py-3 text-left font-medium">Email</th>
-                  <th className="px-4 py-3 text-left font-medium">Teléfono</th>
-                  <th className="px-4 py-3 text-left font-medium">Rol</th>
-                  <th className="px-4 py-3 text-left font-medium">Grupo(s)</th>
-                  <th className="px-4 py-3 text-left font-medium">Estado</th>
-                  <th className="px-4 py-3 text-right font-medium">Acciones</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-800">
-                {loading ? (
+          <div className="overflow-hidden rounded-lg border border-border bg-surface">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
                   <tr>
-                    <td colSpan={7} className="px-4 py-8 text-center text-sales-slate-400">
-                      Cargando...
-                    </td>
+                    <th className="border-b border-border px-4 py-2.5 text-left"><Eyebrow tone="muted">Nombre</Eyebrow></th>
+                    <th className="border-b border-border px-4 py-2.5 text-left"><Eyebrow tone="muted">Correo</Eyebrow></th>
+                    <th className="border-b border-border px-4 py-2.5 text-left"><Eyebrow tone="muted">Teléfono</Eyebrow></th>
+                    <th className="border-b border-border px-4 py-2.5 text-left"><Eyebrow tone="muted">Rol</Eyebrow></th>
+                    <th className="border-b border-border px-4 py-2.5 text-left"><Eyebrow tone="muted">Grupos</Eyebrow></th>
+                    <th className="border-b border-border px-4 py-2.5 text-left"><Eyebrow tone="muted">Estado</Eyebrow></th>
+                    <th className="border-b border-border px-4 py-2.5 text-right"><Eyebrow tone="muted">Acciones</Eyebrow></th>
                   </tr>
-                ) : users.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="px-4 py-8 text-center text-sales-slate-400">
-                      No hay usuarios
-                    </td>
-                  </tr>
-                ) : (
-                  users.map((u) => (
-                    <tr key={u.id} className="text-sales-slate-300 hover:bg-slate-800/50">
-                      <td className="px-4 py-3 font-medium text-sales-slate-100">{u.name}</td>
-                      <td className="px-4 py-3">{u.email}</td>
-                      <td className="px-4 py-3">{u.phone || '—'}</td>
-                      <td className="px-4 py-3">
-                        <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${badgeColors[u.role] || ''}`}>
-                          {roleLabels[u.role] || u.role}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        {u.groups && u.groups.length > 0 ? (
-                          <div className="flex flex-wrap gap-1">
-                            {u.groups.map((g) => (
-                              <span key={g.id} className="inline-block rounded-full bg-slate-700 px-2 py-0.5 text-xs text-sales-slate-300">
-                                {g.name}
-                              </span>
-                            ))}
-                          </div>
-                        ) : (
-                          <span className="text-sales-slate-500">—</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={`inline-block h-2 w-2 rounded-full ${u.isActive ? 'bg-green-500' : 'bg-red-500'}`} />
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          <button
-                            onClick={() => setEditingUser(u)}
-                            className="rounded-lg p-1.5 text-sales-slate-400 hover:bg-slate-700 hover:text-sales-slate-200 transition-colors"
-                            title="Editar usuario"
-                          >
-                            <Pencil size={16} />
-                          </button>
-                          {u.isActive && u.role !== 'ADMIN' && (
-                            <button
-                              onClick={() => setDeactivatingUser(u)}
-                              className="rounded-lg p-1.5 text-sales-slate-400 hover:bg-red-500/10 hover:text-red-400 transition-colors"
-                              title="Borrar usuario"
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                          )}
-                        </div>
+                </thead>
+                <tbody>
+                  {loading ? (
+                    <SkeletonRows />
+                  ) : users.length === 0 ? (
+                    <tr>
+                      <td colSpan={7}>
+                        <EmptyState
+                          compact
+                          icon={Users}
+                          title="No hay usuarios"
+                          description={search || role ? 'Ningún usuario coincide con la búsqueda.' : 'Aún no has creado usuarios en tu equipo.'}
+                        />
                       </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                  ) : (
+                    users.map((u) => (
+                      <tr key={u.id} className="border-b border-border/70 last:border-0 hover:bg-surface-2/60">
+                        <td className="px-4 py-3 font-medium text-fg">{u.name}</td>
+                        <td className="px-4 py-3 text-fg-muted">{u.email}</td>
+                        <td className="tnum px-4 py-3 font-mono text-xs text-fg-muted">{u.phone || '—'}</td>
+                        <td className="px-4 py-3">
+                          <Badge tone={ROLE_TONES[u.role] || 'neutral'}>{ROLE_LABELS[u.role] || u.role}</Badge>
+                        </td>
+                        <td className="px-4 py-3">
+                          {u.groups && u.groups.length > 0 ? (
+                            <div className="flex flex-wrap gap-1">
+                              {u.groups.map((g) => (
+                                <Badge key={g.id} tone="neutral">{g.name}</Badge>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="text-fg-subtle">—</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          <Badge tone={u.isActive ? 'success' : 'neutral'} dot>{u.isActive ? 'Activo' : 'Inactivo'}</Badge>
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <IconButton icon={Pencil} label="Editar usuario" size="sm" onClick={() => setEditingUser(u)} />
+                            {u.isActive && u.role !== 'ADMIN' && (
+                              <IconButton icon={Trash2} label="Desactivar usuario" size="sm" variant="danger" onClick={() => setDeactivatingUser(u)} />
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
 
           {meta.total > meta.limit && (
-            <div className="mt-4 flex items-center justify-between text-sm text-sales-slate-400">
-              <span>{meta.total} usuarios en total</span>
+            <div className="mt-4 flex items-center justify-between text-sm text-fg-muted">
+              <span className="tnum">{meta.total} usuarios en total</span>
               <div className="flex gap-2">
-                <button
-                  onClick={() => loadUsers(Math.max(1, meta.page - 1))}
-                  disabled={meta.page <= 1}
-                  className="rounded px-3 py-1 bg-slate-800 hover:bg-slate-700 disabled:opacity-50"
-                >
+                <Button variant="outline" size="sm" onClick={() => loadUsers(Math.max(1, meta.page - 1))} disabled={meta.page <= 1}>
                   Anterior
-                </button>
-                <button
-                  onClick={() => loadUsers(meta.page + 1)}
-                  disabled={meta.page * meta.limit >= meta.total}
-                  className="rounded px-3 py-1 bg-slate-800 hover:bg-slate-700 disabled:opacity-50"
-                >
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => loadUsers(meta.page + 1)} disabled={meta.page * meta.limit >= meta.total}>
                   Siguiente
-                </button>
+                </Button>
               </div>
             </div>
           )}

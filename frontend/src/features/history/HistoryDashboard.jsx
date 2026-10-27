@@ -1,6 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { Search, X, Calendar, User, ChevronLeft, ChevronRight, XCircle, MessageSquare } from 'lucide-react';
+import { useState, useEffect, useRef, useMemo } from 'react';
+import { Search, X, ChevronLeft, ChevronRight, MessageSquare, History as HistoryIcon } from 'lucide-react';
 import { get } from '../../services/api.js';
+import { Badge, Button, EmptyState, Eyebrow, IconButton, Input, PageHeader, Select, Spinner, StatusPill } from '../../components/ui/index.js';
+import { formatDate, formatTime } from '../../utils/formatDate.js';
+import { cn } from '../../utils/cn.js';
+
+const SENDER_LABELS = { IA: 'Asistente IA', SYSTEM: 'Sistema', CLIENT: 'Cliente' };
 
 export default function HistoryDashboard() {
   const [searchTerm, setSearchTerm] = useState('');
@@ -18,10 +23,10 @@ export default function HistoryDashboard() {
   const [selectedChat, setSelectedChat] = useState(null);
   const [isPanelOpen, setIsPanelOpen] = useState(false);
   const [localSearch, setLocalSearch] = useState('');
-  
-  const chatContainerRef = React.useRef(null);
 
-  const matchCount = React.useMemo(() => {
+  const chatContainerRef = useRef(null);
+
+  const matchCount = useMemo(() => {
     if (!localSearch || !selectedChat?.messages) return 0;
     const term = localSearch.toLowerCase();
     return selectedChat.messages.reduce((count, msg) => {
@@ -43,7 +48,6 @@ export default function HistoryDashboard() {
 
   const limit = 15;
 
-  // Fetch vendors
   useEffect(() => {
     const fetchVendors = async () => {
       try {
@@ -65,7 +69,6 @@ export default function HistoryDashboard() {
     fetchVendors();
   }, []);
 
-  // Fetch history
   const fetchHistory = async () => {
     setLoading(true);
     try {
@@ -76,7 +79,7 @@ export default function HistoryDashboard() {
         ...(startDate && { startDate }),
         ...(endDate && { endDate }),
         ...(vendor && vendor !== 'AI_ABANDONED' && { vendorId: vendor }),
-        ...(vendor === 'AI_ABANDONED' && { aiAbandoned: 'true' })
+        ...(vendor === 'AI_ABANDONED' && { aiAbandoned: 'true' }),
       });
       const res = await get(`/chat/history?${params.toString()}`);
       if (!res.ok) throw new Error('Error fetching history');
@@ -133,6 +136,15 @@ export default function HistoryDashboard() {
     setTimeout(() => setSelectedChat(null), 300);
   };
 
+  useEffect(() => {
+    if (!isPanelOpen) return;
+    const onKey = (e) => {
+      if (e.key === 'Escape') closePanel();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [isPanelOpen]);
+
   const highlightText = (text, highlight) => {
     if (!highlight || !highlight.trim()) {
       return <span>{text}</span>;
@@ -144,7 +156,7 @@ export default function HistoryDashboard() {
       <span>
         {parts.map((part, i) =>
           part.toLowerCase() === highlight.toLowerCase() ? (
-            <mark key={i} className="bg-yellow-300 text-black px-0.5 rounded">{part}</mark>
+            <mark key={i} className="rounded-sm bg-accent/40 px-0.5 text-inherit">{part}</mark>
           ) : (
             <span key={i}>{part}</span>
           ),
@@ -154,144 +166,124 @@ export default function HistoryDashboard() {
   };
 
   const totalPages = Math.ceil(total / limit) || 1;
+  const hasFilters = Boolean(searchTerm || startDate || endDate || vendor);
 
   return (
-    <div className="flex flex-col h-full bg-slate-950 text-slate-200">
-      <div className="mb-6 flex flex-col gap-4">
-        <h1 className="text-2xl font-bold text-white">Historial de Chats</h1>
+    <div>
+      <PageHeader
+        eyebrow="Conversaciones"
+        title="Historial"
+        description="Busca y revisa conversaciones cerradas de todo el equipo."
+      />
 
-        <form onSubmit={handleSearchSubmit} className="flex flex-wrap gap-4 p-4 bg-slate-900 border border-slate-800 rounded-xl shadow-sm">
-          <div className="flex-1 min-w-[250px] relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-            <input
-              type="text"
-              placeholder="Buscar en todos los chats..."
-              className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-10 pr-4 py-2 text-sm text-slate-200 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-              value={searchTerm}
-              onChange={e => setSearchTerm(e.target.value)}
-            />
-          </div>
+      <form onSubmit={handleSearchSubmit} className="mb-4 flex flex-wrap items-center gap-3">
+        <div className="min-w-[240px] flex-1">
+          <Input
+            leftIcon={Search}
+            placeholder="Buscar en todos los chats"
+            aria-label="Buscar en el historial"
+            value={searchTerm}
+            onChange={e => setSearchTerm(e.target.value)}
+          />
+        </div>
 
-          <div className="flex items-center gap-2">
-            <Calendar className="text-slate-400" size={18} />
-            <input
-              type="date"
-              className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-blue-500"
-              value={startDate}
-              onChange={e => { setStartDate(e.target.value); setPage(1); }}
-            />
-            <span className="text-slate-500">-</span>
-            <input
-              type="date"
-              className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-blue-500"
-              value={endDate}
-              onChange={e => { setEndDate(e.target.value); setPage(1); }}
-            />
-          </div>
+        <div className="flex items-center gap-2">
+          <Input
+            type="date"
+            aria-label="Fecha inicial"
+            className="w-36"
+            value={startDate}
+            onChange={e => { setStartDate(e.target.value); setPage(1); }}
+          />
+          <span className="text-fg-subtle">–</span>
+          <Input
+            type="date"
+            aria-label="Fecha final"
+            className="w-36"
+            value={endDate}
+            onChange={e => { setEndDate(e.target.value); setPage(1); }}
+          />
+        </div>
 
-          <div className="flex items-center gap-2 min-w-[200px]">
-            <User className="text-slate-400" size={18} />
-            <select
-              className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-blue-500"
-              value={vendor}
-              onChange={e => { setVendor(e.target.value); setPage(1); }}
-            >
-              <option value="">Todos los asesores</option>
-              <option value="AI_ABANDONED">Abandonados con IA</option>
-              {vendors.map(v => (
-                <option key={v.id || v._id} value={v.id || v._id}>{v.name || v.username || v.email}</option>
-              ))}
-            </select>
-          </div>
+        <div className="w-full sm:w-56">
+          <Select
+            aria-label="Filtrar por asesor"
+            value={vendor}
+            onChange={e => { setVendor(e.target.value); setPage(1); }}
+          >
+            <option value="">Todos los asesores</option>
+            <option value="AI_ABANDONED">Abandonados con IA</option>
+            {vendors.map(v => (
+              <option key={v.id || v._id} value={v.id || v._id}>{v.name || v.username || v.email}</option>
+            ))}
+          </Select>
+        </div>
 
-          <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
-            Buscar
-          </button>
-        </form>
-      </div>
+        <Button type="submit" variant="primary" icon={Search}>Buscar</Button>
+      </form>
 
-      <div className="flex-1 bg-slate-900 border border-slate-800 rounded-xl overflow-hidden flex flex-col">
-        <div className="overflow-x-auto flex-1">
-          <table className="w-full text-left text-sm whitespace-nowrap">
-            <thead className="bg-slate-950/50 text-slate-400 border-b border-slate-800">
+      <div className="overflow-hidden rounded-lg border border-border bg-surface">
+        <div className="overflow-x-auto">
+          <table className="w-full whitespace-nowrap text-sm">
+            <thead>
               <tr>
-                <th className="px-6 py-4 font-medium">Fecha</th>
-                <th className="px-6 py-4 font-medium">Cliente / Asesor</th>
-                <th className="px-6 py-4 font-medium">Estatus</th>
-                <th className="px-6 py-4 font-medium text-right">Acciones</th>
+                <th className="border-b border-border px-4 py-2.5 text-left"><Eyebrow tone="muted">Fecha</Eyebrow></th>
+                <th className="border-b border-border px-4 py-2.5 text-left"><Eyebrow tone="muted">Cliente / asesor</Eyebrow></th>
+                <th className="border-b border-border px-4 py-2.5 text-left"><Eyebrow tone="muted">Estado</Eyebrow></th>
+                <th className="border-b border-border px-4 py-2.5 text-right"><Eyebrow tone="muted">Acciones</Eyebrow></th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-800/50">
+            <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan="5" className="px-6 py-8 text-center text-slate-500">
-                    <div className="flex items-center justify-center gap-2">
-                      <div className="w-4 h-4 rounded-full border-2 border-blue-500 border-t-transparent animate-spin"></div>
-                      Cargando...
-                    </div>
+                  <td colSpan={4} className="px-4 py-10 text-center">
+                    <Spinner size={20} />
                   </td>
                 </tr>
               ) : historyData.length === 0 ? (
                 <tr>
-                  <td colSpan="5" className="px-6 py-8 text-center text-slate-500">
-                    No se encontraron resultados
+                  <td colSpan={4}>
+                    <EmptyState
+                      compact
+                      icon={HistoryIcon}
+                      title="Sin resultados"
+                      description={hasFilters ? 'Ninguna conversación coincide con los filtros.' : 'Aún no hay conversaciones en el historial.'}
+                    />
                   </td>
                 </tr>
               ) : (
                 historyData.map((chat) => {
-                  const date = new Date(chat.createdAt || chat.updatedAt || Date.now()).toLocaleString();
+                  const date = formatDate(chat.createdAt || chat.updatedAt || Date.now());
                   const clientName = chat.client?.name || chat.clientName || chat.contact?.name || chat.clientPhone || 'Desconocido';
                   const advisorName = chat.vendor?.name || chat.user?.name || chat.vendorName || 'No asignado';
-
-                  let statusLabel = chat.status;
-                  let statusColor = 'text-gray-400';
-                  
-                  switch(chat.status) {
-                    case 'CLOSED_WON':
-                      statusLabel = 'Venta Cerrada';
-                      statusColor = 'text-emerald-400';
-                      break;
-                    case 'DISCARDED':
-                      statusLabel = 'Descartado';
-                      statusColor = 'text-rose-400';
-                      break;
-                    case 'CLOSED':
-                    case 'CLOSED_INACTIVE':
-                      if (chat.status === 'CLOSED_INACTIVE' && !chat.vendorId && !chat.vendor) {
-                        statusLabel = 'Abandonado con IA';
-                        statusColor = 'text-orange-400';
-                      } else {
-                        statusLabel = 'Cerrado';
-                        statusColor = 'text-slate-400';
-                      }
-                      break;
-                  }
+                  const isAiAbandoned = chat.status === 'CLOSED_INACTIVE' && !chat.vendorId && !chat.vendor;
 
                   return (
                     <tr
                       key={chat.id || chat._id}
-                      className="hover:bg-slate-800/30 cursor-pointer transition-colors"
+                      className="cursor-pointer border-b border-border/70 last:border-0 hover:bg-surface-2/60"
                       onClick={() => openChat(chat)}
                     >
-                      <td className="px-6 py-4 text-slate-300">{date}</td>
-                      <td className="px-6 py-4">
-                        <div className="font-medium text-white flex items-center gap-2">
-                          <span>{clientName}</span>
-                          <span className="text-xs text-slate-500 font-normal">({advisorName})</span>
+                      <td className="tnum px-4 py-3 font-mono text-xs text-fg-muted">{date}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-fg">{clientName}</span>
+                          <span className="text-xs text-fg-subtle">· {advisorName}</span>
                         </div>
                         {searchTerm && chat.messages && chat.messages.length > 0 && (
-                          <div className="text-xs text-slate-400 italic mt-1 line-clamp-2 max-w-md">
-                            💬 {highlightText(chat.messages[0].searchSnippet || chat.messages[0].content || chat.messages[0].text, searchTerm)}
+                          <div className="mt-1 flex max-w-md items-start gap-1.5 whitespace-normal text-xs text-fg-muted">
+                            <MessageSquare size={12} className="mt-0.5 shrink-0 text-fg-subtle" aria-hidden />
+                            <span className="line-clamp-2">
+                              {highlightText(chat.messages[0].searchSnippet || chat.messages[0].content || chat.messages[0].text, searchTerm)}
+                            </span>
                           </div>
                         )}
                       </td>
-                      <td className={`px-6 py-4 font-medium ${statusColor}`}>
-                        {statusLabel}
+                      <td className="px-4 py-3">
+                        {isAiAbandoned ? <Badge tone="warning">Abandonado con IA</Badge> : <StatusPill status={chat.status} variant="full" />}
                       </td>
-                      <td className="px-6 py-4 text-right">
-                        <button className="text-blue-400 hover:text-blue-300 text-sm font-medium">
-                          Ver chat
-                        </button>
+                      <td className="px-4 py-3 text-right">
+                        <Button variant="ghost" size="xs">Ver chat</Button>
                       </td>
                     </tr>
                   );
@@ -302,95 +294,95 @@ export default function HistoryDashboard() {
         </div>
 
         {!loading && total > 0 && (
-          <div className="flex items-center justify-between px-6 py-4 border-t border-slate-800 bg-slate-900/50">
-            <div className="text-sm text-slate-400">
-              Mostrando <span className="text-white font-medium">{(page - 1) * limit + 1}</span> a <span className="text-white font-medium">{Math.min(page * limit, total)}</span> de <span className="text-white font-medium">{total}</span> resultados
+          <div className="flex items-center justify-between border-t border-border px-4 py-3 text-sm text-fg-muted">
+            <div>
+              Mostrando <span className="tnum font-medium text-fg">{(page - 1) * limit + 1}</span> a{' '}
+              <span className="tnum font-medium text-fg">{Math.min(page * limit, total)}</span> de{' '}
+              <span className="tnum font-medium text-fg">{total}</span> resultados
             </div>
-            <div className="flex items-center gap-2">
-              <button
+            <div className="flex items-center gap-1">
+              <IconButton
+                icon={ChevronLeft}
+                label="Página anterior"
+                variant="outline"
+                size="sm"
                 onClick={() => setPage(p => Math.max(1, p - 1))}
                 disabled={page === 1}
-                className="p-1.5 rounded-lg border border-slate-700 text-slate-400 hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <ChevronLeft size={18} />
-              </button>
-              <span className="text-sm text-slate-300 px-2">Página {page} de {totalPages}</span>
-              <button
+              />
+              <span className="tnum px-2 text-xs">Página {page} de {totalPages}</span>
+              <IconButton
+                icon={ChevronRight}
+                label="Página siguiente"
+                variant="outline"
+                size="sm"
                 onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                 disabled={page === totalPages}
-                className="p-1.5 rounded-lg border border-slate-700 text-slate-400 hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <ChevronRight size={18} />
-              </button>
+              />
             </div>
           </div>
         )}
       </div>
 
       {isPanelOpen && (
-        <div className="fixed inset-0 z-50 overflow-hidden bg-black/30 backdrop-blur-sm" onClick={closePanel}>
-          <div
-            className="absolute right-0 top-0 bottom-0 w-full max-w-md bg-slate-900 border-l border-slate-800 shadow-2xl flex flex-col transform transition-transform duration-300 ease-in-out"
+        <div className="fixed inset-0 z-50 bg-black/60" onClick={closePanel} role="presentation">
+          <aside
+            role="dialog"
+            aria-modal="true"
+            aria-label="Detalle de conversación"
+            className="absolute inset-y-0 right-0 flex w-full max-w-md flex-col border-l border-border bg-surface"
             onClick={e => e.stopPropagation()}
           >
-            <div className="px-6 py-4 border-b border-slate-800 flex flex-col gap-4 bg-slate-950/80 backdrop-blur-md">
-              <div className="flex items-center justify-between">
-                <h2 className="text-lg font-bold text-white flex-1 truncate">
-                  Chat con {selectedChat?.client?.name || selectedChat?.clientName || 'Cliente'}
-                </h2>
-                <button onClick={closePanel} className="text-slate-400 hover:text-white p-1 rounded-full hover:bg-slate-800 transition-colors">
-                  <X size={20} />
-                </button>
+            <div className="flex shrink-0 flex-col gap-3 border-b border-border px-5 py-3.5">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <Eyebrow tone="muted">Historial</Eyebrow>
+                  <h2 className="truncate text-sm font-semibold text-fg">
+                    Chat con {selectedChat?.client?.name || selectedChat?.clientName || 'Cliente'}
+                  </h2>
+                </div>
+                <IconButton icon={X} label="Cerrar" onClick={closePanel} />
               </div>
 
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
-                <input
-                  type="text"
-                  placeholder="Buscar en esta conversación..."
-                  className="w-full bg-slate-900 border border-slate-700 rounded-full pl-10 pr-[100px] py-1.5 text-sm text-slate-200 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+              <div className="relative flex items-center">
+                <Input
+                  size="sm"
+                  leftIcon={Search}
+                  placeholder="Buscar en esta conversación"
+                  aria-label="Buscar en esta conversación"
+                  className={cn(localSearch && 'pr-40')}
                   value={localSearch}
                   onChange={e => setLocalSearch(e.target.value)}
                 />
                 {localSearch && (
-                  <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
-                    <span className="text-[10px] text-slate-400 font-medium">
+                  <div className="absolute right-1 flex items-center gap-1">
+                    <span className="tnum font-mono text-[10px] text-fg-muted">
                       {matchCount} {matchCount === 1 ? 'coincidencia' : 'coincidencias'}
                     </span>
-                    <button
-                      onClick={() => setLocalSearch('')}
-                      className="text-slate-500 hover:text-slate-300 transition-colors"
-                    >
-                      <XCircle size={16} />
-                    </button>
+                    <IconButton icon={X} label="Limpiar búsqueda" size="sm" onClick={() => setLocalSearch('')} />
                   </div>
                 )}
               </div>
             </div>
 
-            <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-900 custom-scrollbar">
+            <div ref={chatContainerRef} className="flex-1 space-y-3 overflow-y-auto p-4 custom-scrollbar">
               {selectedChat?.messages?.length > 0 ? (
                 selectedChat.messages.map((msg, idx) => {
                   const isClient = msg.senderType === 'CLIENT';
                   const textContent = msg.content || msg.text || '';
-
-                  let senderLabel = 'Asesor';
-                  if (isClient) senderLabel = 'Cliente';
-                  else if (msg.senderType === 'IA') senderLabel = '🤖 Bot (IA)';
-                  else if (msg.senderType === 'SYSTEM') senderLabel = '⚙️ Sistema';
-                  else senderLabel = selectedChat?.vendor?.name ? `👨‍💼 ${selectedChat.vendor.name}` : '👨‍💼 Asesor';
+                  const senderLabel = SENDER_LABELS[msg.senderType] || selectedChat?.vendor?.name || 'Asesor';
 
                   return (
-                    <div key={msg.id || msg._id || idx} className={`flex flex-col ${isClient ? 'items-start' : 'items-end'}`}>
-                      <span className="text-[10px] text-gray-500 mb-1 ml-1 mr-1">
-                        {senderLabel} • {new Date(msg.createdAt || Date.now()).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                    <div key={msg.id || msg._id || idx} className={cn('flex flex-col', isClient ? 'items-start' : 'items-end')}>
+                      <span className="tnum mb-1 px-1 font-mono text-[10px] text-fg-subtle">
+                        {senderLabel} · {formatTime(msg.createdAt || Date.now())}
                       </span>
-                      <div className={`text-sm p-3 rounded-2xl max-w-[85%] border relative ${
-                        isClient 
-                          ? 'bg-black/30 border-white/5 rounded-tl-sm' 
-                          : 'bg-sales-cyan-900/20 border-sales-cyan-500/20 rounded-tr-sm text-sales-cyan-50'
-                      }`}>
-                        <p className="whitespace-pre-wrap break-words">
+                      <div
+                        className={cn(
+                          'max-w-[85%] rounded-lg px-3.5 py-2.5 text-sm',
+                          isClient ? 'rounded-bl-sm bg-surface-3 text-fg' : 'rounded-br-sm bg-surface-inverse text-fg-inverse',
+                        )}
+                      >
+                        <p className="whitespace-pre-wrap break-words leading-relaxed">
                           {highlightText(textContent, localSearch)}
                         </p>
                       </div>
@@ -398,13 +390,10 @@ export default function HistoryDashboard() {
                   );
                 })
               ) : (
-                <div className="h-full flex flex-col items-center justify-center text-slate-500 space-y-3">
-                  <MessageSquare size={48} className="opacity-20" />
-                  <p className="text-sm text-center">No hay mensajes disponibles</p>
-                </div>
+                <EmptyState compact icon={MessageSquare} title="Sin mensajes" description="No hay mensajes disponibles para esta conversación." />
               )}
             </div>
-          </div>
+          </aside>
         </div>
       )}
     </div>

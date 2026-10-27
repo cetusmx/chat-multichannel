@@ -1,17 +1,21 @@
 import { useEffect, useState, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
-import { ShoppingCart, X, CheckCircle, ShieldAlert, EllipsisVertical, Clock, PauseCircle, Calendar, Ban } from 'lucide-react';
+import { ShoppingCart, CheckCircle2, ShieldAlert, MoreHorizontal, Clock, PauseCircle, Calendar, Ban, Play, Undo2, MessageSquare, X } from 'lucide-react';
 import ChatList from '../features/chat/components/ChatList';
 import MessageList from '../features/chat/components/MessageList';
-import ConfirmModal from '../components/ConfirmModal';
-import useChatStore from '../stores/useChatStore';
-
 import CommandPalette from '../features/chat/components/CommandPalette';
 import CartViewer from '../features/chat/components/CartViewer';
+import CatalogPanel from '../features/chat/components/CatalogPanel';
 import ChatActionModals from '../features/chat/components/ChatActionModals';
+import useChatStore from '../stores/useChatStore';
 import useAuthStore from '../stores/useAuthStore';
+import { toast } from '../stores/useToastStore.js';
+import { Button, IconButton, Badge, Eyebrow, EmptyState } from '../components/ui/index.js';
+import { getStatusMeta, isClosedStatus } from '../utils/conversationStatus.js';
+import { getCartItems } from '../utils/cart.js';
+import { cn } from '../utils/cn.js';
 
-const ChatHeaderActions = ({ activeConv, setConfirmClose, setIsCartOpen }) => {
+const ChatHeaderActions = ({ activeConv, setIsCartOpen, showCartButton }) => {
   const { updateChatStatus, isPatching } = useChatStore();
   const user = useAuthStore(s => s.user);
 
@@ -19,14 +23,10 @@ const ChatHeaderActions = ({ activeConv, setConfirmClose, setIsCartOpen }) => {
   const [modalError, setModalError] = useState(null);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef(null);
-
-  // Track previous state for auto-close logic
   const prevStatusRef = useRef(activeConv?.status);
   const prevLastMsgIdRef = useRef(activeConv?.messages?.at(-1)?.id);
+  const modalConvIdRef = useRef(null);
 
-  const socket = useChatStore(s => s.socket);
-
-  // Clear modal on conversation switch
   useEffect(() => {
     setActiveModal(null);
     setModalError(null);
@@ -36,15 +36,13 @@ const ChatHeaderActions = ({ activeConv, setConfirmClose, setIsCartOpen }) => {
     const currentStatus = activeConv?.status;
     const currentLastMsg = activeConv?.messages?.at(-1);
 
-    // If status changed via WebSocket (or other means)
     if (prevStatusRef.current && prevStatusRef.current !== currentStatus) {
       if (activeModal && !isPatching) {
-        window.alert("El estado del chat ha cambiado. La acción ha sido cancelada.");
+        toast.warning('El estado del chat cambió', { description: 'La acción pendiente fue cancelada.' });
         setActiveModal(null);
       }
     }
 
-    // If a new message arrived from the customer while SCHEDULED modal is open
     if (
       currentLastMsg &&
       prevLastMsgIdRef.current !== currentLastMsg.id &&
@@ -52,85 +50,40 @@ const ChatHeaderActions = ({ activeConv, setConfirmClose, setIsCartOpen }) => {
       activeModal === 'SCHEDULED' &&
       !isPatching
     ) {
-      window.alert("El cliente ha enviado un nuevo mensaje. La acción programada ha sido cancelada.");
+      toast.warning('El cliente envió un mensaje', { description: 'La programación fue cancelada.' });
       setActiveModal(null);
     }
 
     prevStatusRef.current = currentStatus;
     prevLastMsgIdRef.current = currentLastMsg?.id;
-  }, [activeConv?.status, activeConv?.messages, activeModal]);
-
-  const isPatchingRef = useRef(isPatching);
-  const activeModalRef = useRef(activeModal);
+  }, [activeConv?.status, activeConv?.messages, activeModal, isPatching]);
 
   useEffect(() => {
-    isPatchingRef.current = isPatching;
-  }, [isPatching]);
-
-  useEffect(() => {
-    activeModalRef.current = activeModal;
-  }, [activeModal]);
-
-  useEffect(() => {
+    if (!isDropdownOpen) return;
     const handleClickOutside = (e) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
-        setIsDropdownOpen(false);
-      }
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) setIsDropdownOpen(false);
     };
-    if (isDropdownOpen) {
-      document.addEventListener('pointerdown', handleClickOutside);
-    }
-    return () => document.removeEventListener('pointerdown', handleClickOutside);
-  }, [isDropdownOpen]);
-
-  useEffect(() => {
-    const handleEsc = (e) => {
-      if (e.key === 'Escape') setIsDropdownOpen(false);
+    const handleEsc = (e) => e.key === 'Escape' && setIsDropdownOpen(false);
+    document.addEventListener('pointerdown', handleClickOutside);
+    document.addEventListener('keydown', handleEsc);
+    return () => {
+      document.removeEventListener('pointerdown', handleClickOutside);
+      document.removeEventListener('keydown', handleEsc);
     };
-    if (isDropdownOpen) document.addEventListener('keydown', handleEsc);
-    return () => document.removeEventListener('keydown', handleEsc);
   }, [isDropdownOpen]);
-
-  const modalConvIdRef = useRef(null);
 
   if (!activeConv) return null;
 
   const isSlaEnabled = user?.tenant?.isSlaEnabled ?? true;
-  const isAssignedToMe = user?.id === activeConv.vendorId;
   const status = activeConv.status;
   const showVendorActions = user?.id === activeConv.vendorId;
   const showAdvanced = isSlaEnabled && showVendorActions;
   const isEmpty = !activeConv?.messages || activeConv.messages.length === 0;
   const disabledTooltip = isEmpty ? 'Aún no hay mensajes' : 'El último mensaje debe ser tuyo';
-  
-  const isCoordinatorOrAdmin = user?.role === 'COORDINATOR' || user?.role === 'ADMIN' || user?.role === 'SUPERADMIN';
-
-  const renderCartButton = () => (
-    <button
-      onClick={() => setIsCartOpen(true)}
-      disabled={isPatching || ['CLOSED', 'CLOSED_INACTIVE', 'DISCARDED', 'CLOSED_WON'].includes(activeConv?.status)}
-      className={`relative z-40 bg-gradient-to-r from-sales-cyan-600 to-sales-blue-600 text-white w-14 h-14 rounded-full shadow-[0_0_12px_rgba(6,182,212,0.6)] border border-sales-cyan-400/50 flex flex-col items-center justify-center gap-0.5 ${
-        isPatching || ['CLOSED', 'CLOSED_INACTIVE', 'DISCARDED', 'CLOSED_WON'].includes(activeConv?.status) 
-        ? 'opacity-50 cursor-not-allowed' 
-        : 'cursor-pointer hover:from-sales-cyan-500 hover:to-sales-blue-500 transition-all duration-300 hover:scale-110 active:scale-95'
-      }`}
-      title={['CLOSED', 'CLOSED_INACTIVE', 'DISCARDED', 'CLOSED_WON'].includes(activeConv?.status) ? "Carrito deshabilitado en chats cerrados" : "Ver Carrito"}
-    >
-      {(() => {
-        const cData = activeConv?.client?.cartData;
-        const items = Array.isArray(cData) ? cData : (cData?.items || []);
-        if (items.length > 0) {
-          return (
-            <span className="text-[12px] font-medium leading-none text-white/90 drop-shadow-sm mt-0.5">
-              {items.length}
-            </span>
-          );
-        }
-        return <span className="h-[12px] mt-0.5"></span>;
-      })()}
-      <ShoppingCart className="w-6 h-6 drop-shadow-md" />
-    </button>
-  );
+  const isCoordinatorOrAdmin = ['COORDINATOR', 'ADMIN', 'SUPERADMIN'].includes(user?.role);
+  const closed = isClosedStatus(status);
+  const isVendorLast = activeConv?.messages?.at(-1)?.senderType === 'VENDOR';
+  const cartCount = getCartItems(activeConv.client).length;
 
   const handleAction = async (payload) => {
     setActiveModal(null);
@@ -138,20 +91,18 @@ const ChatHeaderActions = ({ activeConv, setConfirmClose, setIsCartOpen }) => {
     try {
       await updateChatStatus(activeConv.id, payload);
     } catch (e) {
-      window.alert("Error de API: " + e.message);
+      toast.error('No se pudo actualizar el chat', { description: e.message });
     }
   };
 
   const handleModalSubmit = async (payload) => {
     setModalError(null);
     try {
-      if (payload.status) {
-        prevStatusRef.current = payload.status;
-      }
+      if (payload.status) prevStatusRef.current = payload.status;
       await updateChatStatus(modalConvIdRef.current || activeConv.id, payload);
       setActiveModal(null);
     } catch (e) {
-       setModalError("Error de API: " + e.message);
+      setModalError('Error de API: ' + e.message);
     }
   };
 
@@ -161,195 +112,95 @@ const ChatHeaderActions = ({ activeConv, setConfirmClose, setIsCartOpen }) => {
     setModalError(null);
   };
 
-  if (status === 'PENDING_ASSIGNMENT') {
-    return (
-      <div className="flex items-center gap-2">
-        {renderCartButton()}
-      </div>
-    );
+  const cartButton = showCartButton && (
+    <div className="relative">
+      <IconButton
+        icon={ShoppingCart}
+        label={closed ? 'Carrito deshabilitado en chats cerrados' : 'Ver carrito'}
+        variant="outline"
+        size="lg"
+        onClick={() => setIsCartOpen(true)}
+        disabled={isPatching || closed}
+      />
+      {cartCount > 0 && (
+        <span className="tnum pointer-events-none absolute -right-1 -top-1 rounded-sm bg-accent px-1 font-mono text-[10px] font-semibold leading-4 text-accent-fg">{cartCount}</span>
+      )}
+    </div>
+  );
+
+  if (status === 'PENDING_ASSIGNMENT' || closed) {
+    return <div className="flex items-center gap-2">{cartButton}</div>;
   }
 
   if (status === 'ESCALATED') {
     return (
       <div className="flex items-center gap-2">
-        <div className="bg-sales-coral-500/20 border border-sales-coral-500 text-sales-coral-400 px-4 py-2 rounded-lg font-bold text-sm shadow-sm flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-sales-coral-400 animate-pulse"></span>
-          Escalado - Esperando al Coordinador
-        </div>
+        <Badge tone="solid-danger" dot>Escalado · esperando coordinador</Badge>
         {isCoordinatorOrAdmin && (
-          <button
-            onClick={() => handleAction({ status: 'ACTIVE' })}
-            disabled={isPatching}
-            className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded font-medium disabled:opacity-50 text-sm transition-colors"
-          >
-            Devolver a Vendedor
-          </button>
+          <Button variant="success" size="sm" icon={Undo2} loading={isPatching} onClick={() => handleAction({ status: 'ACTIVE' })}>
+            Devolver a vendedor
+          </Button>
         )}
-        {renderCartButton()}
+        {cartButton}
       </div>
     );
   }
-
-  if (status === 'CLOSED' || status === 'CLOSED_INACTIVE' || status === 'DISCARDED' || status === 'CLOSED_WON') {
-    return (
-      <div className="flex items-center gap-2">
-        {renderCartButton()}
-      </div>
-    );
-  }
-
-  const isVendorLast = activeConv?.messages?.at(-1)?.senderType === 'VENDOR';
 
   if (['ON_HOLD', 'WAITING_CUSTOMER', 'SCHEDULED'].includes(status)) {
-    let label = '';
-    let colorClass = '';
-    let dotClass = '';
-    
-    if (status === 'WAITING_CUSTOMER') {
-      label = 'Esperando al Cliente';
-      colorClass = 'bg-sales-amber-500/20 border-sales-amber-500 text-sales-amber-400';
-      dotClass = 'bg-sales-amber-400';
-    } else if (status === 'ON_HOLD') {
-      label = 'En Espera (Pausado)';
-      colorClass = 'bg-sales-purple-500/20 border-sales-purple-500 text-sales-purple-400';
-      dotClass = 'bg-sales-purple-400';
-    } else {
-      label = 'Programado';
-      colorClass = 'bg-sales-cyan-500/20 border-sales-cyan-500 text-sales-cyan-400';
-      dotClass = 'bg-sales-cyan-400';
-    }
-
+    const meta = getStatusMeta(status);
     return (
       <div className="flex items-center gap-2">
-        <div className={`border px-4 py-2 rounded-lg font-bold text-sm shadow-sm flex items-center gap-2 ${colorClass}`}>
-          <span className={`w-2 h-2 rounded-full animate-pulse ${dotClass}`}></span>
-          {label}
-        </div>
+        <Badge tone={meta.tone} dot>{meta.label}</Badge>
         {showVendorActions && (
-          <button
-            onClick={() => handleAction({ status: 'ACTIVE' })}
-            disabled={isPatching || isEmpty}
-            aria-disabled={isPatching || isEmpty ? "true" : "false"}
-            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded font-medium disabled:opacity-50 flex items-center gap-2 text-sm"
-            title={isEmpty ? disabledTooltip : 'Reanudar'}
-          >
-            {isPatching && <span className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full" />}
+          <Button variant="success" size="sm" icon={Play} loading={isPatching} disabled={isEmpty} title={isEmpty ? disabledTooltip : 'Reanudar'} onClick={() => handleAction({ status: 'ACTIVE' })}>
             Reanudar
-          </button>
+          </Button>
         )}
-        {renderCartButton()}
+        {cartButton}
       </div>
     );
   }
 
-
+  const menuItem = 'flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-fg transition-colors hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-40';
 
   return (
     <>
       <div className="flex items-center gap-2">
         {showVendorActions && (
           <>
-            <button
-              onClick={() => openModal('RESOLVE')}
-              disabled={isPatching || isEmpty}
-              aria-disabled={isPatching || isEmpty ? "true" : "false"}
-              className="px-3 py-1.5 bg-sales-slate-800 hover:bg-emerald-600/90 text-emerald-500 hover:text-white rounded border border-emerald-500/30 hover:border-emerald-500 transition-colors flex items-center gap-1.5 disabled:opacity-50 text-sm"
-              title={isEmpty ? disabledTooltip : "Resolver"}
-            >
-              {isPatching ? (
-                <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-emerald-500"></span>
-              ) : (
-                <CheckCircle className="w-4 h-4" />
-              )}
+            <Button variant="success" size="sm" icon={CheckCircle2} loading={isPatching} disabled={isEmpty} title={isEmpty ? disabledTooltip : 'Marcar como resuelto'} onClick={() => openModal('RESOLVE')}>
               Resolver
-            </button>
-
-            <button
-              onClick={() => handleAction({ status: 'ESCALATED' })}
-              disabled={isPatching || isEmpty}
-              aria-disabled={isPatching || isEmpty ? "true" : "false"}
-              className="px-3 py-1.5 bg-sales-slate-800 hover:bg-sales-coral-600/90 text-sales-coral-500 hover:text-white rounded border border-sales-coral-500/30 hover:border-sales-coral-500 transition-colors flex items-center gap-1.5 disabled:opacity-50 text-sm"
-              title={isEmpty ? disabledTooltip : "Escalar"}
-            >
-              {isPatching ? (
-                <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-sales-coral-500"></span>
-              ) : (
-                <ShieldAlert className="w-4 h-4" />
-              )}
+            </Button>
+            <Button variant="danger" size="sm" icon={ShieldAlert} loading={isPatching} disabled={isEmpty} title={isEmpty ? disabledTooltip : 'Escalar a coordinador'} onClick={() => handleAction({ status: 'ESCALATED' })}>
               Escalar
-            </button>
+            </Button>
           </>
         )}
 
         {showAdvanced && (
           <div className="relative" ref={dropdownRef}>
-            <button
-              onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-              disabled={isPatching}
-              aria-expanded={isDropdownOpen}
-              aria-haspopup="menu"
-              className="px-3 py-1.5 bg-sales-slate-800 hover:bg-sales-slate-700 text-sales-slate-300 rounded border border-sales-slate-700 transition-colors disabled:opacity-50 flex items-center gap-1.5 text-sm"
-            >
-              Más acciones
-              {isPatching ? (
-                <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-sales-slate-300"></span>
-              ) : (
-                <EllipsisVertical className="w-4 h-4" />
-              )}
-            </button>
+            <IconButton icon={MoreHorizontal} label="Más acciones" variant="outline" size="lg" onClick={() => setIsDropdownOpen(!isDropdownOpen)} disabled={isPatching} aria-expanded={isDropdownOpen} aria-haspopup="menu" />
             {isDropdownOpen && (
-              <div role="menu" className="absolute right-0 mt-2 w-56 bg-sales-slate-800 border border-sales-slate-700 rounded shadow-xl z-[60] overflow-hidden">
-                <button
-                  role="menuitem"
-                  disabled={!isVendorLast || isPatching || isEmpty}
-                  aria-disabled={!isVendorLast || isPatching || isEmpty ? "true" : "false"}
-                  onClick={() => { setIsDropdownOpen(false); handleAction({ status: 'WAITING_CUSTOMER' }); }}
-                  className="w-full text-left px-4 py-2 hover:bg-sales-slate-700 text-sm text-sales-slate-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                  title={!isVendorLast || isEmpty ? disabledTooltip : ''}
-                >
-                  <Clock className="w-4 h-4" />
-                  Esperando al Cliente
+              <div role="menu" className="absolute right-0 z-[60] mt-2 w-60 overflow-hidden rounded-lg border border-border bg-surface py-1 shadow-2xl shadow-black/40">
+                <button role="menuitem" className={menuItem} disabled={!isVendorLast || isPatching || isEmpty} title={!isVendorLast || isEmpty ? disabledTooltip : ''} onClick={() => { setIsDropdownOpen(false); handleAction({ status: 'WAITING_CUSTOMER' }); }}>
+                  <Clock size={14} className="text-fg-muted" /> Esperando al cliente
                 </button>
-                <button
-                  role="menuitem"
-                  disabled={isPatching || isEmpty}
-                  aria-disabled={isPatching || isEmpty ? "true" : "false"}
-                  onClick={() => { setIsDropdownOpen(false); openModal('ON_HOLD'); }}
-                  className="w-full text-left px-4 py-2 hover:bg-sales-slate-700 text-sm text-sales-slate-200 disabled:opacity-50 flex items-center gap-2"
-                  title={isEmpty ? disabledTooltip : ''}
-                >
-                  <PauseCircle className="w-4 h-4" />
-                  Poner en Espera
+                <button role="menuitem" className={menuItem} disabled={isPatching || isEmpty} title={isEmpty ? disabledTooltip : ''} onClick={() => { setIsDropdownOpen(false); openModal('ON_HOLD'); }}>
+                  <PauseCircle size={14} className="text-fg-muted" /> Poner en espera
                 </button>
-                <button
-                  role="menuitem"
-                  disabled={!isVendorLast || isPatching || isEmpty}
-                  aria-disabled={!isVendorLast || isPatching || isEmpty ? "true" : "false"}
-                  onClick={() => { setIsDropdownOpen(false); openModal('SCHEDULED'); }}
-                  className="w-full text-left px-4 py-2 hover:bg-sales-slate-700 text-sm text-sales-slate-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                  title={!isVendorLast || isEmpty ? disabledTooltip : ''}
-                >
-                  <Calendar className="w-4 h-4" />
-                  Programado
+                <button role="menuitem" className={menuItem} disabled={!isVendorLast || isPatching || isEmpty} title={!isVendorLast || isEmpty ? disabledTooltip : ''} onClick={() => { setIsDropdownOpen(false); openModal('SCHEDULED'); }}>
+                  <Calendar size={14} className="text-fg-muted" /> Agendar seguimiento
                 </button>
-                <div className="border-t border-sales-slate-700 my-1"></div>
-                <button
-                  role="menuitem"
-                  disabled={isPatching || isEmpty}
-                  aria-disabled={isPatching || isEmpty ? "true" : "false"}
-                  onClick={() => { setIsDropdownOpen(false); openModal('DISCARDED'); }}
-                  className="w-full text-left px-4 py-2 hover:bg-red-900/50 text-sm text-red-500 disabled:opacity-50 flex items-center gap-2"
-                  title={isEmpty ? disabledTooltip : ''}
-                >
-                  <Ban className="w-4 h-4" />
-                  Descartar / Spam
+                <div className="my-1 border-t border-border" />
+                <button role="menuitem" className={cn(menuItem, 'text-danger hover:bg-danger/10')} disabled={isPatching || isEmpty} title={isEmpty ? disabledTooltip : ''} onClick={() => { setIsDropdownOpen(false); openModal('DISCARDED'); }}>
+                  <Ban size={14} /> Descartar / spam
                 </button>
               </div>
             )}
           </div>
         )}
 
-        {renderCartButton()}
+        {cartButton}
       </div>
       <ChatActionModals
         activeModal={activeModal}
@@ -363,13 +214,12 @@ const ChatHeaderActions = ({ activeConv, setConfirmClose, setIsCartOpen }) => {
 };
 
 /**
- * ChatView - Vista principal para la gestión de mensajería (WhatsApp MVP)
+ * ChatView - Vendor workspace: inbox, conversation and catalog rail.
  *
  * @component
  */
 export default function ChatView() {
   const [isCartOpen, setIsCartOpen] = useState(false);
-  const [confirmClose, setConfirmClose] = useState(false);
   const {
     conversations,
     currentConversationId,
@@ -381,18 +231,15 @@ export default function ChatView() {
     uploadingIds,
     errorMsg,
     clearError,
-    initializeSocket,
-    disconnectSocket,
     hasMore,
     loadMoreMessages,
     isLoadingMore,
-    resolveConversation,
   } = useChatStore();
+  const user = useAuthStore((s) => s.user);
 
   const location = useLocation();
 
   useEffect(() => {
-    // Solo recargar conversaciones al montar la vista de chat para tener datos frescos (opcional, App.jsx ya lo hace)
     fetchConversations().then(() => {
       if (location.state?.conversationId) {
         selectConversation(location.state.conversationId);
@@ -405,90 +252,73 @@ export default function ChatView() {
   }, [fetchConversations, location.state?.conversationId, location.state?.draftClient, selectConversation]);
 
   const activeConv = conversations.find(c => c.id === currentConversationId);
+  const closed = isClosedStatus(activeConv?.status);
+  const openCount = conversations.filter((c) => !isClosedStatus(c.status)).length;
 
   return (
     <>
       <CommandPalette />
-      <div className="flex h-full w-full min-w-0 bg-sales-slate-900 rounded-lg overflow-hidden border border-sales-slate-800 shadow-xl">
-        {/* Columna Izquierda: Lista de Conversaciones */}
-        <div className="flex flex-col shrink-0 z-10 w-80 h-full bg-sales-slate-900/40 border-r border-sales-slate-800 shadow-lg backdrop-blur-md">
-        <div className="flex items-center justify-between p-4 bg-sales-slate-900/60 border-b border-sales-slate-800">
-          <h2 className="text-xl font-bold text-sales-slate-100">Bandeja de Entrada</h2>
-        </div>
-        <div className="flex-1 overflow-y-auto custom-scrollbar">
-          <ChatList
-            conversations={conversations}
-            currentConversationId={currentConversationId}
-            onSelect={selectConversation}
-          />
-        </div>
-      </div>
+      <div className="flex h-full w-full min-w-0 bg-bg">
+        <aside className="flex h-full w-80 shrink-0 flex-col border-r border-border bg-surface">
+          <div className="flex h-12 shrink-0 items-center justify-between border-b border-border px-4">
+            <Eyebrow>Bandeja</Eyebrow>
+            <span className="tnum font-mono text-[11px] text-fg-subtle">{openCount} {openCount === 1 ? 'abierto' : 'abiertos'}</span>
+          </div>
+          <div className="flex-1 overflow-y-auto custom-scrollbar">
+            <ChatList conversations={conversations} currentConversationId={currentConversationId} onSelect={selectConversation} />
+          </div>
+        </aside>
 
-      {/* Columna Derecha: Mensajes Activos */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        {currentConversationId ? (
-          <div className="relative flex h-full w-full min-w-0 overflow-x-auto">
-            <div className="flex flex-col relative flex-1 h-full max-w-full bg-sales-slate-900/50">
-              <MessageList
-                conversationId={currentConversationId}
-                messages={messages}
-                onSendMessage={sendMessage}
-                onSendMedia={sendMedia}
-                isUploading={!!uploadingIds[currentConversationId]}
-                errorMsg={errorMsg}
-                clearError={clearError}
-                clientName={activeConv?.client?.name || activeConv?.client?.phoneNumber}
-                hasMore={hasMore[currentConversationId] || false}
-                loadMoreMessages={() => loadMoreMessages(currentConversationId)}
-                isLoadingMore={isLoadingMore}
-                disabledInput={['CLOSED', 'CLOSED_INACTIVE', 'CLOSED_WON', 'DISCARDED'].includes(activeConv?.status)}
-                  conversationStatus={activeConv?.status}
-                  vendorId={activeConv?.vendorId}
-                headerActions={
-                  <div className="flex items-center gap-3">
-                    <ChatHeaderActions
-                      activeConv={activeConv}
-                      setConfirmClose={setConfirmClose}
-                      setIsCartOpen={setIsCartOpen}
-                    />
-                  </div>
-                }
-              />
+        <section className="flex min-w-0 flex-1 flex-col overflow-hidden">
+          {currentConversationId ? (
+            <MessageList
+              conversationId={currentConversationId}
+              conversation={activeConv}
+              messages={messages}
+              onSendMessage={sendMessage}
+              onSendMedia={sendMedia}
+              isUploading={!!uploadingIds[currentConversationId]}
+              errorMsg={errorMsg}
+              clearError={clearError}
+              clientName={activeConv?.client?.name || activeConv?.client?.phoneNumber}
+              hasMore={hasMore[currentConversationId] || false}
+              loadMoreMessages={() => loadMoreMessages(currentConversationId)}
+              isLoadingMore={isLoadingMore}
+              disabledInput={closed}
+              conversationStatus={activeConv?.status}
+              vendorName={activeConv?.vendorId === user?.id ? user?.name : undefined}
+              headerActions={<ChatHeaderActions activeConv={activeConv} setIsCartOpen={setIsCartOpen} showCartButton />}
+            />
+          ) : (
+            <div className="bg-grid flex h-full items-center justify-center">
+              <EmptyState icon={MessageSquare} eyebrow="Bandeja de ventas" title="Selecciona una conversación" description="Elige un chat de la lista para ver el historial, el carrito y las acciones disponibles." />
             </div>
+          )}
+        </section>
 
-            {/* Overlay Drawer para el Carrito */}
-            <>
-              {/* Backdrop oscuro */}
-              <div
-                className={`fixed inset-0 bg-black/50 backdrop-blur-sm z-40 transition-opacity duration-300 ${isCartOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
-                onClick={() => setIsCartOpen(false)}
-              />
-
-              {/* Panel lateral */}
-              <div
-                className={`fixed top-0 right-0 h-full z-50 transform transition-transform duration-300 ease-in-out shadow-2xl flex flex-col ${isCartOpen ? 'translate-x-0' : 'translate-x-full'}`}
-                style={{ width: 'min(90vw, 420px)' }}
-              >
-                <div className="flex-1 bg-sales-slate-800 flex flex-col overflow-hidden relative">
-                  {activeConv?.client && (
-                    <CartViewer
-                      cartData={activeConv.client.cartData}
-                      client={activeConv.client}
-                      onClose={() => setIsCartOpen(false)}
-                    />
-                  )}
-                </div>
-              </div>
-            </>
-          </div>
-        ) : (
-          <div className="flex-1 flex items-center justify-center bg-sales-slate-900 text-sales-slate-500">
-            Selecciona una conversación para comenzar
-          </div>
+        {activeConv?.client && (
+          <aside className="hidden h-full w-72 shrink-0 border-l border-border xl:flex">
+            <CatalogPanel client={activeConv.client} conversationId={activeConv.id !== 'draft' ? activeConv.id : null} disabled={closed} onOpenCart={() => setIsCartOpen(true)} />
+          </aside>
         )}
-      </div>
-    </div>
 
+        <div
+          className={cn('fixed inset-0 z-40 bg-black/50 transition-opacity duration-200', isCartOpen ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0')}
+          onClick={() => setIsCartOpen(false)}
+          aria-hidden
+        />
+        <div
+          role="dialog"
+          aria-label="Carrito"
+          aria-hidden={!isCartOpen}
+          className={cn('fixed right-0 top-0 z-50 flex h-full flex-col border-l border-border bg-surface shadow-2xl shadow-black/50 transition-transform duration-200 ease-out', isCartOpen ? 'translate-x-0' : 'translate-x-full')}
+          style={{ width: 'min(90vw, 440px)' }}
+        >
+          {activeConv?.client && isCartOpen && (
+            <CartViewer cartData={activeConv.client.cartData} client={activeConv.client} onClose={() => setIsCartOpen(false)} />
+          )}
+        </div>
+      </div>
     </>
   );
 }

@@ -1,12 +1,32 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { get, post } from '../services/api';
-import { 
-  ChevronLeft, MessageSquare, ShoppingCart, User, 
-  Phone, CheckCircle, ArrowRight, Clock, Search,
-  Paperclip, Image as ImageIcon, ChevronDown, ChevronUp, Calendar, XCircle
+import { get } from '../services/api';
+import {
+  ChevronLeft, MessageSquare, ShoppingCart, User,
+  Phone, CheckCircle, Clock, Search,
+  Paperclip, ChevronDown, ChevronUp, X, AlertCircle,
 } from 'lucide-react';
 import SecureMedia from '../components/SecureMedia';
+import { Avatar, Badge, Button, EmptyState, Eyebrow, IconButton, Input, Spinner, StatusPill } from '../components/ui/index.js';
+import { formatDate, formatMoney, formatTime } from '../utils/formatDate.js';
+import { cn } from '../utils/cn.js';
+
+const SENDER_LABELS = { IA: 'Asistente IA', SYSTEM: 'Sistema', CLIENT: 'Cliente' };
+
+function ProfileShell({ onBack, title, children }) {
+  return (
+    <div className="flex h-full flex-col bg-bg">
+      <div className="flex shrink-0 items-center gap-3 border-b border-border bg-surface px-5 py-3">
+        <IconButton icon={ChevronLeft} label="Volver a clientes" onClick={onBack} />
+        <div className="min-w-0">
+          <Eyebrow tone="muted">Clientes</Eyebrow>
+          <h1 className="truncate text-sm font-semibold text-fg">{title}</h1>
+        </div>
+      </div>
+      {children}
+    </div>
+  );
+}
 
 export default function ClientProfile() {
   const { id } = useParams();
@@ -14,7 +34,7 @@ export default function ClientProfile() {
   const [client, setClient] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isError, setIsError] = useState(false);
-  const [isStartingChat, setIsStartingChat] = useState(false);
+  const [isStartingChat] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedChats, setExpandedChats] = useState({});
   const [startDate, setStartDate] = useState('');
@@ -27,13 +47,13 @@ export default function ClientProfile() {
   useEffect(() => {
     if (!id) return;
     const controller = new AbortController();
-    
+
     const fetchClient = async () => {
       setIsLoading(true);
       setIsError(false);
       try {
         const response = await get(`/clients/${id}`, {
-          signal: controller.signal
+          signal: controller.signal,
         });
         if (!response.ok) {
           if (response.status !== 499) setIsError(true);
@@ -43,7 +63,7 @@ export default function ClientProfile() {
         setClient(data.data);
       } catch (error) {
         if (error.name !== 'AbortError') {
-          console.error("Error fetching client details:", error);
+          console.error('Error fetching client details:', error);
           setIsError(true);
         }
       } finally {
@@ -59,14 +79,12 @@ export default function ClientProfile() {
     navigate('/chat', { state: { draftClient: client } });
   };
 
-  // Filter conversations and messages based on searchQuery and date range
   const filteredConversations = useMemo(() => {
     if (!client?.conversations) return [];
-    
+
     let result = client.conversations;
 
     if (startDate || endDate) {
-      // Create local date string YYYY-MM-DD from the createdAt timestamp to match date picker
       result = result.filter(c => {
         const d = new Date(c.createdAt);
         const localDate = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
@@ -79,35 +97,32 @@ export default function ClientProfile() {
     if (!searchQuery.trim()) return result;
 
     const query = searchQuery.toLowerCase();
-    
+
     return result.map(conv => {
-      // Filter messages that match the query
-      const matchingMessages = conv.messages?.filter(m => 
-        m.content.toLowerCase().includes(query)
+      const matchingMessages = conv.messages?.filter(m =>
+        m.content.toLowerCase().includes(query),
       ) || [];
-      
-      // If the conversation metadata itself matches or if it has matching messages
-      const matchesMeta = 
+
+      const matchesMeta =
         conv.status.toLowerCase().includes(query) ||
         (conv.vendor?.name || '').toLowerCase().includes(query);
 
       if (matchesMeta || matchingMessages.length > 0) {
         return {
           ...conv,
-          matchingMessages: matchingMessages
+          matchingMessages: matchingMessages,
         };
       }
       return null;
     }).filter(Boolean);
-  }, [client, searchQuery]);
+  }, [client, searchQuery, startDate, endDate]);
 
   const totalMessageMatches = useMemo(() => {
     if (!searchQuery.trim() || !filteredConversations) return 0;
-    
-    // Escape special characters to prevent regex errors
+
     const escapedQuery = searchQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const regex = new RegExp(escapedQuery, 'gi');
-    
+
     return filteredConversations.reduce((acc, conv) => {
       const msgs = conv.messages || [];
       const matchesInConv = msgs.reduce((sum, m) => {
@@ -120,430 +135,319 @@ export default function ClientProfile() {
 
   if (isLoading) {
     return (
-      <div className="flex h-full items-center justify-center">
-        <span className="animate-spin rounded-full h-12 w-12 border-b-2 border-sales-cyan-500" />
+      <div className="flex h-full items-center justify-center bg-bg">
+        <Spinner size={24} />
       </div>
     );
   }
 
   if (isError || !client) {
     return (
-      <div className="p-6">
-        <button onClick={() => navigate('/clients')} className="flex items-center text-gray-400 hover:text-white mb-6">
-          <ChevronLeft className="w-5 h-5 mr-1" /> Volver al Directorio
-        </button>
-        <div className="bg-red-500/10 border border-red-500/20 text-red-400 p-4 rounded-xl text-center">
-          Ocurrió un error al cargar el expediente del cliente.
+      <ProfileShell onBack={() => navigate('/clients')} title="Expediente del cliente">
+        <div className="flex flex-1 items-center justify-center p-6">
+          <EmptyState
+            icon={AlertCircle}
+            title="No se pudo cargar el expediente"
+            description="Ocurrió un error al cargar la información del cliente. Intenta de nuevo."
+            action={<Button variant="outline" size="sm" icon={ChevronLeft} onClick={() => navigate('/clients')}>Volver a clientes</Button>}
+          />
         </div>
-      </div>
+      </ProfileShell>
     );
   }
 
+  const successfulPurchases = client.conversations?.filter(c => c.status === 'CLOSED_WON').length || 0;
+  const shipping = client.cartData?.shippingAddress;
+  const billing = client.cartData?.billingAddress;
+  const hasDateFilter = Boolean(startDate || endDate);
+
   return (
-    <div className="flex flex-col h-full bg-sales-slate-900 rounded-2xl border border-white/10 overflow-hidden">
-      {/* Header */}
-      <div className="bg-white/5 border-b border-white/10 px-6 py-4 flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-4">
-          <button 
-            onClick={() => navigate('/clients')} 
-            className="p-2 -ml-2 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
-          >
-            <ChevronLeft className="w-5 h-5" />
-          </button>
-          <h1 className="text-xl font-bold text-white flex items-center gap-2">
-            <User className="w-5 h-5 text-sales-cyan-400" />
-            Expediente del Cliente
-          </h1>
-        </div>
-      </div>
-
-      {/* Main Split Content */}
-      <div className="flex flex-1 overflow-hidden flex-col md:flex-row">
-        
-        {/* Left Panel (30%) - Vital Signs */}
-        <div className="w-full md:w-80 lg:w-96 border-b md:border-b-0 md:border-r border-white/10 p-6 flex flex-col gap-6 bg-white/[0.02] shrink-0 overflow-y-auto custom-scrollbar">
-          
-          <div className="flex flex-col items-center text-center">
-            <div className="w-24 h-24 rounded-full bg-gradient-to-br from-sales-cyan-500 to-blue-500 flex items-center justify-center text-3xl font-bold text-white mb-4 shadow-lg shadow-cyan-500/20">
-              {client.name ? client.name.charAt(0).toUpperCase() : '?'}
+    <ProfileShell onBack={() => navigate('/clients')} title={client.name || 'Expediente del cliente'}>
+      <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+        <aside className="flex w-full shrink-0 flex-col gap-6 overflow-y-auto border-b border-border bg-surface p-5 custom-scrollbar md:w-80 md:border-b-0 md:border-r lg:w-96">
+          <div className="flex items-center gap-3">
+            <Avatar name={client.name} size="lg" />
+            <div className="min-w-0">
+              <h2 className="truncate text-base font-semibold text-fg">{client.name || 'Sin nombre'}</h2>
+              <p className="mt-0.5 flex items-center gap-1.5 text-fg-muted">
+                <Phone size={12} aria-hidden />
+                <span className="tnum font-mono text-xs">{client.phoneNumber}</span>
+              </p>
             </div>
-            <h2 className="text-2xl font-bold text-white mb-1">{client.name || 'Sin Nombre'}</h2>
-            <p className="text-gray-400 flex items-center gap-1.5 bg-black/20 px-3 py-1 rounded-full text-sm">
-              <Phone className="w-4 h-4" />
-              {client.phoneNumber}
-            </p>
           </div>
 
-          <div className="space-y-4">
-            <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">Datos Financieros</h3>
-            
-            <div className="bg-black/20 border border-white/5 rounded-xl p-4 space-y-3">
-              <div className="flex justify-between items-center">
-                <span className="text-gray-400 text-sm">RFC</span>
-                <span className="text-white font-mono bg-white/10 px-2 py-0.5 rounded text-sm">
-                  {client.cartData?.rfc || 'N/D'}
-                </span>
+          <section aria-label="Datos del cliente">
+            <Eyebrow tone="muted" className="mb-2 block">Datos</Eyebrow>
+            <dl className="divide-y divide-border rounded-lg border border-border">
+              <div className="flex items-center justify-between gap-3 px-3.5 py-2.5">
+                <dt className="text-[13px] text-fg-muted">RFC</dt>
+                <dd className="font-mono text-xs text-fg">{client.cartData?.rfc || '—'}</dd>
               </div>
-              <div className="flex justify-between items-center">
-                <span className="text-gray-400 text-sm">Compras Exitosas</span>
-                <span className="text-emerald-400 font-bold flex items-center gap-1">
-                  <CheckCircle className="w-4 h-4" />
-                  {client.conversations?.filter(c => c.status === 'CLOSED_WON').length || 0}
-                </span>
+              <div className="flex items-center justify-between gap-3 px-3.5 py-2.5">
+                <dt className="text-[13px] text-fg-muted">Compras exitosas</dt>
+                <dd className="tnum flex items-center gap-1.5 font-mono text-xs font-medium text-success">
+                  <CheckCircle size={12} aria-hidden />
+                  {successfulPurchases}
+                </dd>
               </div>
-            </div>
+            </dl>
+          </section>
 
-            {(() => {
-              const shipping = client.cartData?.shippingAddress;
-              const billing = client.cartData?.billingAddress;
-              if (!shipping && !billing) return null;
-              
-              return (
-                <div className="bg-white/5 border border-white/10 rounded-xl p-4 space-y-3 mt-4">
-                  <h4 className="text-gray-400 font-medium text-xs uppercase tracking-wider mb-2">Domicilios</h4>
-                  {shipping && (
-                    <div>
-                      <span className="text-gray-500 text-xs block mb-1">Envío</span>
-                      <span className="text-gray-300 text-sm leading-relaxed block">{shipping}</span>
-                    </div>
-                  )}
-                  {billing && (
-                    <div className="pt-2">
-                      <span className="text-gray-500 text-xs block mb-1">Fiscal</span>
-                      <span className="text-gray-300 text-sm leading-relaxed block">{billing}</span>
-                    </div>
-                  )}
-                </div>
-              );
-            })()}
-          </div>
-
-          <div className="mt-auto pt-6">
-            <button
-              onClick={handleNewOutboundChat}
-              disabled={isStartingChat}
-              className="w-full rounded-lg bg-blue-600 px-6 py-2.5 text-sm font-bold text-white hover:bg-blue-500 transition-colors shadow-md disabled:opacity-50 flex justify-center items-center gap-2"
-            >
-              {isStartingChat ? (
-                <span className="animate-spin rounded-full h-5 w-5 border-b-2 border-white" />
-              ) : (
-                <MessageSquare className="w-5 h-5" />
-              )}
-              Nuevo Chat Saliente
-            </button>
-          </div>
-        </div>
-
-        {/* Right Panel (70%) - Timeline and Search */}
-        <div className="flex-1 flex flex-col min-w-0 bg-transparent relative">
-          
-          {/* Search Bar and Filters */}
-          <div className="p-6 pb-2 shrink-0 flex flex-col xl:flex-row gap-3">
-            <div className="relative flex-1 flex items-center">
-              <Search className="absolute left-3 w-5 h-5 text-gray-400" />
-              <input 
-                type="text" 
-                placeholder="Buscar en el historial de chats..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-black/20 border border-white/10 rounded-xl py-3 pl-10 pr-32 text-white placeholder-gray-500 focus:outline-none focus:border-sales-cyan-500 transition-colors shadow-inner"
-              />
-              {searchQuery && (
-                <button 
-                  onClick={() => setSearchQuery('')}
-                  className="absolute right-32 text-gray-400 hover:text-white transition-colors"
-                  title="Limpiar búsqueda"
-                >
-                  <XCircle className="w-5 h-5" />
-                </button>
-              )}
-              {searchQuery.trim() && (
-                <div className="absolute right-4 text-xs font-medium text-sales-cyan-400 bg-sales-cyan-950/50 px-2 py-1 rounded-md border border-sales-cyan-500/20">
-                  {totalMessageMatches} {totalMessageMatches === 1 ? 'coincidencia' : 'coincidencias'}
-                </div>
-              )}
-            </div>
-            
-            <div className="flex gap-2">
-              <div className="relative w-36">
-                <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <input 
-                  type="date"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  className="w-full bg-black/20 border border-white/10 rounded-xl py-3 pl-9 pr-2 text-white placeholder-gray-500 focus:outline-none focus:border-sales-cyan-500 transition-colors shadow-inner [color-scheme:dark] text-sm"
-                  title="Fecha inicial"
-                />
-              </div>
-              <div className="relative w-36">
-                <input 
-                  type="date"
-                  value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                  className="w-full bg-black/20 border border-white/10 rounded-xl py-3 pl-3 pr-8 text-white placeholder-gray-500 focus:outline-none focus:border-sales-cyan-500 transition-colors shadow-inner [color-scheme:dark] text-sm"
-                  title="Fecha final"
-                />
-                {(startDate || endDate) && (
-                  <button 
-                    onClick={() => { setStartDate(''); setEndDate(''); }}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white text-xs"
-                    title="Limpiar fechas"
-                  >
-                    ✕
-                  </button>
+          {(shipping || billing) && (
+            <section aria-label="Domicilios">
+              <Eyebrow tone="muted" className="mb-2 block">Domicilios</Eyebrow>
+              <div className="space-y-3 rounded-lg border border-border px-3.5 py-3">
+                {shipping && (
+                  <div>
+                    <span className="mb-0.5 block text-xs text-fg-subtle">Envío</span>
+                    <p className="text-[13px] leading-relaxed text-fg">{shipping}</p>
+                  </div>
+                )}
+                {billing && (
+                  <div>
+                    <span className="mb-0.5 block text-xs text-fg-subtle">Fiscal</span>
+                    <p className="text-[13px] leading-relaxed text-fg">{billing}</p>
+                  </div>
                 )}
               </div>
+            </section>
+          )}
+
+          <div className="mt-auto pt-2">
+            <Button variant="primary" icon={MessageSquare} loading={isStartingChat} onClick={handleNewOutboundChat} className="w-full">
+              Nuevo chat saliente
+            </Button>
+          </div>
+        </aside>
+
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          <div className="flex shrink-0 flex-col gap-3 border-b border-border px-5 py-3 xl:flex-row xl:items-center">
+            <div className="relative flex flex-1 items-center">
+              <Input
+                leftIcon={Search}
+                placeholder="Buscar en el historial de chats"
+                aria-label="Buscar en el historial"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className={cn(searchQuery && 'pr-36')}
+              />
+              {searchQuery && (
+                <div className="absolute right-1.5 flex items-center gap-1">
+                  {searchQuery.trim() && (
+                    <Badge tone="accent">
+                      {totalMessageMatches} {totalMessageMatches === 1 ? 'coincidencia' : 'coincidencias'}
+                    </Badge>
+                  )}
+                  <IconButton icon={X} label="Limpiar búsqueda" size="sm" onClick={() => setSearchQuery('')} />
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Input
+                type="date"
+                aria-label="Fecha inicial"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="w-36"
+              />
+              <span className="text-fg-subtle">–</span>
+              <Input
+                type="date"
+                aria-label="Fecha final"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="w-36"
+              />
+              {hasDateFilter && (
+                <IconButton icon={X} label="Limpiar fechas" size="sm" onClick={() => { setStartDate(''); setEndDate(''); }} />
+              )}
             </div>
           </div>
 
-          {/* Timeline Scroll Area */}
-          <div className="flex-1 overflow-y-auto custom-scrollbar p-6 pt-4">
-            <div className="space-y-6">
-              {filteredConversations.length > 0 ? (
-                filteredConversations.map((conv, idx) => {
+          <div className="flex-1 overflow-y-auto p-5 custom-scrollbar">
+            {filteredConversations.length > 0 ? (
+              <ol className="space-y-4">
+                {filteredConversations.map((conv, idx) => {
                   const msgsToDisplay = [...(conv.messages || [])].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
                   const matchingMessages = [...(conv.matchingMessages || [])].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
                   const isWon = conv.status === 'CLOSED_WON';
                   const hasPurchaseEvidence = isWon || msgsToDisplay.some(m => m.content.toLowerCase().includes('carrito') || m.content.toLowerCase().includes('compra'));
                   const isChatExpanded = expandedChats[conv.id] ?? Boolean(searchQuery.trim());
-
-                  let statusLabel = conv.status;
-                  let statusStyles = 'text-gray-300 bg-white/10 border-white/10';
-                  let StatusIcon = null;
-
-                  switch(conv.status) {
-                    case 'CLOSED_WON':
-                      statusLabel = 'VENTA CERRADA';
-                      statusStyles = 'text-emerald-400 bg-emerald-400/10 border-emerald-400/20';
-                      StatusIcon = CheckCircle;
-                      break;
-                    case 'DISCARDED':
-                      statusLabel = 'DESCARTADO';
-                      statusStyles = 'text-rose-400 bg-rose-400/10 border-rose-400/20';
-                      StatusIcon = XCircle;
-                      break;
-                    case 'CLOSED':
-                    case 'CLOSED_INACTIVE':
-                      statusLabel = 'CERRADO';
-                      statusStyles = 'text-gray-400 bg-gray-400/10 border-gray-400/20';
-                      break;
-                    case 'ON_HOLD':
-                      statusLabel = 'EN SEGUIMIENTO';
-                      statusStyles = 'text-purple-400 bg-purple-400/10 border-purple-400/20';
-                      break;
-                    case 'WAITING_CUSTOMER':
-                      statusLabel = 'ESPERANDO CLIENTE';
-                      statusStyles = 'text-yellow-400 bg-yellow-400/10 border-yellow-400/20';
-                      break;
-                    case 'ACTIVE':
-                      statusLabel = 'ACTIVO';
-                      statusStyles = 'text-blue-400 bg-blue-400/10 border-blue-400/20';
-                      break;
-                  }
+                  const ChevronIcon = isChatExpanded ? ChevronUp : ChevronDown;
 
                   return (
-                    <div key={conv.id} className="relative flex group">
-                      
-                      {/* Vertical Line */}
+                    <li key={conv.id} className="relative flex gap-4">
                       {idx !== filteredConversations.length - 1 && (
-                        <div className="absolute left-[15px] top-8 bottom-[-24px] w-[2px] bg-white/10 group-hover:bg-white/20 transition-colors" />
+                        <span className="absolute left-[5px] top-6 -bottom-4 w-px bg-border" aria-hidden />
                       )}
-                      
-                      {/* Timeline Dot */}
-                      <div className="shrink-0 mt-1 mr-6 relative z-10">
-                        <div className={`w-8 h-8 rounded-full border-4 border-sales-slate-900 flex items-center justify-center shadow-lg ${conv.isOutbound ? 'bg-orange-500 shadow-orange-500/20' : 'bg-sales-cyan-500 shadow-cyan-500/20'}`}>
-                          {conv.isOutbound ? (
-                            <ArrowRight className="w-3 h-3 text-white transform -rotate-45" />
-                          ) : (
-                            <ArrowRight className="w-3 h-3 text-white transform rotate-135" />
-                          )}
-                        </div>
-                      </div>
 
-                      {/* Split Card */}
-                      <div className="flex-1 bg-white/5 hover:bg-white/[0.07] border border-white/10 rounded-2xl overflow-hidden transition-colors flex flex-col md:flex-row shadow-xl">
-                        
-                        {/* Left Side: Metadata & Messages */}
-                        <div className={`flex-1 min-w-0 p-3 px-4 ${isChatExpanded && hasPurchaseEvidence ? 'border-b md:border-b-0 md:border-r border-white/5' : ''}`}>
-                          <div 
-                            className="cursor-pointer select-none group/header flex justify-between items-center"
+                      <span
+                        className={cn('relative z-10 mt-[15px] h-[11px] w-[11px] shrink-0 rounded-full border-2 border-bg', conv.isOutbound ? 'bg-accent' : 'bg-fg-subtle')}
+                        aria-hidden
+                      />
+
+                      <div className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-surface md:flex-row">
+                        <div className="min-w-0 flex-1 px-4 py-3">
+                          <button
+                            type="button"
+                            className="flex w-full items-start justify-between gap-3 text-left"
                             onClick={() => toggleChatExpand(conv.id)}
+                            aria-expanded={isChatExpanded}
                           >
-                            <div className="flex-1 min-w-0 pr-4">
-                              <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                                <div className="flex gap-2 items-center">
-                                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded tracking-wide ${conv.isOutbound ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30' : 'bg-sales-cyan-500/20 text-sales-cyan-400 border border-cyan-500/30'}`}>
-                                    {conv.isOutbound ? 'SALIENTE' : 'ENTRANTE'}
-                                  </span>
-                                  <span className={`flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded border ${statusStyles}`}>
-                                    {StatusIcon && <StatusIcon className="w-3 h-3" />}
-                                    {statusLabel}
-                                  </span>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                                <div className="flex items-center gap-1.5">
+                                  <Badge tone={conv.isOutbound ? 'accent' : 'neutral'}>{conv.isOutbound ? 'Saliente' : 'Entrante'}</Badge>
+                                  <StatusPill status={conv.status} variant="full" />
                                 </div>
-                                
-                                <div className="text-xs text-gray-300 flex items-center gap-3">
+                                <div className="flex items-center gap-3 text-xs text-fg-muted">
                                   <span className="flex items-center gap-1">
-                                    <User className="w-3.5 h-3.5 text-gray-500" />
-                                    <span className="font-medium text-white">{conv.vendor?.name || 'Bot (IA)'}</span>
+                                    <User size={12} className="text-fg-subtle" aria-hidden />
+                                    <span className="font-medium text-fg">{conv.vendor?.name || 'Asistente IA'}</span>
                                   </span>
-                                  <span className="text-gray-500 flex items-center gap-1 border-l border-white/10 pl-3">
-                                    <Clock className="w-3.5 h-3.5" />
-                                    {new Intl.DateTimeFormat('es-MX', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(conv.createdAt))}
+                                  <span className="tnum flex items-center gap-1 font-mono text-[11px] text-fg-subtle">
+                                    <Clock size={12} aria-hidden />
+                                    {formatDate(conv.createdAt)}
                                   </span>
                                 </div>
                               </div>
 
                               {!isChatExpanded && msgsToDisplay.length > 0 && (() => {
                                 const snippetMsg = searchQuery.trim() && matchingMessages.length > 0 ? matchingMessages[0] : msgsToDisplay[msgsToDisplay.length - 1];
-                                const prefix = searchQuery.trim() && matchingMessages.length > 0 ? 'Coincidencia:' : 'Último mensaje:';
+                                const prefix = searchQuery.trim() && matchingMessages.length > 0 ? 'Coincidencia' : 'Último mensaje';
                                 return (
-                                  <div className="text-[13px] text-gray-400 italic bg-black/20 p-2 px-3 rounded-lg border border-white/5 truncate mt-2">
-                                    <span className="font-medium text-gray-500 mr-2">{prefix}</span>
+                                  <p className="mt-2 truncate rounded-md border border-border bg-surface-2 px-3 py-1.5 text-[13px] text-fg-muted">
+                                    <span className="mr-2 font-mono text-[10px] uppercase tracking-wide text-fg-subtle">{prefix}</span>
                                     {snippetMsg.content || 'Mensaje con archivo adjunto'}
-                                  </div>
+                                  </p>
                                 );
                               })()}
                             </div>
-                            
-                            <div className="shrink-0 flex items-center justify-center p-2 rounded-full bg-white/5 group-hover/header:bg-white/10 transition-colors">
-                              {isChatExpanded ? <ChevronUp className="w-6 h-6 text-gray-400 group-hover/header:text-white" /> : <ChevronDown className="w-6 h-6 text-gray-400 group-hover/header:text-white" />}
-                            </div>
-                          </div>
 
-                          {/* Full Chat History */}
+                            <ChevronIcon size={16} className="mt-0.5 shrink-0 text-fg-subtle" aria-hidden />
+                          </button>
+
                           {isChatExpanded && (
-                            <div className="space-y-3 mt-4 max-h-96 overflow-y-auto custom-scrollbar pr-2 pb-2">
+                            <div className="mt-4 max-h-96 space-y-3 overflow-y-auto pr-1 custom-scrollbar">
                               {msgsToDisplay.map(msg => {
-                                // Highlight search term if present
                                 const content = msg.content;
-                              let displayContent = content;
-                              if (searchQuery) {
-                                const escapedQuery = searchQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                                const parts = content.split(new RegExp(`(${escapedQuery})`, 'gi'));
-                                displayContent = parts.map((part, i) => 
-                                  part.toLowerCase() === searchQuery.toLowerCase() ? 
-                                  <mark key={i} className="bg-yellow-300 text-black rounded px-0.5">{part}</mark> : part
-                                );
-                              }
+                                let displayContent = content;
+                                if (searchQuery) {
+                                  const escapedQuery = searchQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                                  const parts = content.split(new RegExp(`(${escapedQuery})`, 'gi'));
+                                  displayContent = parts.map((part, i) =>
+                                    part.toLowerCase() === searchQuery.toLowerCase() ?
+                                      <mark key={i} className="rounded-sm bg-accent/40 px-0.5 text-inherit">{part}</mark> : part,
+                                  );
+                                }
 
-                              const isClient = msg.senderType === 'CLIENT';
-                              let senderLabel = 'Asesor';
-                              if (isClient) senderLabel = 'Cliente';
-                              else if (msg.senderType === 'IA') senderLabel = '🤖 Bot (IA)';
-                              else if (msg.senderType === 'SYSTEM') senderLabel = '⚙️ Sistema';
-                              else senderLabel = conv.vendor?.name ? `👨‍💼 ${conv.vendor.name}` : '👨‍💼 Asesor';
+                                const isClient = msg.senderType === 'CLIENT';
+                                const senderLabel = SENDER_LABELS[msg.senderType] || conv.vendor?.name || 'Asesor';
 
-                              return (
-                                <div key={msg.id} className={`flex flex-col ${isClient ? 'items-start' : 'items-end'}`}>
-                                  <span className="text-[10px] text-gray-500 mb-1 ml-1 mr-1">
-                                    {senderLabel} • {new Intl.DateTimeFormat('es-MX', { timeStyle: 'short' }).format(new Date(msg.createdAt))}
-                                  </span>
-                                  <div className={`text-sm p-3 rounded-2xl max-w-[85%] border relative group/msg ${
-                                    isClient 
-                                      ? 'bg-black/30 border-white/5 rounded-tl-sm' 
-                                      : 'bg-sales-cyan-900/20 border-sales-cyan-500/20 rounded-tr-sm text-sales-cyan-50'
-                                  }`}>
-                                    {msg.attachments && msg.attachments.length > 0 && (
-                                      <div className="flex flex-col gap-2 mb-2">
-                                        {msg.attachments.map((att, i) => (
-                                          <SecureMedia
-                                            key={i}
-                                            url={att.url}
-                                            type={att.type}
-                                            fallbackText={att.name}
-                                            className="w-full"
-                                          />
-                                        ))}
-                                      </div>
-                                    )}
-                                    {displayContent && (
-                                      <p className="text-gray-200 leading-relaxed whitespace-pre-wrap">
-                                        {displayContent}
-                                      </p>
-                                    )}
+                                return (
+                                  <div key={msg.id} className={cn('flex flex-col', isClient ? 'items-start' : 'items-end')}>
+                                    <span className="tnum mb-1 px-1 font-mono text-[10px] text-fg-subtle">
+                                      {senderLabel} · {formatTime(msg.createdAt)}
+                                    </span>
+                                    <div
+                                      className={cn(
+                                        'max-w-[85%] rounded-lg px-3.5 py-2.5 text-sm',
+                                        isClient ? 'rounded-bl-sm bg-surface-3 text-fg' : 'rounded-br-sm bg-surface-inverse text-fg-inverse',
+                                      )}
+                                    >
+                                      {msg.attachments && msg.attachments.length > 0 && (
+                                        <div className="mb-2 flex flex-col gap-2">
+                                          {msg.attachments.map((att, i) => (
+                                            <SecureMedia
+                                              key={i}
+                                              url={att.url}
+                                              type={att.type}
+                                              fallbackText={att.name}
+                                              className="w-full rounded-md"
+                                            />
+                                          ))}
+                                        </div>
+                                      )}
+                                      {displayContent && (
+                                        <p className="whitespace-pre-wrap break-words leading-relaxed">
+                                          {displayContent}
+                                        </p>
+                                      )}
+                                    </div>
                                   </div>
-                                </div>
-                              );
-                            })}
-                            {msgsToDisplay.length === 0 && (
-                              <p className="text-sm text-gray-500 italic">No hay mensajes legibles.</p>
-                            )}
-                          </div>
+                                );
+                              })}
+                              {msgsToDisplay.length === 0 && (
+                                <p className="inline-flex items-center gap-1.5 text-sm italic text-fg-subtle"><Paperclip size={12} aria-hidden /> No hay mensajes legibles.</p>
+                              )}
+                            </div>
                           )}
                         </div>
 
-                        {/* Right Side: Virtual Cart (Visual representation of purchase) */}
                         {isChatExpanded && hasPurchaseEvidence && (
-                          <div className="w-full md:w-64 bg-black/20 p-5 flex flex-col justify-center relative overflow-hidden">
-                            {/* Decorative background element */}
-                            <div className="absolute -right-8 -bottom-8 opacity-5">
-                              <ShoppingCart className="w-32 h-32 text-emerald-500" />
+                          <div className="w-full border-t border-border bg-surface-2 p-4 md:w-64 md:border-l md:border-t-0">
+                            <div className="mb-2 flex items-center gap-2">
+                              <ShoppingCart size={14} className={isWon ? 'text-success' : 'text-fg-muted'} aria-hidden />
+                              <h4 className={cn('text-sm font-semibold', isWon ? 'text-success' : 'text-fg-muted')}>Evidencia de carrito</h4>
                             </div>
-                            
-                            <div className="relative z-10">
-                              <div className="flex items-center gap-2 mb-3">
-                                <ShoppingCart className={`w-5 h-5 ${isWon ? 'text-emerald-400' : 'text-gray-400'}`} />
-                                <h4 className={`font-medium text-sm ${isWon ? 'text-emerald-400' : 'text-gray-400'}`}>
-                                  Evidencia de Carrito
-                                </h4>
-                              </div>
-                              <p className="text-xs text-gray-400 leading-relaxed">
-                                {isWon 
-                                  ? "Esta conversación terminó en una venta concreta. El carrito asociado fue procesado y guardado en el expediente." 
-                                  : "Se detectó actividad de carrito o cotización en el texto de esta conversación."}
-                              </p>
-                              {isWon && (conv.cartSnapshot || client.cartData) && (() => {
-                                const historicCartData = conv.cartSnapshot || client.cartData;
-                                const items = Array.isArray(historicCartData) ? historicCartData : (historicCartData?.items || []);
-                                const total = items.reduce((sum, item) => {
-                                  const qty = item.cantidad || item.quantity || 1;
-                                  const price = item.precio || item.precio_unitario || item.price || 0;
-                                  return sum + (price * qty);
-                                }, 0);
-                                return (
-                                  <div className="mt-4 pt-4 border-t border-white/10 text-xs">
-                                    <div className="max-h-32 overflow-y-auto custom-scrollbar pr-1 mb-2 space-y-2">
-                                      {items.map((item, idx) => {
-                                        const name = item.descripcion || item.clave || item.name || 'Producto';
-                                        const quantity = item.cantidad || item.quantity || 1;
-                                        const price = item.precio || item.precio_unitario || item.price || 0;
-                                        return (
-                                          <div key={idx} className="flex justify-between items-start text-gray-300">
-                                            <span className="pr-2 leading-tight">
-                                              <span className="font-medium">{quantity}x</span> {name}
-                                            </span>
-                                            <span className="text-white whitespace-nowrap">${(price * quantity).toLocaleString()}</span>
-                                          </div>
-                                        );
-                                      })}
-                                    </div>
-                                    <div className="flex justify-between items-center text-gray-300 pt-2 border-t border-white/5">
-                                      <span className="font-medium">Total Final Aprox.</span>
-                                      <span className="text-emerald-400 font-bold font-mono text-sm">
-                                        {total > 0 ? `$${total.toLocaleString()}` : '---'}
-                                      </span>
-                                    </div>
+                            <p className="text-xs leading-relaxed text-fg-muted">
+                              {isWon
+                                ? 'Esta conversación terminó en una venta. El carrito asociado fue procesado y guardado en el expediente.'
+                                : 'Se detectó actividad de carrito o cotización en el texto de esta conversación.'}
+                            </p>
+                            {isWon && (conv.cartSnapshot || client.cartData) && (() => {
+                              const historicCartData = conv.cartSnapshot || client.cartData;
+                              const items = Array.isArray(historicCartData) ? historicCartData : (historicCartData?.items || []);
+                              const total = items.reduce((sum, item) => {
+                                const qty = item.cantidad || item.quantity || 1;
+                                const price = item.precio || item.precio_unitario || item.price || 0;
+                                return sum + (price * qty);
+                              }, 0);
+                              return (
+                                <div className="mt-3 border-t border-border pt-3 text-xs">
+                                  <div className="mb-2 max-h-32 space-y-1.5 overflow-y-auto pr-1 custom-scrollbar">
+                                    {items.map((item, itemIdx) => {
+                                      const name = item.descripcion || item.clave || item.name || 'Producto';
+                                      const quantity = item.cantidad || item.quantity || 1;
+                                      const price = item.precio || item.precio_unitario || item.price || 0;
+                                      return (
+                                        <div key={itemIdx} className="flex items-start justify-between gap-2 text-fg-muted">
+                                          <span className="leading-tight">
+                                            <span className="tnum font-mono text-[11px] text-fg">{quantity}×</span> {name}
+                                          </span>
+                                          <span className="tnum whitespace-nowrap font-mono text-[11px] text-fg">{formatMoney(price * quantity)}</span>
+                                        </div>
+                                      );
+                                    })}
                                   </div>
-                                );
-                              })()}
-                            </div>
+                                  <div className="flex items-center justify-between border-t border-border pt-2">
+                                    <span className="font-medium text-fg-muted">Total aproximado</span>
+                                    <span className="tnum font-mono text-sm font-semibold text-success">
+                                      {total > 0 ? formatMoney(total) : '—'}
+                                    </span>
+                                  </div>
+                                </div>
+                              );
+                            })()}
                           </div>
                         )}
-                        
                       </div>
-                    </div>
+                    </li>
                   );
-                })
-              ) : (
-                <div className="flex flex-col items-center justify-center h-40 text-gray-500">
-                  <Search className="w-8 h-8 mb-3 opacity-20" />
-                  <p>No se encontraron conversaciones que coincidan con la búsqueda.</p>
-                </div>
-              )}
-            </div>
+                })}
+              </ol>
+            ) : (
+              <EmptyState
+                compact
+                icon={Search}
+                title="Sin conversaciones"
+                description={searchQuery || hasDateFilter ? 'No se encontraron conversaciones que coincidan con la búsqueda.' : 'Este cliente aún no tiene conversaciones registradas.'}
+              />
+            )}
           </div>
         </div>
       </div>
-    </div>
+    </ProfileShell>
   );
 }

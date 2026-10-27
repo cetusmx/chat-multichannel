@@ -1,6 +1,14 @@
 import { useState, useEffect } from 'react';
+import { FileText, Upload, Trash2 } from 'lucide-react';
 import { uploadKnowledgeBaseDocument, getKnowledgeBaseDocuments, deleteKnowledgeBaseDocument } from '../../services/api';
 import ConfirmModal from '../../components/ConfirmModal.jsx';
+import { Panel, Button, IconButton, Badge, EmptyState, Eyebrow, Spinner } from '../../components/ui/index.js';
+
+const STATUS_META = {
+  READY: { tone: 'success', label: 'Listo' },
+  ERROR: { tone: 'danger', label: 'Error' },
+  PROCESSING: { tone: 'warning', label: 'Procesando' },
+};
 
 export default function KnowledgeBaseSection() {
   const [documents, setDocuments] = useState([]);
@@ -14,7 +22,7 @@ export default function KnowledgeBaseSection() {
     fetchDocuments();
 
     // Poll every 3 seconds if there are processing documents
-    const intervalId = setInterval(() => {
+    const intervalId = window.setInterval(() => {
       setDocuments(currentDocs => {
         if (currentDocs.some(doc => doc.status === 'PROCESSING')) {
           fetchDocuments(true);
@@ -23,7 +31,7 @@ export default function KnowledgeBaseSection() {
       });
     }, 3000);
 
-    return () => clearInterval(intervalId);
+    return () => window.clearInterval(intervalId);
   }, []);
 
   const fetchDocuments = async (silent = false) => {
@@ -99,113 +107,94 @@ export default function KnowledgeBaseSection() {
   };
 
   const getStatusBadge = (status) => {
-    switch (status) {
-      case 'READY':
-        return <span className="px-2 py-1 text-xs rounded-full bg-emerald-500/20 text-emerald-400">Listo</span>;
-      case 'ERROR':
-        return <span className="px-2 py-1 text-xs rounded-full bg-red-500/20 text-red-400">Error</span>;
-      case 'PROCESSING':
-      default:
-        return <span className="px-2 py-1 text-xs rounded-full bg-yellow-500/20 text-yellow-400">Procesando</span>;
-    }
+    const meta = STATUS_META[status] || STATUS_META.PROCESSING;
+    return <Badge tone={meta.tone} dot>{meta.label}</Badge>;
   };
 
   return (
     <div className="space-y-6">
-      <div className="rounded-lg border border-slate-800 bg-sales-slate-900 p-6">
-        <h2 className="mb-4 text-lg font-medium text-sales-slate-100">Base de Conocimiento (RAG)</h2>
-        <p className="mb-6 text-sm text-sales-slate-400">
-          Sube documentos PDF o CSV para entrenar a la inteligencia artificial con información específica de tu empresa.
-        </p>
-
+      <Panel
+        eyebrow="Asistente IA"
+        title="Base de conocimiento"
+        description="Documentos PDF o CSV con información de tu empresa que el asistente usa para responder."
+      >
         {error && (
-          <div className="mb-4 rounded bg-red-500/10 p-3 text-sm text-red-400">
+          <div role="alert" className="mb-4 rounded-md border border-danger/40 bg-danger/10 px-3 py-2.5 text-sm text-danger">
             {error}
           </div>
         )}
 
-        <form onSubmit={handleUpload} className="flex items-end gap-4 mb-8">
-          <div className="flex-1">
-            <label htmlFor="kb-file-upload" className="block text-sm font-medium text-sales-slate-300 mb-1">
-              Seleccionar Documento (Max 5MB)
-            </label>
-            <input
-              id="kb-file-upload"
-              type="file"
-              accept=".pdf,.csv,application/pdf,text/csv"
-              onChange={handleFileChange}
-              className="block w-full text-sm text-sales-slate-300
-                file:mr-4 file:py-2 file:px-4
-                file:rounded file:border-0
-                file:text-sm file:font-medium
-                file:bg-sales-blue-500/20 file:text-sales-blue-400
-                hover:file:bg-sales-blue-500/30
-                cursor-pointer"
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={!file || uploading}
-            className="rounded bg-sales-coral px-4 py-2 font-medium text-white transition-colors hover:bg-sales-coral/90 disabled:opacity-50"
+        <form onSubmit={handleUpload} className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <label
+            htmlFor="kb-file-upload"
+            className="flex h-9 min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-md border border-dashed border-border-strong bg-surface-2 px-3 text-sm transition-colors hover:border-accent"
           >
-            {uploading ? 'Subiendo...' : 'Subir Documento'}
-          </button>
+            <FileText size={15} className="shrink-0 text-fg-subtle" aria-hidden />
+            <span className={file ? 'truncate text-fg' : 'truncate text-fg-subtle'}>
+              {file ? file.name : 'Seleccionar documento PDF o CSV (máx. 5 MB)'}
+            </span>
+          </label>
+          <input
+            id="kb-file-upload"
+            type="file"
+            accept=".pdf,.csv,application/pdf,text/csv"
+            onChange={handleFileChange}
+            className="sr-only"
+          />
+          <Button type="submit" variant="primary" icon={Upload} loading={uploading} disabled={!file}>
+            {uploading ? 'Subiendo…' : 'Subir documento'}
+          </Button>
         </form>
+      </Panel>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm text-sales-slate-300">
-            <thead className="bg-slate-800/50 text-xs uppercase text-sales-slate-400">
-              <tr>
-                <th className="px-4 py-3">Archivo</th>
-                <th className="px-4 py-3">Tamaño</th>
-                <th className="px-4 py-3">Estado</th>
-                <th className="px-4 py-3">Fecha</th>
-                <th className="px-4 py-3">Acciones</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-800">
-              {loading ? (
+      <Panel eyebrow="Documentos" title="Archivos cargados" padded={false}>
+        {loading ? (
+          <div className="flex justify-center py-12">
+            <Spinner size={20} />
+          </div>
+        ) : documents.length === 0 ? (
+          <EmptyState
+            compact
+            icon={FileText}
+            title="Sin documentos"
+            description="Sube catálogos, listas de precios o políticas para que el asistente los consulte."
+          />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
                 <tr>
-                  <td colSpan="4" className="px-4 py-6 text-center text-sales-slate-500">
-                    Cargando documentos...
-                  </td>
+                  <th className="border-b border-border px-4 py-2.5 text-left"><Eyebrow tone="muted">Archivo</Eyebrow></th>
+                  <th className="border-b border-border px-4 py-2.5 text-left"><Eyebrow tone="muted">Tamaño</Eyebrow></th>
+                  <th className="border-b border-border px-4 py-2.5 text-left"><Eyebrow tone="muted">Estado</Eyebrow></th>
+                  <th className="border-b border-border px-4 py-2.5 text-left"><Eyebrow tone="muted">Fecha</Eyebrow></th>
+                  <th className="border-b border-border px-4 py-2.5"><span className="sr-only">Acciones</span></th>
                 </tr>
-              ) : documents.length === 0 ? (
-                <tr>
-                  <td colSpan="5" className="px-4 py-6 text-center text-sales-slate-500">
-                    No hay documentos subidos a la base de conocimiento.
-                  </td>
-                </tr>
-              ) : (
-                documents.map((doc) => (
-                  <tr key={doc.id} className="hover:bg-slate-800/30 transition-colors">
-                    <td className="px-4 py-3 font-medium text-sales-slate-200">
-                      {doc.filename}
-                    </td>
-                    <td className="px-4 py-3">{formatSize(doc.size)}</td>
+              </thead>
+              <tbody>
+                {documents.map((doc) => (
+                  <tr key={doc.id} className="border-b border-border/70 last:border-0 hover:bg-surface-2/60">
+                    <td className="px-4 py-3 font-medium text-fg">{doc.filename}</td>
+                    <td className="tnum px-4 py-3 font-mono text-[13px] text-fg-muted">{formatSize(doc.size)}</td>
                     <td className="px-4 py-3">{getStatusBadge(doc.status)}</td>
-                    <td className="px-4 py-3">{new Date(doc.createdAt).toLocaleDateString()}</td>
+                    <td className="tnum px-4 py-3 font-mono text-[13px] text-fg-muted">{new Date(doc.createdAt).toLocaleDateString()}</td>
                     <td className="px-4 py-3">
-                      <button
-                        onClick={() => setConfirmDelete(doc)}
-                        className="text-red-400 hover:text-red-300 transition-colors"
-                        title="Eliminar documento"
-                      >
-                        Eliminar
-                      </button>
+                      <div className="flex justify-end">
+                        <IconButton icon={Trash2} label="Eliminar documento" size="sm" variant="danger" onClick={() => setConfirmDelete(doc)} />
+                      </div>
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Panel>
 
       <ConfirmModal
         open={!!confirmDelete}
-        title="Eliminar Documento"
-        message={`¿Seguro que deseas eliminar el documento "${confirmDelete?.filename}"? Esta acción no se puede deshacer.`}
+        title="Eliminar documento"
+        message={`¿Eliminar el documento "${confirmDelete?.filename}"? Esta acción no se puede deshacer.`}
         onConfirm={() => executeDelete(confirmDelete?.id)}
         onCancel={() => setConfirmDelete(null)}
       />

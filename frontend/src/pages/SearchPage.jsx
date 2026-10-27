@@ -1,16 +1,17 @@
-import React, { useEffect, useState, useTransition } from 'react';
+import { useEffect, useState, useTransition } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import axios from 'axios';
+import { Filter, X } from 'lucide-react';
 import SearchResultsLayout from '../components/search/SearchResultsLayout';
 import FiltersSidebar from '../components/search/FiltersSidebar';
 import ErrorBoundary from '../components/search/ErrorBoundary';
-import { Filter, X } from 'lucide-react';
 import useAuthStore from '../stores/useAuthStore';
+import { Badge, Button, Eyebrow, IconButton } from '../components/ui/index.js';
 
 export default function SearchPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const query = searchParams.get('q') || '';
-  
+
   // Operational Filters
   const currentFilters = {
     vendorId: searchParams.get('vendorId') || '',
@@ -20,7 +21,7 @@ export default function SearchPage() {
     dateTo: searchParams.get('dateTo') || '',
     status: searchParams.get('status') || '',
   };
-  
+
   const page = parseInt(searchParams.get('page') || '1', 10);
 
   const [data, setData] = useState([]);
@@ -41,7 +42,7 @@ export default function SearchPage() {
         const params = new URLSearchParams();
         params.append('q', query);
         params.append('page', page);
-        
+
         if (currentFilters.vendorId) params.append('vendorId', currentFilters.vendorId);
         if (currentFilters.clientId) params.append('clientId', currentFilters.clientId);
         if (currentFilters.rfc) params.append('rfc', currentFilters.rfc);
@@ -51,7 +52,7 @@ export default function SearchPage() {
 
         const res = await axios.get(`/api/search?${params.toString()}`, {
           signal: controller.signal,
-          headers: token ? { Authorization: `Bearer ${token}` } : {}
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
         });
 
         startTransition(() => {
@@ -76,7 +77,7 @@ export default function SearchPage() {
   const handleApplyFilters = (newFilters) => {
     const params = new URLSearchParams(searchParams);
     params.set('page', '1');
-    
+
     Object.keys(newFilters).forEach(k => {
       if (newFilters[k]) {
         params.set(k, newFilters[k]);
@@ -84,7 +85,7 @@ export default function SearchPage() {
         params.delete(k);
       }
     });
-    
+
     setSearchParams(params);
   };
 
@@ -116,78 +117,88 @@ export default function SearchPage() {
   const renderPill = (key, label, value) => {
     if (!value) return null;
     return (
-      <span key={key} className="inline-flex items-center gap-1 px-3 py-1 bg-blue-50 text-blue-700 text-sm rounded-full border border-blue-200 shadow-sm">
-        <span className="font-medium">{label}:</span> {value}
-        <button onClick={() => removeFilter(key)} className="hover:bg-blue-200 rounded-full p-0.5 ml-1 transition-colors" aria-label={`Quitar filtro ${label}`}>
-          <X size={14} />
+      <Badge key={key} tone="accent" className="gap-1 pr-0.5">
+        <span className="text-fg-muted">{label}:</span>
+        <span className="normal-case tracking-normal text-fg">{value}</span>
+        <button
+          type="button"
+          onClick={() => removeFilter(key)}
+          className="ml-0.5 inline-flex h-4 w-4 items-center justify-center rounded-sm text-accent transition-colors hover:bg-accent/20"
+          aria-label={`Quitar filtro ${label}`}
+        >
+          <X size={11} />
         </button>
-      </span>
+      </Badge>
     );
   };
 
-  return (
-    <div className="flex flex-col h-full bg-sales-slate-950 rounded-lg border border-sales-slate-800 shadow-xl overflow-hidden min-w-0">
-      {/* Search Header Row */}
-      <div className="bg-sales-slate-900 border-b border-sales-slate-800 p-4 shadow-sm z-10 flex-shrink-0">
-        <div className="w-full px-2">
-          <div className="flex justify-between items-center mb-2">
-            <div className="flex items-center gap-4">
-              {!sidebarOpen && (
-                <button 
-                  className="flex items-center justify-center p-2 bg-sales-slate-800 border border-sales-slate-700 text-sales-slate-100 rounded-lg hover:bg-sales-slate-700 transition-colors shadow-sm"
-                  onClick={() => setSidebarOpen(true)}
-                  title="Mostrar Filtros"
-                >
-                  <Filter size={18} /> 
-                  {hasActiveFilters && (
-                    <span className="absolute top-0 right-0 h-2.5 w-2.5 bg-blue-500 rounded-full border-2 border-sales-slate-900 transform translate-x-1/2 -translate-y-1/2"></span>
-                  )}
-                </button>
-              )}
-              <h1 className="text-xl font-bold text-sales-slate-100 flex items-center gap-3">
-                {query ? `Resultados para "${query}" (${meta?.facets?.chats || 0})` : 'Búsqueda Global'}
-              </h1>
-            </div>
-          </div>
+  const total = meta?.facets?.chats || 0;
 
-          {/* Active Filters Pills */}
-          {hasActiveFilters && (
-            <div className="flex flex-wrap gap-2 items-center mt-3">
-              <span className="text-sm font-medium text-sales-slate-400 mr-1">Filtros:</span>
-              {renderPill('vendorId', 'Asesor', getVendorName(currentFilters.vendorId))}
-              {renderPill('clientId', 'Cliente', getClientName(currentFilters.clientId))}
-              {renderPill('rfc', 'RFC', currentFilters.rfc)}
-              {renderPill('dateFrom', 'Desde', currentFilters.dateFrom)}
-              {renderPill('dateTo', 'Hasta', currentFilters.dateTo)}
-              
-              <button 
-                onClick={clearAllFilters}
-                className="text-sm text-sales-coral hover:text-sales-coral-light font-medium ml-2 hover:underline transition-all"
-              >
-                Limpiar todo
-              </button>
+  return (
+    <div className="flex h-full min-w-0 flex-col bg-bg">
+      <div className="z-10 shrink-0 border-b border-border bg-surface px-5 py-3.5">
+        <div className="flex items-center gap-3">
+          {!sidebarOpen && (
+            <div className="relative">
+              <IconButton
+                icon={Filter}
+                label="Mostrar filtros"
+                variant="outline"
+                size="lg"
+                onClick={() => setSidebarOpen(true)}
+                aria-expanded={sidebarOpen}
+              />
+              {hasActiveFilters && (
+                <span className="pointer-events-none absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-accent ring-2 ring-surface" aria-hidden />
+              )}
             </div>
           )}
+          <div className="min-w-0">
+            <Eyebrow tone="muted">Búsqueda</Eyebrow>
+            <h1 className="mt-0.5 flex items-baseline gap-2 text-base font-semibold text-fg leading-tight">
+              {query ? (
+                <>
+                  <span className="truncate">Resultados para “{query}”</span>
+                  <span className="tnum shrink-0 font-mono text-xs font-normal text-fg-subtle">{total}</span>
+                </>
+              ) : (
+                'Búsqueda global'
+              )}
+            </h1>
+          </div>
         </div>
+
+        {hasActiveFilters && (
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <Eyebrow tone="muted">Filtros</Eyebrow>
+            {renderPill('vendorId', 'Asesor', getVendorName(currentFilters.vendorId))}
+            {renderPill('clientId', 'Cliente', getClientName(currentFilters.clientId))}
+            {renderPill('rfc', 'RFC', currentFilters.rfc)}
+            {renderPill('dateFrom', 'Desde', currentFilters.dateFrom)}
+            {renderPill('dateTo', 'Hasta', currentFilters.dateTo)}
+            <Button variant="ghost" size="xs" onClick={clearAllFilters}>
+              Limpiar todo
+            </Button>
+          </div>
+        )}
       </div>
 
-      {/* Main Content Area (3 Columns) */}
-      <div className="flex-1 flex overflow-hidden w-full relative">
-        <FiltersSidebar 
+      <div className="relative flex min-h-0 flex-1 overflow-hidden">
+        <FiltersSidebar
           isOpen={sidebarOpen}
           currentFilters={currentFilters}
           onApply={handleApplyFilters}
           onClose={() => setSidebarOpen(false)}
           facets={meta?.facets}
         />
-        
-        <div className="flex-1 overflow-auto bg-sales-slate-950 p-2 md:p-4 custom-scrollbar">
+
+        <div className="min-w-0 flex-1 overflow-hidden p-4">
           <ErrorBoundary>
-            <SearchResultsLayout 
-              data={data} 
-              loading={isPending} 
-              error={error} 
-              query={query} 
+            <SearchResultsLayout
+              data={data}
+              loading={isPending}
+              error={error}
+              query={query}
               meta={meta}
               onPageChange={(newPage) => {
                 const params = new URLSearchParams(searchParams);

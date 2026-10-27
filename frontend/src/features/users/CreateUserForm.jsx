@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { get, post } from '../../services/api.js';
 import { useNavigate } from 'react-router-dom';
+import { ROLE_LABELS } from '../../utils/constants.js';
+import { Badge, Button, Field, Input, PageHeader, Panel, Select } from '../../components/ui/index.js';
 
 export default function CreateUserForm({ onSuccess }) {
   const [form, setForm] = useState({
@@ -59,143 +61,113 @@ export default function CreateUserForm({ onSuccess }) {
 
   const isQuotaExceeded = tenantProfile && tenantProfile.maxUsers !== -1 && tenantProfile.currentUsersCount >= tenantProfile.maxUsers;
 
+  function handleCancel() {
+    if (onSuccess) onSuccess();
+    else navigate(-1);
+  }
+
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-semibold text-sales-slate-100">Nuevo Usuario</h2>
-        {tenantProfile && tenantProfile.maxUsers !== -1 && (
-          <span className="text-sm font-medium text-sales-slate-300">
-            Asientos: {tenantProfile.currentUsersCount}/{tenantProfile.maxUsers}
-          </span>
-        )}
-      </div>
+    <div className="mx-auto max-w-6xl">
+      <PageHeader
+        eyebrow="Usuarios"
+        title="Nuevo usuario"
+        description="Crea una cuenta para un miembro de tu equipo."
+        actions={
+          tenantProfile && tenantProfile.maxUsers !== -1 && (
+            <Badge tone={isQuotaExceeded ? 'warning' : 'neutral'}>
+              Asientos {tenantProfile.currentUsersCount}/{tenantProfile.maxUsers}
+            </Badge>
+          )
+        }
+      />
 
-      {error && (
-        <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-400">
-          {error}
-        </div>
-      )}
-
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className="mb-1 block text-sm text-sales-slate-400">Nombre</label>
-          <input
-            name="name"
-            value={form.name}
-            onChange={handleChange}
-            required
-            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-sales-slate-100 focus:outline-none focus:ring-2 focus:ring-sales-coral/50"
-          />
-        </div>
-        <div>
-          <label className="mb-1 block text-sm text-sales-slate-400">Email</label>
-          <input
-            name="email"
-            type="email"
-            value={form.email}
-            onChange={handleChange}
-            required
-            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-sales-slate-100 focus:outline-none focus:ring-2 focus:ring-sales-coral/50"
-          />
-        </div>
-        <div>
-          <label className="mb-1 block text-sm text-sales-slate-400">Teléfono</label>
-          <input
-            name="phone"
-            value={form.phone}
-            onChange={handleChange}
-            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-sales-slate-100 focus:outline-none focus:ring-2 focus:ring-sales-coral/50"
-          />
-        </div>
-        <div>
-          <label className="mb-1 block text-sm text-sales-slate-400">Contraseña</label>
-          <input
-            name="password"
-            type="password"
-            value={form.password}
-            onChange={handleChange}
-            required
-            minLength={6}
-            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-sales-slate-100 focus:outline-none focus:ring-2 focus:ring-sales-coral/50"
-          />
-        </div>
-        <div>
-          <label className="mb-1 block text-sm text-sales-slate-400">Rol</label>
-          <select
-            name="role"
-            value={form.role}
-            onChange={handleChange}
-            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-sales-slate-100 focus:outline-none focus:ring-2 focus:ring-sales-coral/50"
-          >
-            <option value="ADMIN">Admin</option>
-            <option value="COORDINATOR">Coordinador</option>
-            <option value="VENDOR">Vendedor</option>
-          </select>
-        </div>
-        {form.role === 'VENDOR' && (
-          <p className="col-span-2 text-xs text-sales-slate-500">
-            El coordinador se asigna automáticamente según el grupo seleccionado.
-          </p>
-        )}
-      </div>
-
-      {form.role !== 'ADMIN' && (
-        <div>
-          <label className="mb-2 block text-sm text-sales-slate-400">
-            {form.role === 'VENDOR' ? 'Grupo' : 'Grupos'}
-          </label>
-          {form.role === 'VENDOR' ? (
-            <select
-              value={form.groupIds[0] || ''}
-              onChange={(e) => handleGroupChange(e.target.value)}
-              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-sales-slate-100 focus:outline-none focus:ring-2 focus:ring-sales-coral/50"
-            >
-              <option value="">Seleccionar grupo</option>
-              {groups.map((g) => (
-                <option key={g.id} value={g.id}>{g.name}</option>
-              ))}
-            </select>
-          ) : (
-            <div className="flex flex-wrap gap-2">
-              {groups.map((g) => (
-                <button
-                  key={g.id}
-                  type="button"
-                  onClick={() => handleGroupChange(g.id)}
-                  className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-                    form.groupIds.includes(g.id)
-                      ? 'bg-sales-coral/20 text-sales-coral ring-1 ring-sales-coral/50'
-                      : 'bg-slate-800 text-sales-slate-400 hover:bg-slate-700'
-                  }`}
-                >
-                  {g.name}
-                </button>
-              ))}
+      <Panel title="Datos de la cuenta" description="Los campos marcados con * son obligatorios.">
+        <form onSubmit={handleSubmit} className="space-y-5">
+          {error && (
+            <div className="rounded-md border border-danger/40 bg-danger/10 px-3.5 py-2.5 text-sm text-danger" role="alert">
+              {error}
             </div>
           )}
-        </div>
-      )}
 
-      <div className="flex gap-3 pt-2">
-        <button
-          type="submit"
-          disabled={loading || isQuotaExceeded}
-          className="rounded-lg bg-sales-orange px-6 py-2 text-sm font-medium text-white hover:bg-sales-orange-light transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          title={isQuotaExceeded ? 'Límite de asientos alcanzado' : undefined}
-        >
-          {loading ? 'Creando...' : 'Crear Usuario'}
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            if (onSuccess) onSuccess();
-            else navigate(-1);
-          }}
-          className="rounded-lg border border-slate-700 px-6 py-2 text-sm text-sales-slate-400 hover:bg-slate-800 transition-colors"
-        >
-          Cancelar
-        </button>
-      </div>
-    </form>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Nombre" required>
+              {(a) => <Input {...a} name="name" value={form.name} onChange={handleChange} required />}
+            </Field>
+            <Field label="Correo" required>
+              {(a) => <Input {...a} name="email" type="email" value={form.email} onChange={handleChange} required />}
+            </Field>
+            <Field label="Teléfono">
+              {(a) => <Input {...a} name="phone" value={form.phone} onChange={handleChange} />}
+            </Field>
+            <Field label="Contraseña" required hint="Mínimo 6 caracteres">
+              {(a) => (
+                <Input
+                  {...a}
+                  name="password"
+                  type="password"
+                  value={form.password}
+                  onChange={handleChange}
+                  required
+                  minLength={6}
+                  autoComplete="new-password"
+                />
+              )}
+            </Field>
+            <Field label="Rol" hint={form.role === 'VENDOR' ? 'El coordinador se asigna automáticamente según el grupo seleccionado.' : undefined}>
+              {(a) => (
+                <Select {...a} name="role" value={form.role} onChange={handleChange}>
+                  <option value="ADMIN">{ROLE_LABELS.ADMIN}</option>
+                  <option value="COORDINATOR">{ROLE_LABELS.COORDINATOR}</option>
+                  <option value="VENDOR">{ROLE_LABELS.VENDOR}</option>
+                </Select>
+              )}
+            </Field>
+
+            {form.role !== 'ADMIN' && (
+              <Field label={form.role === 'VENDOR' ? 'Grupo' : 'Grupos'}>
+                {(a) =>
+                  form.role === 'VENDOR' ? (
+                    <Select {...a} value={form.groupIds[0] || ''} onChange={(e) => handleGroupChange(e.target.value)}>
+                      <option value="">Seleccionar grupo</option>
+                      {groups.map((g) => (
+                        <option key={g.id} value={g.id}>{g.name}</option>
+                      ))}
+                    </Select>
+                  ) : (
+                    <div className="flex min-h-9 flex-wrap items-center gap-2">
+                      {groups.length === 0 && <span className="text-[13px] text-fg-subtle">No hay grupos disponibles</span>}
+                      {groups.map((g) => (
+                        <Button
+                          key={g.id}
+                          size="sm"
+                          variant={form.groupIds.includes(g.id) ? 'chip-accent' : 'chip'}
+                          onClick={() => handleGroupChange(g.id)}
+                          aria-pressed={form.groupIds.includes(g.id)}
+                        >
+                          {g.name}
+                        </Button>
+                      ))}
+                    </div>
+                  )
+                }
+              </Field>
+            )}
+          </div>
+
+          <div className="flex items-center justify-end gap-2 border-t border-border pt-5">
+            <Button variant="ghost" onClick={handleCancel}>Cancelar</Button>
+            <Button
+              type="submit"
+              variant="primary"
+              loading={loading}
+              disabled={isQuotaExceeded}
+              title={isQuotaExceeded ? 'Límite de asientos alcanzado' : undefined}
+            >
+              Crear usuario
+            </Button>
+          </div>
+        </form>
+      </Panel>
+    </div>
   );
 }

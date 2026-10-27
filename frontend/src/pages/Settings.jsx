@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import useAuthStore from '../stores/useAuthStore.js';
+import { PageHeader, Tabs } from '../components/ui/index.js';
 import CompanyProfileSection from '../features/settings/CompanyProfileSection.jsx';
 import BranchListSection from '../features/settings/BranchListSection.jsx';
 import GroupListSection from '../features/settings/GroupListSection.jsx';
@@ -16,13 +17,13 @@ const tabs = [
   { id: 'company', label: 'Empresa', roles: ['ADMIN', 'COORDINATOR'] },
   { id: 'branches', label: 'Sucursales', roles: ['ADMIN', 'COORDINATOR'] },
   { id: 'groups', label: 'Grupos', roles: ['ADMIN', 'COORDINATOR'] },
-  { id: 'whatsapp', label: 'WhatsApp API', roles: ['ADMIN'] },
-  { id: 'ai', label: 'Inteligencia Artificial', roles: ['ADMIN'] },
-  { id: 'kb', label: 'Base de Conocimiento', roles: ['ADMIN'] },
-  { id: 'canned', label: 'Respuestas Rápidas', roles: ['ADMIN'] },
-  { id: 'assignment', label: 'Asignación de Clientes', roles: ['ADMIN'] },
-  { id: 'sla', label: 'SLA y Tiempos', roles: ['ADMIN', 'COORDINATOR'] },
-  { id: 'email', label: 'Email / SMTP', roles: ['ADMIN'] },
+  { id: 'whatsapp', label: 'WhatsApp', roles: ['ADMIN'] },
+  { id: 'ai', label: 'Asistente IA', roles: ['ADMIN'] },
+  { id: 'kb', label: 'Base de conocimiento', roles: ['ADMIN'] },
+  { id: 'canned', label: 'Respuestas rápidas', roles: ['ADMIN'] },
+  { id: 'assignment', label: 'Asignación', roles: ['ADMIN'] },
+  { id: 'sla', label: 'SLA y tiempos', roles: ['ADMIN', 'COORDINATOR'] },
+  { id: 'email', label: 'Correo saliente', roles: ['ADMIN'] },
 ];
 
 export default function Settings() {
@@ -53,24 +54,15 @@ export default function Settings() {
   }
 
   return (
-    <div>
-      <h1 className="mb-6 text-2xl font-semibold text-sales-slate-100">Configuración</h1>
+    <div className="mx-auto max-w-5xl">
+      <PageHeader title="Configuración" description="Ajustes de la empresa, canales y automatizaciones." />
 
-      <div className="mb-6 flex gap-1 border-b border-slate-800">
-        {visibleTabs.map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-[1px] ${
-              activeTab === tab.id
-                ? 'border-sales-coral text-sales-coral'
-                : 'border-transparent text-sales-slate-400 hover:text-sales-slate-300'
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
+      <Tabs
+        items={visibleTabs.map(({ id, label }) => ({ id, label }))}
+        value={activeTab}
+        onChange={setActiveTab}
+        className="mb-6"
+      />
 
       {renderTab()}
     </div>

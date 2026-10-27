@@ -1,6 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import { Plus, Edit2, Trash2, Save, X, Search, BookOpen } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Plus, Pencil, Trash2, Search, BookOpen } from 'lucide-react';
 import { get, post, put, del } from '../../services/api';
+import ConfirmModal from '../../components/ConfirmModal.jsx';
+import { Panel, Modal, Field, Input, Textarea, Switch, Button, IconButton, EmptyState, Eyebrow, Spinner } from '../../components/ui/index.js';
+import { toast } from '../../stores/useToastStore.js';
 
 const AiRulesSection = () => {
   const [rules, setRules] = useState([]);
@@ -9,6 +12,7 @@ const AiRulesSection = () => {
 
   const [isEditing, setIsEditing] = useState(false);
   const [currentRule, setCurrentRule] = useState(null);
+  const [confirmDelete, setConfirmDelete] = useState(null);
 
   const [formData, setFormData] = useState({
     term: '',
@@ -50,13 +54,14 @@ const AiRulesSection = () => {
   };
 
   const handleDelete = async (id) => {
-    if (!window.confirm('¿Eliminar esta regla permanentemente?')) return;
     try {
       await del(`/tenant/ai-rules/${id}`);
+      setConfirmDelete(null);
       fetchRules();
     } catch (err) {
       console.error(err);
-      alert('Error al eliminar');
+      setConfirmDelete(null);
+      toast.error('No se pudo eliminar la regla');
     }
   };
 
@@ -69,7 +74,7 @@ const AiRulesSection = () => {
       fetchRules();
     } catch (err) {
       console.error(err);
-      alert('Error al cambiar estado');
+      toast.error('No se pudo cambiar el estado de la regla');
     }
   };
 
@@ -105,164 +110,129 @@ const AiRulesSection = () => {
   );
 
   return (
-    <div className="bg-sales-slate-800 rounded-xl p-6 shadow-sm border border-sales-slate-700">
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-sales-cyan-500/10 rounded-lg">
-            <BookOpen className="w-6 h-6 text-sales-cyan-400" />
-          </div>
-          <div>
-            <h2 className="text-xl font-semibold text-white">Diccionario y Reglas de IA</h2>
-            <p className="text-sales-slate-400 text-sm">Entrena a la IA con sinónimos, códigos de productos o reglas específicas de tu negocio.</p>
-          </div>
-        </div>
-        {!isEditing && (
-          <button
-            onClick={handleAdd}
-            className="flex items-center gap-2 bg-sales-blue-600 hover:bg-sales-blue-500 text-white px-4 py-2 rounded-lg transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            Nueva Regla
-          </button>
-        )}
+    <Panel
+      eyebrow="Asistente IA"
+      title="Diccionario y reglas"
+      description="Sinónimos, códigos de producto e instrucciones específicas de tu negocio para el asistente."
+      actions={
+        <Button variant="secondary" size="sm" icon={Plus} onClick={handleAdd}>
+          Nueva regla
+        </Button>
+      }
+      padded={false}
+    >
+      <div className="border-b border-border px-5 py-3">
+        <Input
+          size="sm"
+          leftIcon={Search}
+          placeholder="Buscar regla…"
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          aria-label="Buscar regla"
+        />
       </div>
 
-      {isEditing ? (
-        <div className="bg-sales-slate-900/50 p-6 rounded-lg border border-sales-slate-700 mb-6">
-          <h3 className="text-lg font-medium text-white mb-4">
-            {currentRule ? 'Editar Regla' : 'Nueva Regla'}
-          </h3>
+      {loading ? (
+        <div className="flex justify-center py-12">
+          <Spinner size={20} />
+        </div>
+      ) : filteredRules.length === 0 ? (
+        <EmptyState
+          compact
+          icon={BookOpen}
+          title={searchTerm ? 'Sin resultados' : 'Sin reglas'}
+          description={searchTerm ? 'Ninguna regla coincide con la búsqueda.' : 'Agrega términos o instrucciones para afinar las respuestas del asistente.'}
+        />
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr>
+                <th className="border-b border-border px-4 py-2.5 text-left"><Eyebrow tone="muted">Término</Eyebrow></th>
+                <th className="border-b border-border px-4 py-2.5 text-left"><Eyebrow tone="muted">Definición</Eyebrow></th>
+                <th className="border-b border-border px-4 py-2.5 text-left"><Eyebrow tone="muted">Activa</Eyebrow></th>
+                <th className="border-b border-border px-4 py-2.5"><span className="sr-only">Acciones</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredRules.map(rule => (
+                <tr key={rule.id} className="border-b border-border/70 last:border-0 hover:bg-surface-2/60">
+                  <td className="whitespace-nowrap px-4 py-3 font-medium text-fg">{rule.term}</td>
+                  <td className="px-4 py-3 text-fg-muted">
+                    <span className="line-clamp-2">{rule.definition}</span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <Switch checked={rule.isActive} onChange={() => handleToggle(rule)} />
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex justify-end gap-1">
+                      <IconButton icon={Pencil} label="Editar regla" size="sm" onClick={() => handleEdit(rule)} />
+                      <IconButton icon={Trash2} label="Eliminar regla" size="sm" variant="danger" onClick={() => setConfirmDelete(rule)} />
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <Modal
+        open={isEditing}
+        onClose={() => setIsEditing(false)}
+        eyebrow="Regla del asistente"
+        title={currentRule ? 'Editar regla' : 'Nueva regla'}
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setIsEditing(false)}>Cancelar</Button>
+            <Button variant="primary" onClick={handleSave}>Guardar</Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
           {formError && (
-            <div className="mb-4 p-3 bg-red-500/10 border border-red-500/20 text-red-400 text-sm rounded-lg">
+            <div role="alert" className="rounded-md border border-danger/40 bg-danger/10 px-3 py-2.5 text-sm text-danger">
               {formError}
             </div>
           )}
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-sales-slate-300 mb-1">Término o Concepto</label>
-              <input
-                type="text"
+          <Field label="Término o concepto" required>
+            {(p) => (
+              <Input
+                {...p}
                 value={formData.term}
                 onChange={(e) => setFormData({ ...formData, term: e.target.value })}
-                placeholder="ej. limpiador metálico"
-                className="w-full bg-sales-slate-800 border border-sales-slate-600 text-white rounded-lg px-4 py-2 focus:ring-2 focus:ring-sales-cyan-500 focus:border-transparent outline-none"
+                placeholder="Ej. limpiador metálico"
+                data-autofocus
               />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-sales-slate-300 mb-1">Definición o Instrucción para la IA</label>
-              <textarea
+            )}
+          </Field>
+          <Field label="Definición o instrucción" required>
+            {(p) => (
+              <Textarea
+                {...p}
                 value={formData.definition}
                 onChange={(e) => setFormData({ ...formData, definition: e.target.value })}
-                placeholder="ej. Buscar únicamente limpiadores con perfil H860 y H862"
-                rows="3"
-                className="w-full bg-sales-slate-800 border border-sales-slate-600 text-white rounded-lg px-4 py-2 focus:ring-2 focus:ring-sales-cyan-500 focus:border-transparent outline-none resize-none"
+                placeholder="Ej. Buscar únicamente limpiadores con perfil H860 y H862"
+                rows={3}
               />
-            </div>
-            <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                id="isActive"
-                checked={formData.isActive}
-                onChange={(e) => setFormData({ ...formData, isActive: e.target.checked })}
-                className="w-4 h-4 rounded bg-sales-slate-700 border-sales-slate-600 text-sales-blue-500 focus:ring-sales-blue-500"
-              />
-              <label htmlFor="isActive" className="text-sm text-sales-slate-300">
-                Regla Activa
-              </label>
-            </div>
-            <div className="flex justify-end gap-3 pt-4">
-              <button
-                onClick={() => setIsEditing(false)}
-                className="px-4 py-2 text-sales-slate-300 hover:text-white transition-colors"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleSave}
-                className="flex items-center gap-2 bg-sales-cyan-600 hover:bg-sales-cyan-500 text-white px-4 py-2 rounded-lg transition-colors"
-              >
-                <Save className="w-4 h-4" />
-                Guardar
-              </button>
-            </div>
-          </div>
+            )}
+          </Field>
+          <Switch
+            checked={formData.isActive}
+            onChange={(checked) => setFormData({ ...formData, isActive: checked })}
+            label="Regla activa"
+          />
         </div>
-      ) : (
-        <>
-          <div className="relative mb-6">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-sales-slate-400" />
-            <input
-              type="text"
-              placeholder="Buscar regla..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full bg-sales-slate-900 border border-sales-slate-700 text-white pl-10 pr-4 py-2 rounded-lg focus:ring-2 focus:ring-sales-blue-500 focus:border-transparent outline-none"
-            />
-          </div>
+      </Modal>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="border-b border-sales-slate-700 text-sales-slate-400 text-sm">
-                  <th className="py-3 px-4 font-medium">Término</th>
-                  <th className="py-3 px-4 font-medium">Definición</th>
-                  <th className="py-3 px-4 font-medium text-center">Estado</th>
-                  <th className="py-3 px-4 font-medium text-right">Acciones</th>
-                </tr>
-              </thead>
-              <tbody className="text-sm">
-                {loading ? (
-                  <tr>
-                    <td colSpan="4" className="text-center py-8 text-sales-slate-400">Cargando...</td>
-                  </tr>
-                ) : filteredRules.length === 0 ? (
-                  <tr>
-                    <td colSpan="4" className="text-center py-8 text-sales-slate-400">
-                      No se encontraron reglas. Agrega una nueva.
-                    </td>
-                  </tr>
-                ) : (
-                  filteredRules.map(rule => (
-                    <tr key={rule.id} className="border-b border-sales-slate-700/50 hover:bg-sales-slate-700/20 transition-colors">
-                      <td className="py-3 px-4 text-white font-medium whitespace-nowrap">{rule.term}</td>
-                      <td className="py-3 px-4 text-sales-slate-300">
-                        <span className="line-clamp-2">{rule.definition}</span>
-                      </td>
-                      <td className="py-3 px-4 text-center">
-                        <button
-                          onClick={() => handleToggle(rule)}
-                          className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                            rule.isActive
-                              ? 'bg-green-500/10 text-green-400 hover:bg-green-500/20'
-                              : 'bg-sales-slate-700 text-sales-slate-400 hover:bg-sales-slate-600'
-                          }`}
-                        >
-                          {rule.isActive ? 'Activo' : 'Inactivo'}
-                        </button>
-                      </td>
-                      <td className="py-3 px-4 text-right whitespace-nowrap">
-                        <button
-                          onClick={() => handleEdit(rule)}
-                          className="p-2 text-sales-slate-400 hover:text-sales-cyan-400 transition-colors inline-block"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(rule.id)}
-                          className="p-2 text-sales-slate-400 hover:text-red-400 transition-colors inline-block"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </>
-      )}
-    </div>
+      <ConfirmModal
+        open={!!confirmDelete}
+        title="Eliminar regla"
+        message={`¿Eliminar la regla "${confirmDelete?.term}" permanentemente?`}
+        onConfirm={() => handleDelete(confirmDelete?.id)}
+        onCancel={() => setConfirmDelete(null)}
+      />
+    </Panel>
   );
 };
 

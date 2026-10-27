@@ -1,7 +1,16 @@
 import { useState, useEffect } from 'react';
-import { Pencil, Trash2, X, Plus } from 'lucide-react';
+import { Pencil, Trash2, Plus, Building2 } from 'lucide-react';
 import { get, post, put, del } from '../../services/api.js';
 import ConfirmModal from '../../components/ConfirmModal.jsx';
+import { Panel, Modal, Field, Input, Button, IconButton, EmptyState, Eyebrow, Spinner } from '../../components/ui/index.js';
+
+function ErrorAlert({ children, className = '' }) {
+  return (
+    <div role="alert" className={`rounded-md border border-danger/40 bg-danger/10 px-3 py-2.5 text-sm text-danger ${className}`}>
+      {children}
+    </div>
+  );
+}
 
 function BranchForm({ branch, onSave, onCancel }) {
   const [form, setForm] = useState({
@@ -33,68 +42,33 @@ function BranchForm({ branch, onSave, onCancel }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="w-full max-w-md rounded-xl border border-slate-700 bg-slate-900 p-6 shadow-2xl">
-        <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-sales-slate-100">
-            {branch ? 'Editar Sucursal' : 'Nueva Sucursal'}
-          </h3>
-          <button onClick={onCancel} className="rounded-lg p-1 text-sales-slate-400 hover:bg-slate-800 transition-colors">
-            <X size={20} />
-          </button>
-        </div>
-
-        {error && (
-          <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-400">
-            {error}
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="mb-1 block text-sm text-sales-slate-400">Nombre</label>
-            <input
-              value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
-              required
-              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-sales-slate-100 focus:outline-none focus:ring-2 focus:ring-sales-coral/50"
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-sm text-sales-slate-400">Dirección</label>
-            <input
-              value={form.address}
-              onChange={(e) => setForm({ ...form, address: e.target.value })}
-              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-sales-slate-100 focus:outline-none focus:ring-2 focus:ring-sales-coral/50"
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-sm text-sales-slate-400">Teléfono</label>
-            <input
-              value={form.phone}
-              onChange={(e) => setForm({ ...form, phone: e.target.value })}
-              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-sales-slate-100 focus:outline-none focus:ring-2 focus:ring-sales-coral/50"
-            />
-          </div>
-          <div className="flex gap-3 pt-2">
-            <button
-              type="submit"
-              disabled={saving}
-              className="rounded-lg bg-sales-orange px-6 py-2 text-sm font-medium text-white hover:bg-sales-orange-light transition-colors disabled:opacity-50"
-            >
-              {saving ? 'Guardando...' : 'Guardar'}
-            </button>
-            <button
-              type="button"
-              onClick={onCancel}
-              className="rounded-lg border border-slate-700 px-6 py-2 text-sm text-sales-slate-400 hover:bg-slate-800 transition-colors"
-            >
-              Cancelar
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+    <Modal
+      open
+      onClose={onCancel}
+      eyebrow="Sucursal"
+      title={branch ? 'Editar sucursal' : 'Nueva sucursal'}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onCancel} disabled={saving}>Cancelar</Button>
+          <Button type="submit" form="branch-form" variant="primary" loading={saving}>
+            {saving ? 'Guardando…' : 'Guardar'}
+          </Button>
+        </>
+      }
+    >
+      <form id="branch-form" onSubmit={handleSubmit} className="space-y-4">
+        {error && <ErrorAlert>{error}</ErrorAlert>}
+        <Field label="Nombre" required>
+          {(p) => <Input {...p} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required data-autofocus />}
+        </Field>
+        <Field label="Dirección">
+          {(p) => <Input {...p} value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />}
+        </Field>
+        <Field label="Teléfono">
+          {(p) => <Input {...p} value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />}
+        </Field>
+      </form>
+    </Modal>
   );
 }
 
@@ -143,60 +117,57 @@ export default function BranchListSection() {
     }
   }
 
-  return (
-    <div>
-      <div className="mb-4 flex items-center justify-between">
-        <h3 className="text-lg font-semibold text-sales-slate-100">Sucursales</h3>
-        <button
-          onClick={() => { setEditingBranch(null); setShowForm(true); }}
-          className="flex items-center gap-1 rounded-lg bg-sales-orange px-3 py-1.5 text-sm font-medium text-white hover:bg-sales-orange-light transition-colors"
-        >
-          <Plus size={16} /> Nueva
-        </button>
-      </div>
+  const newButton = (
+    <Button variant="primary" size="sm" icon={Plus} onClick={() => { setEditingBranch(null); setShowForm(true); }}>
+      Nueva sucursal
+    </Button>
+  );
 
-      {error && (
-        <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-400">{error}</div>
-      )}
+  return (
+    <Panel
+      eyebrow="Organización"
+      title="Sucursales"
+      description="Ubicaciones físicas a las que pertenecen los grupos de venta."
+      actions={newButton}
+      padded={false}
+    >
+      {error && <ErrorAlert className="m-5">{error}</ErrorAlert>}
 
       {loading ? (
-        <p className="text-sm text-sales-slate-400">Cargando...</p>
+        <div className="flex justify-center py-12">
+          <Spinner size={20} />
+        </div>
       ) : branches.length === 0 ? (
-        <p className="text-sm text-sales-slate-400">No hay sucursales registradas.</p>
+        <EmptyState
+          compact
+          icon={Building2}
+          title="Sin sucursales"
+          description="Crea la primera sucursal para organizar tus grupos de venta."
+        />
       ) : (
-        <div className="overflow-hidden rounded-lg border border-slate-800">
+        <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-slate-800 text-sales-slate-400">
+            <thead>
               <tr>
-                <th className="px-4 py-3 text-left font-medium">Nombre</th>
-                <th className="px-4 py-3 text-left font-medium">Dirección</th>
-                <th className="px-4 py-3 text-left font-medium">Teléfono</th>
-                <th className="px-4 py-3 text-center font-medium">Grupos</th>
-                <th className="px-4 py-3 text-right font-medium">Acciones</th>
+                <th className="border-b border-border px-4 py-2.5 text-left"><Eyebrow tone="muted">Nombre</Eyebrow></th>
+                <th className="border-b border-border px-4 py-2.5 text-left"><Eyebrow tone="muted">Dirección</Eyebrow></th>
+                <th className="border-b border-border px-4 py-2.5 text-left"><Eyebrow tone="muted">Teléfono</Eyebrow></th>
+                <th className="border-b border-border px-4 py-2.5 text-right"><Eyebrow tone="muted">Grupos</Eyebrow></th>
+                <th className="border-b border-border px-4 py-2.5"><span className="sr-only">Acciones</span></th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-800">
+            <tbody>
               {branches.map((b) => (
-                <tr key={b.id} className="text-sales-slate-300 hover:bg-slate-800/50">
-                  <td className="px-4 py-3 font-medium text-sales-slate-100">{b.name}</td>
-                  <td className="px-4 py-3">{b.address || '—'}</td>
-                  <td className="px-4 py-3">{b.phone || '—'}</td>
-                  <td className="px-4 py-3 text-center">{b.groupCount}</td>
-                  <td className="px-4 py-3 text-right">
-                    <button
-                      onClick={() => { setEditingBranch(b); setShowForm(true); }}
-                      className="rounded-lg p-1.5 text-sales-slate-400 hover:bg-slate-700 hover:text-sales-slate-200 transition-colors"
-                      title="Editar sucursal"
-                    >
-                      <Pencil size={16} />
-                    </button>
-                    <button
-                      onClick={() => setConfirmDelete(b)}
-                      className="rounded-lg p-1.5 text-sales-slate-400 hover:bg-slate-700 hover:text-red-400 transition-colors"
-                      title="Eliminar sucursal"
-                    >
-                      <Trash2 size={16} />
-                    </button>
+                <tr key={b.id} className="border-b border-border/70 last:border-0 hover:bg-surface-2/60">
+                  <td className="px-4 py-3 font-medium text-fg">{b.name}</td>
+                  <td className="px-4 py-3 text-fg-muted">{b.address || '—'}</td>
+                  <td className="px-4 py-3 font-mono text-[13px] text-fg-muted">{b.phone || '—'}</td>
+                  <td className="tnum px-4 py-3 text-right font-mono text-fg-muted">{b.groupCount}</td>
+                  <td className="px-4 py-3">
+                    <div className="flex justify-end gap-1">
+                      <IconButton icon={Pencil} label="Editar sucursal" size="sm" onClick={() => { setEditingBranch(b); setShowForm(true); }} />
+                      <IconButton icon={Trash2} label="Eliminar sucursal" size="sm" variant="danger" onClick={() => setConfirmDelete(b)} />
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -205,6 +176,16 @@ export default function BranchListSection() {
         </div>
       )}
 
+      {deleteError && <ErrorAlert className="m-5">{deleteError}</ErrorAlert>}
+
+      <ConfirmModal
+        open={!!confirmDelete}
+        title="Eliminar sucursal"
+        message={`¿Eliminar la sucursal "${confirmDelete?.name}"? Esta acción no se puede deshacer.`}
+        onConfirm={() => handleDelete(confirmDelete)}
+        onCancel={() => setConfirmDelete(null)}
+      />
+
       {showForm && (
         <BranchForm
           branch={editingBranch}
@@ -212,6 +193,6 @@ export default function BranchListSection() {
           onCancel={() => setShowForm(false)}
         />
       )}
-    </div>
+    </Panel>
   );
 }

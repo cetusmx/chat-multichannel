@@ -1,5 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
+import { Zap } from 'lucide-react';
 import { get, post } from '../../../services/api';
+import { Eyebrow, Kbd, Spinner } from '../../../components/ui/index.js';
+import { cn } from '../../../utils/cn.js';
 
 export default function CannedResponsesPopover({ isOpen, onClose, onSelect, filterText, anchorEl }) {
   const [responses, setResponses] = useState([]);
@@ -30,7 +33,7 @@ export default function CannedResponsesPopover({ isOpen, onClose, onSelect, filt
   };
 
   const filteredResponses = responses.filter(r => {
-    const term = filterText.toLowerCase();
+    const term = (filterText || '').toLowerCase();
     return (
       r.title.toLowerCase().includes(term) ||
       (r.shortcut && r.shortcut.toLowerCase().includes(term))
@@ -80,8 +83,8 @@ export default function CannedResponsesPopover({ isOpen, onClose, onSelect, filt
   const handleSelect = async (r) => {
     try {
       await post(`/canned-responses/${r.id}/use`);
-    } catch (e) {
-      // ignore
+    } catch {
+      /* usage tracking is best-effort */
     }
     onSelect(r.content);
     onClose();
@@ -92,31 +95,37 @@ export default function CannedResponsesPopover({ isOpen, onClose, onSelect, filt
   return (
     <div
       ref={popoverRef}
-      className="absolute bottom-full left-0 mb-2 w-80 max-h-64 overflow-y-auto bg-sales-slate-800 border border-sales-slate-700 rounded-lg shadow-xl z-50 flex flex-col"
+      role="listbox"
+      className="absolute bottom-full left-0 z-50 mb-2 flex max-h-72 w-96 flex-col overflow-hidden rounded-lg border border-border bg-surface shadow-2xl shadow-black/40"
     >
-      <div className="p-2 border-b border-sales-slate-700 bg-sales-slate-900 sticky top-0">
-        <span className="text-xs font-semibold text-sales-cyan-400">⚡ Respuestas Rápidas</span>
+      <div className="flex items-center justify-between border-b border-border px-3 py-2">
+        <span className="inline-flex items-center gap-1.5">
+          <Zap size={11} className="text-accent" aria-hidden />
+          <Eyebrow>Respuestas rápidas</Eyebrow>
+        </span>
+        <span className="flex items-center gap-1 text-[10px] text-fg-subtle"><Kbd>↑↓</Kbd><Kbd>↵</Kbd></span>
       </div>
 
       {loading ? (
-        <div className="p-4 text-center text-sales-slate-500 text-sm">Cargando...</div>
+        <div className="flex justify-center p-6"><Spinner /></div>
       ) : filteredResponses.length === 0 ? (
-        <div className="p-4 text-center text-sales-slate-500 text-sm">No se encontraron respuestas</div>
+        <div className="p-5 text-center text-sm text-fg-subtle">Sin coincidencias{filterText ? ` para "${filterText}"` : ''}</div>
       ) : (
-        <ul className="py-1">
+        <ul className="overflow-y-auto py-1 custom-scrollbar">
           {filteredResponses.map((r, i) => (
             <li
               key={r.id}
+              role="option"
+              aria-selected={i === selectedIndex}
               onClick={() => handleSelect(r)}
-              className={`px-3 py-2 cursor-pointer transition-colors ${
-                i === selectedIndex ? 'bg-sales-cyan-600/30 border-l-2 border-sales-cyan-500' : 'hover:bg-sales-slate-700 border-l-2 border-transparent'
-              }`}
+              onMouseEnter={() => setSelectedIndex(i)}
+              className={cn('cursor-pointer border-l-2 px-3 py-2 transition-colors', i === selectedIndex ? 'border-accent bg-surface-2' : 'border-transparent hover:bg-surface-2/60')}
             >
-              <div className="flex justify-between items-center mb-1">
-                <span className="font-medium text-white text-sm">{r.title}</span>
-                {r.shortcut && <span className="text-[10px] text-sales-cyan-300 bg-sales-cyan-900/50 px-1.5 py-0.5 rounded">{r.shortcut}</span>}
+              <div className="flex items-center justify-between gap-3">
+                <span className="truncate text-sm font-medium text-fg">{r.title}</span>
+                {r.shortcut && <span className="shrink-0 font-mono text-[10px] text-fg-subtle">/{r.shortcut}</span>}
               </div>
-              <div className="text-xs text-sales-slate-400 truncate">{r.content}</div>
+              <div className="mt-0.5 truncate text-xs text-fg-muted">{r.content}</div>
             </li>
           ))}
         </ul>

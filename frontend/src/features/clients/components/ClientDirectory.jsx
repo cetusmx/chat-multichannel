@@ -1,28 +1,28 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { get } from '../../../services/api';
 import { Search, ChevronLeft, ChevronRight, XCircle, Users } from 'lucide-react';
 import { useDebounce } from '../../../hooks/useDebounce';
+import { Avatar, Button, EmptyState, Eyebrow, IconButton, Input, PageHeader, Spinner } from '../../../components/ui/index.js';
+import { formatDate, formatRelativeTime } from '../../../utils/formatDate.js';
+import { cn } from '../../../utils/cn.js';
+
+const COLUMNS = ['Cliente', 'Teléfono', 'RFC', 'Último contacto', 'Última compra', 'Último asesor'];
 
 export default function ClientDirectory() {
   const navigate = useNavigate();
   const [clients, setClients] = useState([]);
   const [meta, setMeta] = useState(null);
-  
-  // Filtering and Pagination State
+
   const [page, setPage] = useState(1);
   const [searchInput, setSearchInput] = useState('');
-  
-  // Debounced filters
+
   const debouncedSearch = useDebounce(searchInput, 500);
 
-  // Async states
   const [isLoading, setIsLoading] = useState(true);
   const [isError, setIsError] = useState(null);
 
-  // Fetch logic
   useEffect(() => {
-    // Reset page to 1 whenever filters change, except on initial render
     setPage(1);
   }, [debouncedSearch]);
 
@@ -68,7 +68,6 @@ export default function ClientDirectory() {
     };
   }, [page, debouncedSearch]);
 
-  // Derived states
   const isInitialLoad = isLoading && clients.length === 0;
   const isRefetching = isLoading && clients.length > 0;
   const isEmpty = !isLoading && !isError && clients.length === 0;
@@ -79,151 +78,98 @@ export default function ClientDirectory() {
     setPage(1);
   };
 
-  const formatDate = (isoString) => {
-    if (!isoString) return 'N/A';
-    try {
-      return new Intl.DateTimeFormat('default', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-      }).format(new Date(isoString));
-    } catch {
-      return 'N/A';
-    }
-  };
-
   const totalPages = meta?.totalPages || 1;
 
   return (
-    <div className="w-full space-y-6">
-      {/* Header & Filters */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <h2 className="text-2xl font-semibold text-sales-slate-100">
-          Directorio de Clientes
-        </h2>
-        
-        <div className="flex flex-col sm:flex-row gap-3">
-          <div className="relative">
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <Search className="h-4 w-4 text-gray-400" />
-            </div>
-            <input
-              type="text"
-              placeholder="Buscar por Nombre, Teléfono o RFC..."
-              className="pl-10 pr-4 py-2 w-full sm:w-80 rounded-xl bg-white/10 backdrop-blur-md border border-white/20 focus:outline-none focus:ring-2 focus:ring-orange-400 text-white placeholder-gray-400 transition-all"
+    <div>
+      <PageHeader
+        eyebrow="Directorio"
+        title="Clientes"
+        description="Personas que han conversado con tu equipo, con su último contacto y compra."
+        actions={
+          <div className="w-72 sm:w-80">
+            <Input
+              leftIcon={Search}
+              placeholder="Buscar por nombre, teléfono o RFC"
+              aria-label="Buscar clientes"
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
             />
           </div>
-        </div>
-      </div>
+        }
+      />
 
-      {/* Error State */}
       {isError && clients.length > 0 && (
-        <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 flex items-center gap-2">
-          <XCircle className="h-5 w-5" />
+        <div className="mb-4 flex items-center gap-2 rounded-md border border-danger/40 bg-danger/10 px-3.5 py-2.5 text-sm text-danger" role="alert">
+          <XCircle size={15} aria-hidden />
           {isError}
         </div>
       )}
 
-      {/* Table Container */}
-      <div className="relative rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 overflow-hidden">
-        
-        {/* Refetching Overlay */}
-        {isRefetching && (
-          <div className="absolute inset-0 bg-black/20 backdrop-blur-[2px] z-10 flex items-center justify-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-400"></div>
-          </div>
-        )}
-
-        {/* Initial Load Skeleton */}
+      <div className="overflow-hidden rounded-lg border border-border bg-surface">
         {isInitialLoad ? (
-          <div className="p-8 space-y-4">
+          <div className="space-y-3 p-5">
             {[...Array(5)].map((_, i) => (
-              <div key={i} className="h-12 bg-white/5 rounded-lg animate-pulse"></div>
+              <div key={i} className="h-10 animate-pulse rounded-md bg-surface-2" />
             ))}
           </div>
         ) : isError && clients.length === 0 ? (
-          <div className="p-12 flex flex-col items-center justify-center text-center space-y-4">
-             <div className="p-4 rounded-full bg-red-500/10 border border-red-500/20">
-               <XCircle className="h-8 w-8 text-red-400" />
-             </div>
-             <div>
-               <h3 className="text-lg font-medium text-white">Error al cargar clientes</h3>
-               <p className="text-gray-400 text-sm mt-1">Por favor intenta nuevamente o contacta a soporte.</p>
-             </div>
-             {hasActiveFilters && (
-              <button
-                onClick={clearFilters}
-                className="mt-2 px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-white transition-colors text-sm"
-              >
-                Limpiar Filtros
-              </button>
-             )}
-          </div>
+          <EmptyState
+            icon={XCircle}
+            title="Error al cargar clientes"
+            description="Por favor intenta nuevamente o contacta a soporte."
+            action={hasActiveFilters && <Button variant="outline" size="sm" onClick={clearFilters}>Limpiar filtros</Button>}
+          />
         ) : isEmpty ? (
-          /* Empty State */
-          <div className="p-12 flex flex-col items-center justify-center text-center space-y-4">
-            <div className="p-4 rounded-full bg-white/5 border border-white/10">
-              <Users className="h-8 w-8 text-gray-400" />
-            </div>
-            <div>
-              <h3 className="text-lg font-medium text-white">No se encontraron clientes</h3>
-              <p className="text-gray-400 text-sm mt-1">
-                {hasActiveFilters 
-                  ? "No encontramos ningún cliente que coincida con tus criterios de búsqueda."
-                  : "Tu directorio de clientes está vacío."}
-              </p>
-            </div>
-            {hasActiveFilters && (
-              <button
-                onClick={clearFilters}
-                className="mt-2 px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-white transition-colors text-sm"
-              >
-                Limpiar Filtros
-              </button>
-            )}
-          </div>
+          <EmptyState
+            icon={Users}
+            title="No se encontraron clientes"
+            description={
+              hasActiveFilters
+                ? 'No encontramos ningún cliente que coincida con tu búsqueda.'
+                : 'Tu directorio de clientes está vacío.'
+            }
+            action={hasActiveFilters && <Button variant="outline" size="sm" onClick={clearFilters}>Limpiar filtros</Button>}
+          />
         ) : (
-          /* Data Table */
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm text-gray-300">
-              <thead className="bg-white/5 border-b border-white/10 text-gray-400">
+            <table className={cn('w-full text-sm transition-opacity', isRefetching && 'opacity-60')}>
+              <thead>
                 <tr>
-                  <th className="px-6 py-4 font-medium whitespace-nowrap">Nombre</th>
-                  <th className="px-6 py-4 font-medium whitespace-nowrap">Teléfono</th>
-                  <th className="px-6 py-4 font-medium whitespace-nowrap">RFC</th>
-                  <th className="px-6 py-4 font-medium whitespace-nowrap">Último Contacto</th>
-                  <th className="px-6 py-4 font-medium whitespace-nowrap">Última Compra</th>
-                  <th className="px-6 py-4 font-medium whitespace-nowrap">Último Asesor</th>
+                  {COLUMNS.map((col) => (
+                    <th key={col} className="whitespace-nowrap border-b border-border px-4 py-2.5 text-left">
+                      <Eyebrow tone="muted">{col}</Eyebrow>
+                    </th>
+                  ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-white/10">
+              <tbody>
                 {clients.map((client) => (
-                  <tr 
-                    key={client.id} 
-                    className="hover:bg-white/10 transition-colors cursor-pointer group"
+                  <tr
+                    key={client.id}
+                    className="cursor-pointer border-b border-border/70 last:border-0 hover:bg-surface-2/60"
                     onClick={() => navigate(`/clients/${client.id}`)}
                   >
-                    <td className="px-6 py-4 whitespace-nowrap text-white font-medium group-hover:text-sales-cyan-400 transition-colors">
-                      {client.name || 'N/D'}
+                    <td className="whitespace-nowrap px-4 py-3">
+                      <div className="flex items-center gap-3">
+                        <Avatar name={client.name} size="sm" tone="neutral" />
+                        <span className="font-medium text-fg">{client.name || 'Sin nombre'}</span>
+                      </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      {client.phoneNumber || 'N/D'}
+                    <td className="tnum whitespace-nowrap px-4 py-3 font-mono text-xs text-fg-muted">
+                      {client.phoneNumber || '—'}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      {client.cartData?.rfc || 'N/D'}
+                    <td className="whitespace-nowrap px-4 py-3 font-mono text-xs text-fg-muted">
+                      {client.cartData?.rfc || '—'}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      {formatDate(client.lastInboundDate)}
+                    <td className="whitespace-nowrap px-4 py-3 text-fg-muted">
+                      {client.lastInboundDate ? formatRelativeTime(client.lastInboundDate) : '—'}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      {formatDate(client.lastPurchaseDate)}
+                    <td className="whitespace-nowrap px-4 py-3 text-fg-muted">
+                      {client.lastPurchaseDate ? formatDate(client.lastPurchaseDate) : '—'}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      {client.lastVendor?.name || 'N/D'}
+                    <td className="whitespace-nowrap px-4 py-3 text-fg-muted">
+                      {client.lastVendor?.name || '—'}
                     </td>
                   </tr>
                 ))}
@@ -233,28 +179,30 @@ export default function ClientDirectory() {
         )}
       </div>
 
-      {/* Pagination Controls */}
       {!isInitialLoad && !isEmpty && meta && (
-        <div className="flex items-center justify-between bg-white/5 backdrop-blur-md border border-white/20 rounded-xl p-4">
-          <p className="text-sm text-gray-400">
-            Mostrando <span className="font-medium text-white">{clients.length}</span> resultados 
-            (Página {page} de {totalPages})
+        <div className="mt-4 flex items-center justify-between text-sm text-fg-muted">
+          <p className="flex items-center gap-2">
+            {isRefetching && <Spinner size={14} />}
+            <span>
+              Mostrando <span className="tnum font-medium text-fg">{clients.length}</span> resultados · página{' '}
+              <span className="tnum">{page}</span> de <span className="tnum">{totalPages}</span>
+            </span>
           </p>
-          <div className="flex gap-2">
-            <button
-              onClick={() => setPage(p => Math.max(1, p - 1))}
+          <div className="flex gap-1">
+            <IconButton
+              icon={ChevronLeft}
+              label="Página anterior"
+              variant="outline"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page === 1}
-              className="p-2 rounded-lg bg-white/10 hover:bg-white/20 disabled:opacity-50 disabled:cursor-not-allowed border border-white/10 transition-colors"
-            >
-              <ChevronLeft className="h-4 w-4 text-white" />
-            </button>
-            <button
-              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+            />
+            <IconButton
+              icon={ChevronRight}
+              label="Página siguiente"
+              variant="outline"
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               disabled={page >= totalPages}
-              className="p-2 rounded-lg bg-gradient-to-r from-orange-400 to-rose-400 hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed text-white transition-opacity"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </button>
+            />
           </div>
         </div>
       )}

@@ -1,30 +1,38 @@
-export default function ConfirmModal({ open, title, message, onConfirm, onCancel, confirmText = 'Eliminar', confirmVariant = 'danger' }) {
-  if (!open) return null;
+import Modal from './ui/Modal.jsx';
+import Button from './ui/Button.jsx';
 
-  const btnClasses = confirmVariant === 'danger'
-    ? 'bg-red-500 hover:bg-red-600'
-    : 'bg-sales-cyan-600 hover:bg-sales-cyan-700';
-
+/**
+ * Confirmation dialog. `confirmVariant` is 'danger' (default) or 'primary'.
+ */
+export default function ConfirmModal({
+  open,
+  title,
+  message,
+  onConfirm,
+  onCancel,
+  confirmText = 'Eliminar',
+  cancelText = 'Cancelar',
+  confirmVariant = 'danger',
+  loading = false,
+}) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="w-full max-w-sm rounded-xl border border-slate-700 bg-slate-900 p-6 shadow-2xl">
-        <h3 className="mb-2 text-lg font-semibold text-sales-slate-100">{title}</h3>
-        <p className="mb-6 text-sm text-sales-slate-400">{message}</p>
-        <div className="flex gap-3 justify-end">
-          <button
-            onClick={onCancel}
-            className="rounded-lg border border-slate-700 px-4 py-2 text-sm text-sales-slate-400 hover:bg-slate-800 transition-colors"
-          >
-            Cancelar
-          </button>
-          <button
-            onClick={onConfirm}
-            className={`rounded-lg px-4 py-2 text-sm font-medium text-white transition-colors ${btnClasses}`}
-          >
+    <Modal
+      open={open}
+      onClose={onCancel}
+      title={title}
+      size="sm"
+      footer={
+        <>
+          <Button variant="ghost" onClick={onCancel} disabled={loading}>
+            {cancelText}
+          </Button>
+          <Button variant={confirmVariant === 'danger' ? 'danger' : 'primary'} onClick={onConfirm} loading={loading} data-autofocus>
             {confirmText}
-          </button>
-        </div>
-      </div>
-    </div>
+          </Button>
+        </>
+      }
+    >
+      {message && <p className="text-sm text-fg-muted leading-relaxed">{message}</p>}
+    </Modal>
   );
 }

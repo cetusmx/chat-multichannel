@@ -304,7 +304,7 @@ export async function searchSealMarketCatalog(params) {
 }
 
 export async function getSealMarketFamilias() {
-  const res = await get(`/sealmarket/catalog/familias`);
+  const res = await get('/sealmarket/catalog/familias');
   if (!res.ok) {
     throw new Error('Error al obtener familias');
   }
@@ -321,4 +321,43 @@ export async function getClientByRfc(rfc) {
 
 export async function enviarCotizacionEmail(data) {
   return post('/chat/quote/send-email', data);
+}
+
+/** Builds the quote payload shared by PDF generation and email sending. */
+export function buildQuotePayload(client, cartData) {
+  const meta = cartData && !Array.isArray(cartData) ? cartData : {};
+  const items = Array.isArray(cartData) ? cartData : cartData?.items || [];
+  return {
+    client: {
+      name: meta.razonSocial || client?.name || '',
+      chatName: client?.name || '',
+      rfc: meta.rfc || meta.RFC || '',
+      billingAddress: meta.billingAddress || meta.domicilioFiscal || '',
+      address: meta.shippingAddress || '',
+      phone: client?.phoneNumber || client?.phone || '',
+    },
+    cartItems: items,
+  };
+}
+
+/**
+ * Generates the quote PDF and triggers a browser download.
+ * When `conversationId` is given the backend also sends the PDF to the
+ * customer through WhatsApp.
+ */
+export async function downloadQuotePdf(client, cartData, conversationId = null) {
+  const payload = buildQuotePayload(client, cartData);
+  if (conversationId) payload.conversationId = conversationId;
+  const res = await post('/chat/quote/generate', payload);
+  if (!res.ok) throw new Error('No se pudo generar el PDF');
+  const blob = await res.blob();
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.style.display = 'none';
+  a.href = url;
+  a.download = `Cotizacion_${Date.now()}.pdf`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.URL.revokeObjectURL(url);
 }

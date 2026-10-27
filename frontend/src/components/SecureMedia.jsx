@@ -1,5 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
+import { FileText, Download, ImageOff } from 'lucide-react';
 import useAuthStore from '../stores/useAuthStore';
+import { cn } from '../utils/cn.js';
 
 /**
  * SecureMedia - Fetches and renders media using Bearer token without exposing it in URLs
@@ -50,15 +52,25 @@ export default function SecureMedia({ url, className, type = 'IMAGE', alt, fallb
     };
   }, [url, token]);
 
-  if (hasError) return <div className="bg-sales-slate-800 border border-red-500/30 text-red-400 p-2 text-xs rounded flex flex-col items-center"><span>⚠️ Error</span><span>al cargar</span></div>;
-  if (!src) return <div className="animate-pulse bg-sales-slate-700 h-20 w-32 rounded-md flex items-center justify-center text-xs text-sales-slate-400">Cargando...</div>;
+  if (hasError) {
+    return (
+      <div className="inline-flex items-center gap-2 rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-xs text-danger" role="alert">
+        <ImageOff size={14} aria-hidden />
+        <span>No se pudo cargar el archivo</span>
+      </div>
+    );
+  }
+
+  if (!src) {
+    return <div className="h-20 w-32 animate-pulse rounded-md bg-surface-2" aria-busy="true" aria-label="Cargando archivo" />;
+  }
 
   if (type === 'IMAGE') {
     return (
-      <a href={src} target="_blank" rel="noopener noreferrer" className="block cursor-zoom-in group relative">
-        <img src={src} alt={alt} className={`${className} max-h-64 object-contain rounded-md`} onError={(e) => { e.target.onerror = null; e.target.src = '/assets/fallback-image.png'; }} />
+      <a href={src} target="_blank" rel="noopener noreferrer" className="group relative block cursor-zoom-in">
+        <img src={src} alt={alt} className={cn(className, 'max-h-64 rounded-md object-contain')} onError={(e) => { e.target.onerror = null; e.target.src = '/assets/fallback-image.png'; }} />
         {fallbackText && (
-          <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-[10px] px-2 py-1 truncate rounded-b-md opacity-0 group-hover:opacity-100 transition-opacity">
+          <div className="absolute inset-x-0 bottom-0 truncate rounded-b-md bg-surface-inverse/80 px-2 py-1 font-mono text-[10px] text-fg-inverse opacity-0 transition-opacity group-hover:opacity-100">
             {fallbackText}
           </div>
         )}
@@ -66,25 +78,27 @@ export default function SecureMedia({ url, className, type = 'IMAGE', alt, fallb
     );
   }
   if (type === 'VIDEO') {
-    return <video src={src} controls className={`${className} max-h-64`} />;
+    return <video src={src} controls className={cn(className, 'max-h-64 rounded-md')} />;
   }
   if (type === 'AUDIO') {
     return <audio src={src} controls className="w-full" />;
   }
-  if (type === 'DOCUMENT') {
-    return (
-      <a
-        href={src}
-        target="_blank"
-        rel="noopener noreferrer"
-        className={`flex items-center gap-2 px-3 py-2 bg-black/20 hover:bg-black/40 rounded-lg transition-colors ${className}`}
-      >
-        <svg className="w-5 h-5 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-        </svg>
-        <span className="truncate">{fallbackText || 'Archivo adjunto'}</span>
-      </a>
-    );
-  }
-  return <a href={src} target="_blank" rel="noopener noreferrer" className="underline font-semibold flex items-center gap-1">📎 Archivo adjunto</a>;
+
+  const fileName = fallbackText || 'Archivo adjunto';
+  return (
+    <a
+      href={src}
+      target="_blank"
+      rel="noopener noreferrer"
+      title={fileName}
+      className={cn(
+        'inline-flex max-w-full items-center gap-2.5 rounded-md border border-border bg-surface px-3 py-2 text-sm text-fg transition-colors hover:bg-surface-2 hover:border-border-strong',
+        className,
+      )}
+    >
+      <FileText size={16} className="shrink-0 text-fg-muted" aria-hidden />
+      <span className="min-w-0 flex-1 truncate">{fileName}</span>
+      <Download size={14} className="shrink-0 text-fg-subtle" aria-hidden />
+    </a>
+  );
 }

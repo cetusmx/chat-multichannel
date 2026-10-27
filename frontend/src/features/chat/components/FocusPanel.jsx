@@ -1,10 +1,13 @@
 import { useEffect, useState, useCallback, memo } from 'react';
+import { X, Focus, Ban, ShieldOff } from 'lucide-react';
 import useUIStore from '../../../stores/useUIStore';
 import useChatStore from '../../../stores/useChatStore';
 import MessageList from './MessageList';
 import useAuthStore from '../../../stores/useAuthStore';
 import { get, post, postFormData, patch } from '../../../services/api';
 import ConfirmModal from '../../../components/ConfirmModal';
+import { toast } from '../../../stores/useToastStore.js';
+import { Select, Button, IconButton, EmptyState } from '../../../components/ui/index.js';
 
 const VendorAssignmentSelect = ({ conversation }) => {
   const [vendors, setVendors] = useState([]);
@@ -18,7 +21,7 @@ const VendorAssignmentSelect = ({ conversation }) => {
       get('/users?role=VENDOR')
         .then(res => res.json())
         .then(data => {
-           if (data.data) setVendors(data.data);
+          if (data.data) setVendors(data.data);
         })
         .catch(console.error);
     }
@@ -30,51 +33,51 @@ const VendorAssignmentSelect = ({ conversation }) => {
   const handleAssignClick = (e) => {
     const newVendorId = e.target.value;
     const vendor = vendors.find(v => v.id === newVendorId);
-    setConfirmVendor(vendor || { id: '', name: 'Sin Asignar' });
+    setConfirmVendor(vendor || { id: '', name: 'Sin asignar' });
   };
 
   const executeAssign = async () => {
     if (!confirmVendor) return;
     setIsAssigning(true);
     try {
-       const res = await patch(`/chat/${conversation.id}/assign`, { vendorId: confirmVendor.id });
-       if (!res.ok) throw new Error('Error asignando');
-       await fetchConversations();
+      const res = await patch(`/chat/${conversation.id}/assign`, { vendorId: confirmVendor.id });
+      if (!res.ok) throw new Error('Error asignando');
+      await fetchConversations();
+      toast.success(confirmVendor.id ? `Asignado a ${confirmVendor.name}` : 'Conversación sin asignar');
     } catch (err) {
-       console.error(err);
+      console.error(err);
+      toast.error('No se pudo reasignar la conversación');
     } finally {
-       setIsAssigning(false);
-       setConfirmVendor(null);
+      setIsAssigning(false);
+      setConfirmVendor(null);
     }
   };
 
   return (
     <>
-      <select
-        value={conversation?.vendorId || ''}
-        onChange={handleAssignClick}
-        disabled={isAssigning}
-        className="mr-8 px-2 py-1 bg-sales-slate-800 text-sales-slate-300 text-sm border border-sales-slate-700 rounded focus:outline-none focus:border-sales-cyan-500"
-        title="Asignar Asesor"
-      >
-        <option value="">Sin Asignar</option>
-        {vendors.map(v => (
-          <option key={v.id} value={v.id}>{v.name || v.email}</option>
-        ))}
-      </select>
+      <div className="w-44">
+        <Select size="sm" value={conversation?.vendorId || ''} onChange={handleAssignClick} disabled={isAssigning} aria-label="Asignar asesor">
+          <option value="">Sin asignar</option>
+          {vendors.map(v => (
+            <option key={v.id} value={v.id}>{v.name || v.email}</option>
+          ))}
+        </Select>
+      </div>
 
       <ConfirmModal
         open={!!confirmVendor}
-        title="Reasignar Conversación"
-        message={`¿Estás seguro de reasignar esta conversación a "${confirmVendor?.name || confirmVendor?.email}"?`}
+        title="Reasignar conversación"
+        message={`¿Reasignar esta conversación a "${confirmVendor?.name || confirmVendor?.email}"?`}
         onConfirm={executeAssign}
         onCancel={() => setConfirmVendor(null)}
         confirmText="Asignar"
         confirmVariant="primary"
+        loading={isAssigning}
       />
     </>
   );
 };
+
 const ClientBlockToggle = ({ conversation }) => {
   const [isBlocking, setIsBlocking] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
@@ -89,71 +92,52 @@ const ClientBlockToggle = ({ conversation }) => {
     setIsBlocking(true);
     setShowConfirm(false);
     try {
-       const res = await patch(`/clients/${conversation.client.id}/block`, { isBlocked: !isBlocked });
-       if (!res.ok) throw new Error('Error cambiando estado de bloqueo');
+      const res = await patch(`/clients/${conversation.client.id}/block`, { isBlocked: !isBlocked });
+      if (!res.ok) throw new Error('Error cambiando estado de bloqueo');
+      toast.success(isBlocked ? 'Cliente desbloqueado' : 'Cliente bloqueado');
     } catch (err) {
-       console.error(err);
-       alert('Error al cambiar el estado de bloqueo del cliente.');
+      console.error(err);
+      toast.error('No se pudo cambiar el estado de bloqueo');
     } finally {
-       setIsBlocking(false);
+      setIsBlocking(false);
     }
   };
 
   return (
     <>
-      <button
+      <Button
+        variant={isBlocked ? 'secondary' : 'danger'}
+        size="sm"
+        icon={isBlocked ? ShieldOff : Ban}
         onClick={() => setShowConfirm(true)}
-        disabled={isBlocking}
-        className={`mr-2 px-3 py-1 border rounded transition-colors text-sm font-medium ${
-          isBlocked
-            ? 'bg-sales-slate-800 border-sales-slate-700 hover:bg-sales-slate-700 text-sales-slate-300'
-            : 'bg-red-500/10 border-red-500/50 hover:bg-red-500/20 text-red-400'
-        }`}
-        title={isBlocked ? 'Desbloquear Cliente' : 'Bloquear Cliente'}
+        loading={isBlocking}
+        title={isBlocked ? 'Desbloquear cliente' : 'Bloquear cliente'}
       >
         {isBlocked ? 'Desbloquear' : 'Bloquear'}
-      </button>
+      </Button>
 
-      {showConfirm && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-sales-slate-950/80 backdrop-blur-sm">
-          <div className="mx-4 p-6 w-full max-w-sm bg-sales-slate-900 border border-sales-slate-800 rounded-lg shadow-xl">
-            <h3 className="mb-2 text-sales-slate-200 text-lg font-semibold">
-              {isBlocked ? '¿Desbloquear cliente?' : '¿Bloquear cliente?'}
-            </h3>
-            <p className="mb-6 text-sales-slate-400 text-sm">
-              {isBlocked
-                ? 'El cliente podrá volver a enviar mensajes y podrá ser atendido de nuevo.'
-                : 'El cliente no podrá enviar nuevos mensajes y las conversaciones activas serán cerradas. ¿Estás seguro?'
-              }
-            </p>
-            <div className="flex justify-end gap-3">
-              <button
-                onClick={() => setShowConfirm(false)}
-                className="px-4 py-2 text-sales-slate-400 hover:text-sales-slate-200 text-sm font-medium"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleToggleBlock}
-                className={`px-4 py-2 rounded text-white text-sm font-medium ${
-                  isBlocked ? 'bg-sales-cyan-600 hover:bg-sales-cyan-700' : 'bg-red-600 hover:bg-red-700'
-                }`}
-              >
-                {isBlocked ? 'Sí, Desbloquear' : 'Sí, Bloquear'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmModal
+        open={showConfirm}
+        title={isBlocked ? '¿Desbloquear cliente?' : '¿Bloquear cliente?'}
+        message={
+          isBlocked
+            ? 'El cliente podrá volver a enviar mensajes y ser atendido de nuevo.'
+            : 'El cliente no podrá enviar nuevos mensajes y sus conversaciones activas se cerrarán.'
+        }
+        onConfirm={handleToggleBlock}
+        onCancel={() => setShowConfirm(false)}
+        confirmText={isBlocked ? 'Sí, desbloquear' : 'Sí, bloquear'}
+        confirmVariant={isBlocked ? 'primary' : 'danger'}
+      />
     </>
   );
 };
 
 /**
- * FocusedChat encapsula el estado local y las operaciones de red para una sola conversación en el panel dual.
- * Esto evita saturar el store global y previene renderizados innecesarios.
+ * FocusedChat keeps per-conversation message state local so the dual panel
+ * doesn't pollute the global store.
  */
-const FocusedChat = memo(({ conversationId, clientName, conversation }) => {
+const FocusedChat = memo(({ conversationId, clientName, conversation, vendorName }) => {
   const socket = useChatStore(s => s.socket);
   const [messages, setMessages] = useState([]);
   const [hasMore, setHasMore] = useState(false);
@@ -197,15 +181,13 @@ const FocusedChat = memo(({ conversationId, clientName, conversation }) => {
     const handleNewMessage = (msg) => {
       if (!msg || msg.conversationId !== conversationId) return;
       setMessages(prev => {
-           // Si ya llegó por socket, o si la UI local ya lo había agregado optimísticamente (deduplicación por ID o por temp text)
-           if (prev.find(m => m.id === msg.id)) return prev;
-           // Deduplicate optimistic messages that haven't received their real ID yet
-           const isOptimisticDuplicate = prev.find(m => m.status === 'SENDING' && m.content === msg.content);
-           if (isOptimisticDuplicate) {
-             return prev.map(m => m.id === isOptimisticDuplicate.id ? msg : m);
-           }
-           return [...prev, msg];
-        });
+        if (prev.find(m => m.id === msg.id)) return prev;
+        const isOptimisticDuplicate = prev.find(m => m.status === 'SENDING' && m.content === msg.content);
+        if (isOptimisticDuplicate) {
+          return prev.map(m => m.id === isOptimisticDuplicate.id ? msg : m);
+        }
+        return [...prev, msg];
+      });
     };
 
     const handleMessageUpdated = (msg) => {
@@ -223,107 +205,95 @@ const FocusedChat = memo(({ conversationId, clientName, conversation }) => {
   }, [socket, conversationId]);
 
   const handleSendMessage = async (text, isInternal = false) => {
-     const tempId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Date.now().toString() + '-' + Math.random().toString(36).substring(2, 9);
-     const userRole = useAuthStore.getState().user?.role || 'VENDOR';
-     const tempMsg = {
-       id: tempId,
-       content: text,
-       senderType: userRole,
-       status: 'SENDING',
-       isInternal,
-       createdAt: new Date().toISOString(),
-     };
-     setMessages(prev => [...prev, tempMsg]);
-     try {
-       const res = await post(`/chat/${conversationId}/messages`, { content: text, isInternal });
-       if (!res.ok) throw new Error('Fallo al enviar');
-       const json = await res.json();
-       if (!json.data) throw new Error('Respuesta inválida');
-       setMessages(prev => prev.map(m => m.id === tempId ? json.data : m));
-     } catch (e) {
-       setMessages(prev => prev.map(m => m.id === tempId ? { ...m, status: 'FAILED' } : m));
-       setErrorMsg('Error al enviar mensaje');
-     }
+    const tempId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Date.now().toString() + '-' + Math.random().toString(36).substring(2, 9);
+    const authUser = useAuthStore.getState().user;
+    const tempMsg = {
+      id: tempId,
+      content: text,
+      senderType: authUser?.role || 'VENDOR',
+      sender: authUser ? { name: authUser.name, role: authUser.role } : undefined,
+      status: 'SENDING',
+      isInternal,
+      createdAt: new Date().toISOString(),
+    };
+    setMessages(prev => [...prev, tempMsg]);
+    try {
+      const res = await post(`/chat/${conversationId}/messages`, { content: text, isInternal });
+      if (!res.ok) throw new Error('Fallo al enviar');
+      const json = await res.json();
+      if (!json.data) throw new Error('Respuesta inválida');
+      setMessages(prev => prev.map(m => m.id === tempId ? json.data : m));
+    } catch {
+      setMessages(prev => prev.map(m => m.id === tempId ? { ...m, status: 'FAILED' } : m));
+      setErrorMsg('Error al enviar mensaje');
+    }
   };
 
   const handleSendMedia = async (file, text, isInternal, signal) => {
-      setIsUploading(true);
-      try {
-        const formData = new FormData();
-        formData.append('file', file);
-        if (text) formData.append('caption', text);
-        if (isInternal) formData.append('isInternal', 'true');
-        const res = await postFormData(`/chat/${conversationId}/media`, formData, signal);
-        if (!res.ok) throw new Error('Fallo al subir');
-        const json = await res.json();
-        setMessages(prev => prev.some(m => m.id === json.data.id) ? prev : [...prev, json.data]);
-      } catch (e) {
-        if (e.name !== 'AbortError') setErrorMsg('Error subiendo archivo');
-      } finally {
-        setIsUploading(false);
-      }
+    setIsUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      if (text) formData.append('caption', text);
+      if (isInternal) formData.append('isInternal', 'true');
+      const res = await postFormData(`/chat/${conversationId}/media`, formData, signal);
+      if (!res.ok) throw new Error('Fallo al subir');
+      const json = await res.json();
+      setMessages(prev => prev.some(m => m.id === json.data.id) ? prev : [...prev, json.data]);
+    } catch (e) {
+      if (e.name !== 'AbortError') setErrorMsg('Error subiendo archivo');
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   return (
-    <div className="flex flex-col relative flex-1 h-full min-w-[320px] max-w-full bg-sales-slate-900/50 border-r border-sales-slate-800 last:border-r-0">
-       <MessageList
-         conversationId={conversation?.id}
-         messages={messages}
-         onSendMessage={handleSendMessage}
-         onSendMedia={handleSendMedia}
-         clientName={clientName}
-         hasMore={hasMore}
-         loadMoreMessages={() => loadMessages(nextCursor)}
-         isLoadingMore={isLoadingMore}
-         errorMsg={errorMsg}
-         clearError={() => setErrorMsg(null)}
-         isUploading={isUploading}
-         disabledInput={['CLOSED', 'CLOSED_INACTIVE', 'CLOSED_WON', 'DISCARDED'].includes(conversation?.status)}
-         headerActions={conversation ? (
-           <>
-             <ClientBlockToggle conversation={conversation} />
-             <VendorAssignmentSelect conversation={conversation} />
-           </>
-         ) : null}
-       />
-       {/* Focus Header overlay for close button */}
-       <div className="absolute top-3 right-4 z-10">
-         <button
-           onClick={() => useUIStore.getState().toggleFocusedChat(conversationId)}
-           className="w-8 h-8 rounded-full bg-sales-slate-800/80 text-sales-slate-400 hover:text-white hover:bg-sales-slate-700 flex items-center justify-center transition-colors shadow-md backdrop-blur-sm border border-sales-slate-700"
-           title="Cerrar foco"
-         >
-           &times;
-         </button>
-       </div>
+    <div className="relative flex h-full min-w-[360px] max-w-full flex-1 flex-col border-r border-border last:border-r-0">
+      <MessageList
+        conversationId={conversation?.id}
+        conversation={conversation}
+        messages={messages}
+        onSendMessage={handleSendMessage}
+        onSendMedia={handleSendMedia}
+        clientName={clientName}
+        vendorName={vendorName}
+        hasMore={hasMore}
+        loadMoreMessages={() => loadMessages(nextCursor)}
+        isLoadingMore={isLoadingMore}
+        errorMsg={errorMsg}
+        clearError={() => setErrorMsg(null)}
+        isUploading={isUploading}
+        disabledInput={['CLOSED', 'CLOSED_INACTIVE', 'CLOSED_WON', 'DISCARDED'].includes(conversation?.status)}
+        headerActions={conversation ? (
+          <>
+            <ClientBlockToggle conversation={conversation} />
+            <VendorAssignmentSelect conversation={conversation} />
+            <IconButton icon={X} label="Quitar del enfoque" size="lg" onClick={() => useUIStore.getState().toggleFocusedChat(conversationId)} />
+          </>
+        ) : null}
+      />
     </div>
   );
 });
 
-export default function FocusPanel() {
+export default function FocusPanel({ vendorMap = {} }) {
   const focusedChatIds = useUIStore(s => s.focusedChatIds);
   const conversations = useChatStore(s => s.conversations);
 
   if (!focusedChatIds || focusedChatIds.length === 0) {
     return (
-      <div className="flex-1 h-full flex flex-col items-center justify-center bg-sales-slate-950 text-sales-slate-400 p-8 text-center">
-        <div className="w-24 h-24 mb-6 rounded-full bg-sales-slate-900 flex items-center justify-center border border-sales-slate-800 shadow-xl">
-          <span className="text-4xl text-sales-coral-500/50">💬</span>
-        </div>
-        <h3 className="text-2xl font-semibold text-sales-slate-200 mb-2">Modo Enfoque</h3>
-        <p className="max-w-md text-sales-slate-500">
-          Selecciona un chat para enfocar
-        </p>
+      <div className="bg-grid flex h-full items-center justify-center">
+        <EmptyState icon={Focus} eyebrow="Modo enfoque" title="Selecciona hasta dos chats" description="Elige conversaciones de la lista para seguirlas lado a lado e intervenir cuando haga falta." />
       </div>
     );
   }
 
   return (
-    <div className="flex h-full w-full min-w-0 overflow-x-auto divide-x divide-sales-slate-800">
+    <div className="flex h-full w-full min-w-0 overflow-x-auto">
       {focusedChatIds.map(id => {
         const conv = conversations.find(c => c.id === id);
         const name = conv ? (conv.client?.name || conv.client?.phoneNumber) : 'Chat';
-        return <FocusedChat key={id} conversationId={id} clientName={name} conversation={conv} />;
+        return <FocusedChat key={id} conversationId={id} clientName={name} conversation={conv} vendorName={conv?.vendorId ? vendorMap[conv.vendorId] : undefined} />;
       })}
     </div>
   );

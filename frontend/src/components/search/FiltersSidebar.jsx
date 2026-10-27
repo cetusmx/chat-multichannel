@@ -1,142 +1,140 @@
-import React from 'react';
-import { X, Calendar, User, Activity, Filter } from 'lucide-react';
+import { X, Calendar, User, Building2, Filter } from 'lucide-react';
+import { Button, Eyebrow, Field, IconButton, Input } from '../ui/index.js';
+import { cn } from '../../utils/cn.js';
+
+function FacetSection({ icon: Icon, label, children, scroll = false }) {
+  return (
+    <section className="space-y-2">
+      <span className="inline-flex items-center gap-1.5">
+        <Icon size={12} className="text-fg-subtle" aria-hidden />
+        <Eyebrow tone="muted">{label}</Eyebrow>
+      </span>
+      <div className={cn('space-y-0.5', scroll && 'max-h-40 overflow-y-auto pr-1 custom-scrollbar')}>{children}</div>
+    </section>
+  );
+}
+
+function FacetOption({ checked, onChange, name, count, mono = false }) {
+  return (
+    <label className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm text-fg transition-colors hover:bg-surface-2">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={onChange}
+        className="h-3.5 w-3.5 shrink-0 rounded-sm border-border accent-accent"
+      />
+      <span className={cn('flex-1 truncate', mono && 'font-mono text-[13px] uppercase')} title={name}>{name}</span>
+      <span className="tnum shrink-0 rounded-sm border border-border bg-surface-2 px-1.5 py-px font-mono text-[10px] text-fg-subtle">{count}</span>
+    </label>
+  );
+}
 
 export default function FiltersSidebar({ isOpen, currentFilters, onApply, onClose, facets }) {
   if (!isOpen) return null;
-  
+
   const asesores = facets?.asesores || [];
   const clientes = facets?.clientes || [];
 
   return (
-    <div className="w-64 bg-sales-slate-900/40 border-r border-sales-slate-800 h-full flex flex-col flex-shrink-0 transition-all duration-300 backdrop-blur-md shadow-lg z-10">
-      <div className="flex justify-between items-center p-4 border-b border-sales-slate-800 bg-sales-slate-900/60">
-        <h2 className="text-sm font-bold text-sales-slate-100 flex items-center gap-2">
-          <Filter size={16} className="text-blue-500"/> Filtros
-        </h2>
-        <button onClick={onClose} aria-label="Cerrar filtros" className="p-1.5 text-sales-slate-400 hover:text-sales-slate-100 hover:bg-sales-slate-800 rounded-md transition-colors">
-          <X size={16} />
-        </button>
+    <aside className="z-10 flex h-full w-64 shrink-0 flex-col border-r border-border bg-surface">
+      <div className="flex items-center justify-between border-b border-border px-4 py-3">
+        <span className="inline-flex items-center gap-2">
+          <Filter size={14} className="text-accent" aria-hidden />
+          <h2 className="text-sm font-semibold text-fg">Filtros</h2>
+        </span>
+        <IconButton icon={X} label="Cerrar filtros" size="sm" onClick={onClose} />
       </div>
-      
-      <div className="flex-1 overflow-y-auto p-4 space-y-6 custom-scrollbar">
-        
-        {/* Asesor */}
+
+      <div className="flex-1 space-y-6 overflow-y-auto p-4 custom-scrollbar">
         {asesores.length > 0 && (
-          <div className="space-y-2">
-            <label className="text-xs font-bold text-sales-slate-400 uppercase tracking-wider flex items-center gap-1 mb-2">
-              <User size={14} /> Asesores
-            </label>
-            <div className="space-y-1">
-              {asesores.map(a => (
-                <label key={a.id} className="flex items-center gap-2 text-sm text-sales-slate-300 hover:bg-sales-slate-800 p-1 rounded cursor-pointer transition-colors">
-                  <input 
-                    type="checkbox" 
-                    checked={currentFilters.vendorId === a.id}
-                    onChange={(e) => {
-                      onApply({ ...currentFilters, vendorId: e.target.checked ? a.id : '' });
-                    }}
-                    className="rounded bg-sales-slate-800 border-sales-slate-600 text-blue-600 focus:ring-blue-500"
-                  />
-                  <span className="flex-1 truncate" title={a.name}>{a.name}</span>
-                  <span className="text-xs text-sales-slate-500 bg-sales-slate-800 px-1.5 py-0.5 rounded border border-sales-slate-700">{a.count}</span>
-                </label>
-              ))}
-            </div>
-          </div>
+          <FacetSection icon={User} label="Asesores">
+            {asesores.map(a => (
+              <FacetOption
+                key={a.id}
+                name={a.name}
+                count={a.count}
+                checked={currentFilters.vendorId === a.id}
+                onChange={(e) => {
+                  onApply({ ...currentFilters, vendorId: e.target.checked ? a.id : '' });
+                }}
+              />
+            ))}
+          </FacetSection>
         )}
 
-        {/* Cliente */}
         {clientes.length > 0 && (
-          <div className="space-y-2">
-            <label className="text-xs font-bold text-sales-slate-400 uppercase tracking-wider flex items-center gap-1 mb-2">
-              <User size={14} /> Clientes (Resultados)
-            </label>
-            <div className="space-y-1 max-h-40 overflow-y-auto pr-1 custom-scrollbar">
-              {clientes.map(c => (
-                <label key={c.id} className="flex items-center gap-2 text-sm text-sales-slate-300 hover:bg-sales-slate-800 p-1 rounded cursor-pointer transition-colors">
-                  <input 
-                    type="checkbox" 
-                    checked={currentFilters.clientId === c.id}
-                    onChange={(e) => {
-                      onApply({ ...currentFilters, clientId: e.target.checked ? c.id : '' });
-                    }}
-                    className="rounded bg-sales-slate-800 border-sales-slate-600 text-blue-600 focus:ring-blue-500"
-                  />
-                  <span className="flex-1 truncate" title={c.name}>{c.name}</span>
-                  <span className="text-xs text-sales-slate-500 bg-sales-slate-800 px-1.5 py-0.5 rounded border border-sales-slate-700">{c.count}</span>
-                </label>
-              ))}
-            </div>
-          </div>
+          <FacetSection icon={User} label="Clientes en resultados" scroll>
+            {clientes.map(c => (
+              <FacetOption
+                key={c.id}
+                name={c.name}
+                count={c.count}
+                checked={currentFilters.clientId === c.id}
+                onChange={(e) => {
+                  onApply({ ...currentFilters, clientId: e.target.checked ? c.id : '' });
+                }}
+              />
+            ))}
+          </FacetSection>
         )}
 
-        {/* RFC / Razón Social */}
         {facets?.rfcs?.length > 0 && (
-          <div className="space-y-2">
-            <label className="text-xs font-bold text-sales-slate-400 uppercase tracking-wider flex items-center gap-1 mb-2">
-              <Activity size={14} /> RFC / Razón Social
-            </label>
-            <div className="space-y-1 max-h-40 overflow-y-auto pr-1 custom-scrollbar">
-              {facets.rfcs.map(r => (
-                <label key={r.id} className="flex items-center gap-2 text-sm text-sales-slate-300 hover:bg-sales-slate-800 p-1 rounded cursor-pointer transition-colors">
-                  <input 
-                    type="checkbox" 
-                    checked={currentFilters.rfc === r.id}
-                    onChange={(e) => {
-                      onApply({ ...currentFilters, rfc: e.target.checked ? r.id : '' });
-                    }}
-                    className="rounded bg-sales-slate-800 border-sales-slate-600 text-blue-600 focus:ring-blue-500"
-                  />
-                  <span className="flex-1 truncate uppercase" title={r.name}>{r.name}</span>
-                  <span className="text-xs text-sales-slate-500 bg-sales-slate-800 px-1.5 py-0.5 rounded border border-sales-slate-700">{r.count}</span>
-                </label>
-              ))}
-            </div>
-          </div>
+          <FacetSection icon={Building2} label="RFC / Razón social" scroll>
+            {facets.rfcs.map(r => (
+              <FacetOption
+                key={r.id}
+                name={r.name}
+                count={r.count}
+                mono
+                checked={currentFilters.rfc === r.id}
+                onChange={(e) => {
+                  onApply({ ...currentFilters, rfc: e.target.checked ? r.id : '' });
+                }}
+              />
+            ))}
+          </FacetSection>
         )}
 
-        {/* Fechas */}
-        <div className="space-y-2">
-          <label className="text-xs font-bold text-sales-slate-400 uppercase tracking-wider flex items-center gap-1 mb-2">
-            <Calendar size={14} /> Fechas
-          </label>
-          <div className="space-y-2">
-            <div>
-              <span className="text-xs text-sales-slate-500 mb-1 block">Desde</span>
-              <input 
-                type="date" 
-                value={currentFilters.dateFrom || ''}
-                onChange={e => onApply({ ...currentFilters, dateFrom: e.target.value })}
-                className="w-full px-2 py-1.5 border border-sales-slate-700 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-sales-slate-800 text-sales-slate-100"
-                style={{ colorScheme: 'dark' }}
-              />
-            </div>
-            <div>
-              <span className="text-xs text-sales-slate-500 mb-1 block">Hasta</span>
-              <input 
-                type="date" 
-                value={currentFilters.dateTo || ''}
-                onChange={e => onApply({ ...currentFilters, dateTo: e.target.value })}
-                className="w-full px-2 py-1.5 border border-sales-slate-700 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-sales-slate-800 text-sales-slate-100"
-                style={{ colorScheme: 'dark' }}
-              />
-            </div>
+        <FacetSection icon={Calendar} label="Fechas">
+          <div className="space-y-3 pt-1">
+            <Field label="Desde">
+              {(a11y) => (
+                <Input
+                  {...a11y}
+                  type="date"
+                  size="sm"
+                  value={currentFilters.dateFrom || ''}
+                  onChange={e => onApply({ ...currentFilters, dateFrom: e.target.value })}
+                />
+              )}
+            </Field>
+            <Field label="Hasta">
+              {(a11y) => (
+                <Input
+                  {...a11y}
+                  type="date"
+                  size="sm"
+                  value={currentFilters.dateTo || ''}
+                  onChange={e => onApply({ ...currentFilters, dateTo: e.target.value })}
+                />
+              )}
+            </Field>
           </div>
-        </div>
-
+        </FacetSection>
       </div>
 
-      <div className="p-4 border-t border-sales-slate-800 bg-sales-slate-900/60">
-        <button 
-          type="button"
+      <div className="border-t border-border p-4">
+        <Button
+          variant="outline"
+          size="sm"
+          className="w-full"
           onClick={() => {
             onApply({ vendorId: '', clientId: '', rfc: '', dateFrom: '', dateTo: '', status: '' });
           }}
-          className="w-full px-4 py-2 text-sm font-medium text-sales-slate-300 bg-sales-slate-800 border border-sales-slate-700 rounded-lg hover:bg-sales-slate-700 hover:text-sales-slate-100 transition-colors"
         >
-          Limpiar Filtros
-        </button>
+          Limpiar filtros
+        </Button>
       </div>
-    </div>
+    </aside>
   );
 }

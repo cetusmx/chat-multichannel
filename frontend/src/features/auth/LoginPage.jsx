@@ -1,7 +1,10 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { AlertCircle } from 'lucide-react';
 import useAuthStore from '../../stores/useAuthStore.js';
 import { connectSockets, disconnectSockets } from '../../services/socket.js';
+import { Logo } from '../../components/Logo.jsx';
+import { Button, Field, Input, Eyebrow } from '../../components/ui/index.js';
 
 const BASE_URL = '/api';
 
@@ -44,54 +47,65 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4">
-      <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-white/5 p-8 shadow-2xl backdrop-blur-xl">
-        <div className="mb-8 text-center">
-          <h1 className="text-2xl font-bold text-slate-100">SalesFlow</h1>
-          <p className="mt-1 text-sm text-slate-400">Inicia sesión en tu cuenta</p>
+    <div className="bg-grid flex min-h-screen items-center justify-center p-4">
+      <div className="w-full max-w-sm">
+        <div className="mb-8 flex items-center gap-3">
+          <Logo className="h-9 w-9" />
+          <div>
+            <div className="text-lg font-semibold tracking-tight text-fg leading-none">SalesFlow</div>
+            <Eyebrow tone="muted" className="mt-1.5 block">Bandeja de ventas</Eyebrow>
+          </div>
         </div>
 
-        {error && (
-          <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-400">
-            {error}
-          </div>
-        )}
+        <div className="rounded-xl border border-border bg-surface p-6 shadow-2xl shadow-black/30">
+          <h1 className="text-base font-semibold text-fg">Inicia sesión</h1>
+          <p className="mt-1 text-sm text-fg-muted">Usa la cuenta que te asignó tu administrador.</p>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="mb-1 block text-sm text-slate-400">Email</label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="tu@email.com"
-              required
-              autoFocus
-              className="w-full rounded-lg border border-slate-700 bg-slate-800/50 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-rose-400/50"
-            />
-          </div>
+          {error && (
+            <div role="alert" className="mt-5 flex items-start gap-2.5 rounded-md border border-danger/40 bg-danger/10 px-3 py-2.5 text-sm text-danger">
+              <AlertCircle size={16} className="mt-px shrink-0" aria-hidden />
+              <span>{error}</span>
+            </div>
+          )}
 
-          <div>
-            <label className="mb-1 block text-sm text-slate-400">Contraseña</label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              required
-              minLength={6}
-              className="w-full rounded-lg border border-slate-700 bg-slate-800/50 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-rose-400/50"
-            />
-          </div>
+          <form onSubmit={handleSubmit} className="mt-5 space-y-4">
+            <Field label="Correo electrónico" htmlFor="login-email">
+              <Input
+                id="login-email"
+                type="email"
+                size="lg"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="tu@empresa.com"
+                autoComplete="email"
+                required
+                autoFocus
+              />
+            </Field>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full rounded-lg bg-orange-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-orange-400 disabled:opacity-50"
-          >
-            {loading ? 'Iniciando sesión...' : 'Iniciar Sesión'}
-          </button>
-        </form>
+            <Field label="Contraseña" htmlFor="login-password">
+              <Input
+                id="login-password"
+                type="password"
+                size="lg"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                autoComplete="current-password"
+                required
+                minLength={6}
+              />
+            </Field>
+
+            <Button type="submit" variant="primary" size="lg" loading={loading} className="w-full mt-2">
+              {loading ? 'Entrando…' : 'Entrar'}
+            </Button>
+          </form>
+        </div>
+
+        <p className="mt-6 text-center text-xs text-fg-subtle">
+          Conexión segura · Los mensajes se envían por WhatsApp Business
+        </p>
       </div>
     </div>
   );

@@ -1,9 +1,12 @@
-import React, { useState, useEffect } from 'react';
-import { ShoppingCart, Package, Info, Plus, Minus, Trash2, Trash, Search, Database, Loader2, ArrowRight, Filter, Send, MessageSquare, X } from 'lucide-react';
-import { updateClientCart, searchSealMarketCatalog, getSealMarketFamilias, getClientByRfc } from '../../../services/api';
+import { useState, useEffect } from 'react';
+import { ShoppingCart, Plus, Minus, Trash2, Trash, Search, Database, Send, MessageSquare, X, FileText, Mail, Pencil } from 'lucide-react';
+import { post, updateClientCart, searchSealMarketCatalog, getSealMarketFamilias, getClientByRfc, enviarCotizacionEmail, buildQuotePayload } from '../../../services/api';
 import useChatStore from '../../../stores/useChatStore';
-import useAuthStore from '../../../stores/useAuthStore';
+import { toast } from '../../../stores/useToastStore.js';
 import ConfirmModal from '../../../components/ConfirmModal.jsx';
+import { Button, IconButton, Eyebrow, Tabs, Badge, Field, Input, Textarea, Select, Spinner, EmptyState, Modal } from '../../../components/ui/index.js';
+import { formatMoney } from '../../../utils/formatDate.js';
+import { cn } from '../../../utils/cn.js';
 
 export default function CartViewer({ cartData, client, onClose }) {
   const [activeTab, setActiveTab] = useState('current'); // 'current' or 'catalog'
@@ -17,6 +20,11 @@ export default function CartViewer({ cartData, client, onClose }) {
   const [isEditingBilling, setIsEditingBilling] = useState(false);
   const [tempBilling, setTempBilling] = useState({ razonSocial: '', rfc: '', billingAddress: '' });
   const [isSearchingRfc, setIsSearchingRfc] = useState(false);
+
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+  const [emailModalOpen, setEmailModalOpen] = useState(false);
+  const [emailTo, setEmailTo] = useState('');
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
 
   // Catalog state
   const [familias, setFamilias] = useState([]);
@@ -56,6 +64,13 @@ export default function CartViewer({ cartData, client, onClose }) {
     billingAddress = cartData.billingAddress || cartData.domicilioFiscal;
   }
 
+  const isEmpty = !cartItems || cartItems.length === 0;
+
+  // Prices are stored net (IVA included), so the subtotal is derived from the total.
+  const total = cartItems.reduce((sum, item) => sum + ((item.precio || 0) * (item.cantidad || 1)), 0);
+  const subtotal = total / 1.16;
+  const iva = total - subtotal;
+
   // Define update helper
   const saveCart = async (newItems) => {
     if (!client?.id) return;
@@ -71,7 +86,7 @@ export default function CartViewer({ cartData, client, onClose }) {
       await updateClientCart(client.id, newCartData);
     } catch (err) {
       console.error('Failed to update cart', err);
-      alert('Error al actualizar carrito');
+      toast.error('No se pudo actualizar el carrito', { description: err.message });
     } finally {
       setIsUpdating(false);
     }
@@ -96,7 +111,7 @@ export default function CartViewer({ cartData, client, onClose }) {
       }
     } catch (err) {
       console.error(err);
-      alert('Error al actualizar dirección');
+      toast.error('No se pudo actualizar la dirección', { description: err.message });
     } finally {
       setIsUpdating(false);
     }
@@ -121,7 +136,7 @@ export default function CartViewer({ cartData, client, onClose }) {
       }
     } catch (err) {
       console.error(err);
-      alert('Error al actualizar datos de facturación');
+      toast.error('No se pudieron actualizar los datos fiscales', { description: err.message });
     } finally {
       setIsUpdating(false);
     }
@@ -146,13 +161,13 @@ export default function CartViewer({ cartData, client, onClose }) {
           ...prev,
           razonSocial: cliente.NOMBRE || prev.razonSocial,
           billingAddress: direccion || prev.billingAddress,
-          rfc: cliente.RFC || prev.rfc
+          rfc: cliente.RFC || prev.rfc,
         }));
       } else {
-        alert("El RFC no fue encontrado en la base de datos.");
+        toast.warning('RFC no encontrado', { description: 'El RFC no fue encontrado en la base de datos.' });
       }
     } catch (err) {
-      alert(err.message || 'Error al consultar el RFC');
+      toast.error('No se pudo consultar el RFC', { description: err.message });
     } finally {
       setIsSearchingRfc(false);
     }
@@ -229,7 +244,7 @@ export default function CartViewer({ cartData, client, onClose }) {
     setActiveTab('current');
   };
 
-    const handleSuggestProduct = (product) => {
+  const handleSuggestProduct = (product) => {
     const desc = product.DESC_ECOMM || product.DESCR || product.NOMBRE;
     const priceNet = ((product.PRECIO || 0) * 1.16).toFixed(2);
     const linea = product.LIN_PROD || '';
@@ -240,7 +255,7 @@ export default function CartViewer({ cartData, client, onClose }) {
       description: desc,
       priceNet: priceNet,
       imageUrl: imageUrl,
-      rawProduct: product
+      rawProduct: product,
     };
 
     useChatStore.getState().sendMessage('', false, 'PRODUCT_CARD', metadata);
@@ -248,7 +263,7 @@ export default function CartViewer({ cartData, client, onClose }) {
 
   const handleSendSummary = () => {
     if (cartItems.length === 0) return;
-    
+
     let text = '🛒 *RESUMEN DE COTIZACIÓN*\n';
     cartItems.forEach(item => {
       text += `▫️ ${item.cantidad}x ${item.clave}\n`;
@@ -260,553 +275,481 @@ export default function CartViewer({ cartData, client, onClose }) {
         clave: item.clave,
         descripcion: item.descripcion,
         precio: item.precio || 0,
-        cantidad: item.cantidad || 1
+        cantidad: item.cantidad || 1,
       })),
       subtotal,
       iva,
       total,
-      shippingAddress
+      shippingAddress,
     };
 
     sendMessage(text, false, 'CART_SUMMARY', metadata);
   };
 
-  // Calculate totals for current cart
-  const total = cartItems.reduce((sum, item) => sum + ((item.precio || 0) * (item.cantidad || 1)), 0);
-  const subtotal = total / 1.16;
-  const iva = total - subtotal;
+  // Same payload as before: `conversationId` makes the backend also send the PDF to the client via WhatsApp.
+  const handleGeneratePdf = async () => {
+    setIsGeneratingPdf(true);
+    try {
+      const res = await post('/chat/quote/generate', {
+        conversationId: useChatStore.getState().currentConversationId,
+        ...buildQuotePayload(client, cartData),
+      });
+      if (!res.ok) throw new Error('Falló al generar PDF');
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.style.display = 'none';
+      a.href = url;
+      a.download = `Cotizacion_${Date.now()}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+      toast.success('Cotización generada');
+    } catch (error) {
+      console.error('Error:', error);
+      toast.error('No se pudo generar la cotización PDF', { description: error.message });
+    } finally {
+      setIsGeneratingPdf(false);
+    }
+  };
+
+  const closeEmailModal = () => {
+    if (isSendingEmail) return;
+    setEmailModalOpen(false);
+    setEmailTo('');
+  };
+
+  const handleSendEmail = async (e) => {
+    e?.preventDefault();
+    const email = emailTo.trim();
+    if (!email) return;
+    setIsSendingEmail(true);
+    try {
+      const res = await enviarCotizacionEmail({ email, ...buildQuotePayload(client, cartData) });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || 'Error al enviar');
+      }
+      toast.success('Cotización enviada por correo', { description: email });
+      setEmailModalOpen(false);
+      setEmailTo('');
+    } catch (error) {
+      console.error('Error:', error);
+      toast.error('No se pudo enviar la cotización por correo', { description: error.message });
+    } finally {
+      setIsSendingEmail(false);
+    }
+  };
+
+  const stepperButton = 'flex h-8 w-8 items-center justify-center text-fg-muted transition-colors hover:bg-surface-2 hover:text-fg disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-fg-muted';
 
   return (
-    <div className={`flex flex-col h-full bg-sales-slate-900/95 overflow-hidden rounded-l-2xl shadow-2xl border-l border-sales-slate-700/50 transition-opacity ${isUpdating ? 'opacity-70 pointer-events-none' : ''}`}>
+    <div className={cn('flex h-full flex-col bg-surface', isUpdating && 'pointer-events-none opacity-70')} aria-busy={isUpdating || undefined}>
 
-      {/* Header & Tabs */}
-      <div className="p-0 border-b border-sales-slate-700/50 bg-sales-slate-800/80 shrink-0 relative">
-        <button
-          onClick={onClose}
-          className="absolute top-3 left-4 z-10 p-2 bg-sales-slate-700/50 hover:bg-sales-slate-600 text-sales-slate-300 hover:text-white rounded-full transition-colors"
-        >
-          <X className="w-5 h-5" />
-        </button>
-
-        <div className="flex items-center justify-between p-4 pb-2">
-          <h2 className="text-lg font-bold text-white flex items-center gap-2 pl-12">
-            <ShoppingCart className="text-sales-blue-400" />
-            Venta Activa
-          </h2>
-          <div className="flex items-center gap-3">
-            <span className="bg-sales-blue-600 text-white text-xs font-bold px-2.5 py-1 rounded-full shadow-sm">
-              {cartItems.length} {cartItems.length === 1 ? 'art' : 'arts'}
-            </span>
-            <button
-              onClick={handleClearCart}
-              title="Vaciar carrito"
-              className="text-sales-slate-400 hover:text-red-400 transition-colors p-1"
-            >
-              <Trash className="w-4 h-4" />
-            </button>
+      {/* Header */}
+      <div className="shrink-0">
+        <div className="flex items-start justify-between gap-3 px-5 pt-4 pb-3">
+          <div className="min-w-0">
+            <Eyebrow tone="muted" className="mb-1 block">Carrito</Eyebrow>
+            <h2 className="truncate text-base font-semibold text-fg">{client?.name || 'Cliente'}</h2>
+            {client?.phone && <div className="mt-0.5 font-mono text-[11px] text-fg-subtle">{client.phone}</div>}
+          </div>
+          <div className="flex shrink-0 items-center gap-1">
+            <IconButton icon={Trash} label="Vaciar carrito" variant="danger" onClick={handleClearCart} disabled={isEmpty} />
+            <IconButton icon={X} label="Cerrar" onClick={onClose} />
           </div>
         </div>
-
-        {/* Tabs */}
-        <div className="flex border-t border-sales-slate-700/30">
-          <button
-            onClick={() => setActiveTab('current')}
-            className={`flex-1 py-2 text-sm font-medium transition-colors ${activeTab === 'current' ? 'text-sales-blue-400 border-b-2 border-sales-blue-500 bg-sales-slate-800' : 'text-sales-slate-400 hover:text-sales-slate-300'}`}
-          >
-            Carrito Actual
-          </button>
-          <button
-            onClick={() => setActiveTab('catalog')}
-            className={`flex-1 py-2 text-sm font-medium transition-colors ${activeTab === 'catalog' ? 'text-sales-blue-400 border-b-2 border-sales-blue-500 bg-sales-slate-800' : 'text-sales-slate-400 hover:text-sales-slate-300'}`}
-          >
-            Catálogo Integrado
-          </button>
-        </div>
+        <Tabs
+          className="px-2"
+          value={activeTab}
+          onChange={setActiveTab}
+          items={[
+            { id: 'current', label: 'Pedido', count: cartItems.length },
+            { id: 'catalog', label: 'Catálogo' },
+          ]}
+        />
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
+      {/* Body */}
+      <div className="flex-1 overflow-y-auto custom-scrollbar">
         {activeTab === 'current' ? (
-          /* ================= CURRENT CART TAB ================= */
           <>
-            {client?.name && (
-              <div className="mb-4 p-3 bg-sales-slate-800/50 rounded-lg border border-sales-slate-700/50">
-                <h3 className="text-sm font-semibold text-sales-slate-300 mb-1 flex items-center gap-2">
-                  <Info className="text-sales-blue-400 w-4 h-4" /> Datos del Cliente
-                </h3>
-                <p className="text-sm text-sales-slate-100 font-medium truncate">{client.name}</p>
-                {client.phone && <p className="text-xs text-sales-slate-400 mt-1">{client.phone}</p>}
-
-                <div className="mt-2 pt-2 border-t border-sales-slate-700/50">
-                  <div className="flex justify-between items-center mb-1">
-                    <p className="text-xs font-semibold text-sales-slate-400">Datos de Facturación:</p>
-                    {!isEditingBilling && (
-                      <button
-                        onClick={() => {
-                          setTempBilling({ razonSocial: razonSocial || '', rfc: rfc || '', billingAddress: billingAddress || '' });
-                          setIsEditingBilling(true);
-                        }}
-                        className="text-[10px] text-sales-blue-400 hover:underline"
-                      >
-                        Editar
-                      </button>
-                    )}
-                  </div>
-
-                  {isEditingBilling ? (
-                    <div className="mt-1 space-y-2">
-                      <div className="flex gap-2">
-                        <input
-                          className="flex-1 bg-sales-slate-900 border border-sales-slate-700 text-sales-slate-200 text-xs rounded-lg p-2 focus:ring-sales-blue-500 min-h-[30px]"
-                          value={tempBilling.rfc}
-                          onChange={(e) => setTempBilling({...tempBilling, rfc: e.target.value})}
-                          placeholder="RFC"
-                        />
-                        <button
-                          onClick={handleSearchRfc}
-                          disabled={!tempBilling.rfc || isSearchingRfc}
-                          className="bg-sales-blue-600 hover:bg-sales-blue-500 text-white text-[10px] px-2 py-1 rounded disabled:opacity-50 flex items-center justify-center gap-1 min-w-[70px]"
-                          title="Buscar datos fiscales del cliente por RFC"
-                        >
-                          {isSearchingRfc ? <Loader2 className="w-3 h-3 animate-spin" /> : <Search className="w-3 h-3" />}
-                          Buscar
+            {isEmpty ? (
+              <EmptyState
+                compact
+                icon={ShoppingCart}
+                title="El carrito está vacío"
+                description="Agrega productos desde el catálogo para armar el pedido."
+                action={<Button variant="chip" size="xs" icon={Search} onClick={() => setActiveTab('catalog')}>Buscar productos</Button>}
+              />
+            ) : (
+              <ul className="divide-y divide-border/70">
+                {cartItems.map((item, idx) => (
+                  <li key={idx} className="flex flex-col gap-2.5 px-5 py-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="truncate font-mono text-[11px] text-fg-subtle">{item.clave}</div>
+                        <div className="mt-0.5 line-clamp-2 text-sm text-fg" title={item.descripcion}>{item.descripcion}</div>
+                      </div>
+                      <IconButton icon={Trash2} label="Eliminar artículo" variant="danger" size="sm" onClick={() => handleRemoveItem(idx)} />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div className="inline-flex items-center overflow-hidden rounded-md border border-border">
+                        <button type="button" onClick={() => handleUpdateQuantity(idx, -1)} disabled={item.cantidad <= 1} className={stepperButton} aria-label="Menos">
+                          <Minus size={12} aria-hidden />
+                        </button>
+                        <span className="tnum w-7 text-center font-mono text-xs text-fg">{item.cantidad}</span>
+                        <button type="button" onClick={() => handleUpdateQuantity(idx, 1)} className={stepperButton} aria-label="Más">
+                          <Plus size={12} aria-hidden />
                         </button>
                       </div>
-                      <input
-                        className="w-full bg-sales-slate-900 border border-sales-slate-700 text-sales-slate-200 text-xs rounded-lg p-2 focus:ring-sales-blue-500 min-h-[30px]"
-                        value={tempBilling.razonSocial}
-                        onChange={(e) => setTempBilling({...tempBilling, razonSocial: e.target.value})}
-                        placeholder="Razón Social"
-                      />
-                      <textarea
-                        className="w-full bg-sales-slate-900 border border-sales-slate-700 text-sales-slate-200 text-xs rounded-lg p-2 focus:ring-sales-blue-500 min-h-[50px]"
-                        value={tempBilling.billingAddress}
-                        onChange={(e) => setTempBilling({...tempBilling, billingAddress: e.target.value})}
-                        placeholder="Domicilio Fiscal"
-                      />
-                      <div className="flex gap-2 mt-2">
-                        <button
-                          onClick={() => handleSaveBilling(false)}
-                          className="flex-1 bg-sales-slate-700 hover:bg-sales-slate-600 text-white text-[10px] py-1 rounded"
-                        >
-                          Guardar
-                        </button>
-                        <button
-                          onClick={() => handleSaveBilling(true)}
-                          className="flex-1 bg-sales-blue-600 hover:bg-sales-blue-500 text-white text-[10px] py-1 rounded flex items-center justify-center gap-1"
-                          disabled={!tempBilling.razonSocial && !tempBilling.rfc}
-                        >
-                          <Send className="w-3 h-3" /> Validar
-                        </button>
-                      </div>
+                      <span className="tnum font-mono text-sm font-semibold text-fg">{formatMoney(item.precio * item.cantidad)}</span>
                     </div>
-                  ) : (
-                    <div className="flex flex-col gap-1 mt-1">
-                      {razonSocial || rfc || billingAddress ? (
-                        <>
-                          {razonSocial && <p className="text-xs text-sales-slate-300"><strong>Nombre:</strong> {razonSocial}</p>}
-                          {rfc && <p className="text-xs text-sales-slate-300"><strong>RFC:</strong> {rfc}</p>}
-                          {billingAddress && <p className="text-xs text-sales-slate-300"><strong>Dom:</strong> {billingAddress}</p>}
-                        </>
-                      ) : (
-                        <p className="text-xs text-sales-slate-300 italic opacity-50">No especificados</p>
-                      )}
-                    </div>
-                  )}
-                </div>
+                  </li>
+                ))}
+              </ul>
+            )}
 
-                <div className="mt-2 pt-2 border-t border-sales-slate-700/50">
-                  <div className="flex justify-between items-center mb-1">
-                    <p className="text-xs font-semibold text-sales-slate-400">Dirección de Envío:</p>
-                    {!isEditingAddress && (
-                      <button
-                        onClick={() => { setTempAddress(shippingAddress || ''); setIsEditingAddress(true); }}
-                        className="text-[10px] text-sales-blue-400 hover:underline"
-                      >
-                        Editar
-                      </button>
-                    )}
-                  </div>
+            {/* Shipping address */}
+            <section className="border-t border-border px-5 py-4">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <Eyebrow tone="muted">Dirección de envío</Eyebrow>
+                {!isEditingAddress && (
+                  <Button variant="ghost" size="xs" icon={Pencil} onClick={() => { setTempAddress(shippingAddress || ''); setIsEditingAddress(true); }}>
+                    Editar
+                  </Button>
+                )}
+              </div>
 
-                  {isEditingAddress ? (
-                    <div className="mt-1">
-                      <textarea
-                        className="w-full bg-sales-slate-900 border border-sales-slate-700 text-sales-slate-200 text-xs rounded-lg p-2 focus:ring-sales-blue-500 focus:border-sales-blue-500 min-h-[60px]"
+              {isEditingAddress ? (
+                <div className="space-y-3">
+                  <Field label="Dirección">
+                    {(p) => (
+                      <Textarea
+                        {...p}
                         value={tempAddress}
                         onChange={(e) => setTempAddress(e.target.value)}
-                        placeholder="Escribe la dirección..."
+                        placeholder="Calle, número, colonia, código postal, ciudad, estado"
+                        className="min-h-[72px]"
                       />
-                      <div className="flex gap-2 mt-2">
-                        <button
-                          onClick={() => handleSaveAddress(false)}
-                          className="flex-1 bg-sales-slate-700 hover:bg-sales-slate-600 text-white text-[10px] py-1 rounded"
-                        >
-                          Guardar
-                        </button>
-                        <button
-                          onClick={() => handleSaveAddress(true)}
-                          className="flex-1 bg-sales-blue-600 hover:bg-sales-blue-500 text-white text-[10px] py-1 rounded flex items-center justify-center gap-1"
-                          disabled={!tempAddress}
-                        >
-                          <Send className="w-3 h-3" /> Validar en Chat
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex justify-between items-start mt-1">
-                      <p className="text-xs text-sales-slate-300 flex-1 pr-2">
-                        {shippingAddress ? shippingAddress : <span className="italic opacity-50">No especificada</span>}
-                      </p>
-                      {shippingAddress && (
-                        <button
-                          onClick={() => sendMessage(`Por favor valida tu dirección de envío:\n\n*${shippingAddress}*\n\n¿Es correcta?`, false)}
-                          className="flex-shrink-0 bg-sales-slate-700/50 hover:bg-sales-blue-600 hover:text-white text-sales-blue-400 text-[10px] py-1 px-2 rounded flex items-center justify-center gap-1 transition-colors border border-sales-slate-600/50 hover:border-sales-blue-500"
-                          title="Pedir validación en el chat"
-                        >
-                          <Send className="w-3 h-3" /> Validar
-                        </button>
-                      )}
-                    </div>
+                    )}
+                  </Field>
+                  <div className="flex justify-end gap-2">
+                    <Button variant="ghost" size="sm" onClick={() => setIsEditingAddress(false)}>Cancelar</Button>
+                    <Button variant="secondary" size="sm" onClick={() => handleSaveAddress(false)}>Guardar</Button>
+                    <Button variant="outline" size="sm" icon={Send} onClick={() => handleSaveAddress(true)} disabled={!tempAddress}>
+                      Guardar y validar
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-start justify-between gap-3">
+                  <p className={cn('text-sm leading-relaxed', shippingAddress ? 'text-fg' : 'text-fg-subtle')}>
+                    {shippingAddress || 'Sin dirección registrada'}
+                  </p>
+                  {shippingAddress && (
+                    <Button
+                      variant="chip"
+                      size="xs"
+                      icon={Send}
+                      className="shrink-0"
+                      onClick={() => sendMessage(`Por favor valida tu dirección de envío:\n\n*${shippingAddress}*\n\n¿Es correcta?`, false)}
+                      title="Pedir validación en el chat"
+                    >
+                      Validar
+                    </Button>
                   )}
                 </div>
+              )}
+            </section>
+
+            {/* Billing data */}
+            <section className="border-t border-border px-5 py-4">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <Eyebrow tone="muted">Datos fiscales</Eyebrow>
+                {!isEditingBilling && (
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    icon={Pencil}
+                    onClick={() => {
+                      setTempBilling({ razonSocial: razonSocial || '', rfc: rfc || '', billingAddress: billingAddress || '' });
+                      setIsEditingBilling(true);
+                    }}
+                  >
+                    Editar
+                  </Button>
+                )}
               </div>
-            )}
 
-            {!cartItems || cartItems.length === 0 ? (
-              <div className="flex-1 flex flex-col items-center justify-center p-6 text-center text-sales-slate-500 h-64">
-                <ShoppingCart className="w-12 h-12 mb-3 text-sales-slate-600" />
-                <p>El carrito está vacío</p>
-                <button
-                  onClick={() => setActiveTab('catalog')}
-                  className="mt-4 text-sales-blue-400 text-sm hover:underline"
-                >
-                  Buscar productos
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {cartItems.map((item, idx) => (
-                  <div key={idx} className="bg-sales-slate-800/40 rounded-lg p-3 border border-sales-slate-700/30 hover:border-sales-slate-600/50 transition-colors">
-                    <div className="flex justify-between items-start mb-2">
-                      <div className="flex-1 min-w-0 pr-2">
-                        <span className="inline-block px-2 py-0.5 rounded text-xs font-mono font-bold bg-sales-slate-700 text-sales-slate-200 mb-1">
-                          {item.clave}
-                        </span>
-                        <p className="text-sm text-sales-slate-300 leading-snug line-clamp-2" title={item.descripcion}>
-                          {item.descripcion}
-                        </p>
-                      </div>
-                      <button
-                        onClick={() => handleRemoveItem(idx)}
-                        className="text-sales-slate-500 hover:text-red-400 p-1 bg-sales-slate-800/50 rounded-md transition-colors shrink-0"
-                        title="Eliminar artículo"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-
-                    <div className="flex justify-between items-center mt-3 pt-3 border-t border-sales-slate-700/50">
-                      <div className="flex items-center gap-1 bg-sales-slate-900/50 rounded-lg p-0.5 border border-sales-slate-700/50">
-                        <button
-                          onClick={() => handleUpdateQuantity(idx, -1)}
-                          disabled={item.cantidad <= 1}
-                          className="p-1 text-sales-slate-400 hover:text-white disabled:opacity-30 disabled:hover:text-sales-slate-400 transition-colors"
+              {isEditingBilling ? (
+                <div className="space-y-3">
+                  <Field label="RFC">
+                    {(p) => (
+                      <div className="flex gap-2">
+                        <Input
+                          {...p}
+                          mono
+                          value={tempBilling.rfc}
+                          onChange={(e) => setTempBilling({ ...tempBilling, rfc: e.target.value })}
+                          placeholder="XAXX010101000"
+                          className="uppercase"
+                        />
+                        <Button
+                          variant="secondary"
+                          size="md"
+                          icon={Search}
+                          className="shrink-0"
+                          onClick={handleSearchRfc}
+                          disabled={!tempBilling.rfc}
+                          loading={isSearchingRfc}
+                          title="Buscar datos fiscales del cliente por RFC"
                         >
-                          <Minus className="w-3.5 h-3.5" />
-                        </button>
-                        <span className="text-xs font-medium text-sales-blue-400 w-6 text-center font-mono">
-                          {item.cantidad}
-                        </span>
-                        <button
-                          onClick={() => handleUpdateQuantity(idx, 1)}
-                          className="p-1 text-sales-slate-400 hover:text-white transition-colors"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                        </button>
+                          Buscar
+                        </Button>
                       </div>
-
-                      <span className="text-sm font-bold text-sales-slate-100">
-                        ${(item.precio * item.cantidad).toFixed(2)}
-                      </span>
-                    </div>
+                    )}
+                  </Field>
+                  <Field label="Razón social">
+                    {(p) => (
+                      <Input
+                        {...p}
+                        value={tempBilling.razonSocial}
+                        onChange={(e) => setTempBilling({ ...tempBilling, razonSocial: e.target.value })}
+                        placeholder="Nombre o razón social"
+                      />
+                    )}
+                  </Field>
+                  <Field label="Domicilio fiscal">
+                    {(p) => (
+                      <Textarea
+                        {...p}
+                        value={tempBilling.billingAddress}
+                        onChange={(e) => setTempBilling({ ...tempBilling, billingAddress: e.target.value })}
+                        placeholder="Calle, número, colonia, código postal, ciudad, estado"
+                        className="min-h-[72px]"
+                      />
+                    )}
+                  </Field>
+                  <div className="flex justify-end gap-2">
+                    <Button variant="ghost" size="sm" onClick={() => setIsEditingBilling(false)}>Cancelar</Button>
+                    <Button variant="secondary" size="sm" onClick={() => handleSaveBilling(false)}>Guardar</Button>
+                    <Button variant="outline" size="sm" icon={Send} onClick={() => handleSaveBilling(true)} disabled={!tempBilling.razonSocial && !tempBilling.rfc}>
+                      Guardar y validar
+                    </Button>
                   </div>
-                ))}
-              </div>
-            )}
+                </div>
+              ) : razonSocial || rfc || billingAddress ? (
+                <dl className="space-y-1.5 text-sm">
+                  {razonSocial && (
+                    <div className="flex gap-3">
+                      <dt className="w-24 shrink-0 text-fg-muted">Razón social</dt>
+                      <dd className="min-w-0 text-fg">{razonSocial}</dd>
+                    </div>
+                  )}
+                  {rfc && (
+                    <div className="flex gap-3">
+                      <dt className="w-24 shrink-0 text-fg-muted">RFC</dt>
+                      <dd className="min-w-0 font-mono text-[13px] text-fg">{rfc}</dd>
+                    </div>
+                  )}
+                  {billingAddress && (
+                    <div className="flex gap-3">
+                      <dt className="w-24 shrink-0 text-fg-muted">Domicilio</dt>
+                      <dd className="min-w-0 leading-relaxed text-fg">{billingAddress}</dd>
+                    </div>
+                  )}
+                </dl>
+              ) : (
+                <p className="text-sm text-fg-subtle">Sin datos fiscales registrados</p>
+              )}
+            </section>
           </>
         ) : (
-          /* ================= CATALOG SEARCH TAB ================= */
-          <div className="flex flex-col h-full">
-            <form onSubmit={handleSearch} className="mb-4 bg-sales-slate-800/50 p-3 rounded-lg border border-sales-slate-700/50 space-y-3">
-              <div>
-                <label className="block text-xs font-semibold text-sales-slate-400 mb-1">Familia *</label>
-                <select
-                  value={searchForm.familia}
-                  onChange={(e) => setSearchForm({...searchForm, familia: e.target.value})}
-                  className="w-full bg-sales-slate-900 border border-sales-slate-700 text-sales-slate-200 text-sm rounded-lg focus:ring-sales-blue-500 focus:border-sales-blue-500 block p-2"
-                >
-                  <option value="">-- Seleccionar Familia --</option>
-                  {familias.map((f, i) => (
-                    <option key={i} value={f.FAMILIA}>{f.FAMILIA}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="flex gap-3">
-                <div className="flex-1">
-                  <label className="block text-xs font-semibold text-sales-slate-400 mb-1">Sistema Medición</label>
-                  <select
-                    value={searchForm.sist_med}
-                    onChange={(e) => setSearchForm({...searchForm, sist_med: e.target.value})}
-                    className="w-full bg-sales-slate-900 border border-sales-slate-700 text-sales-slate-200 text-sm rounded-lg focus:ring-sales-blue-500 focus:border-sales-blue-500 block p-2"
-                  >
-                    <option value="std">STD (Pulgadas)</option>
+          <>
+            {/* Parametric search */}
+            <form onSubmit={handleSearch} className="grid grid-cols-2 gap-3 border-b border-border px-5 py-4">
+              <Field label="Familia" required className="col-span-2">
+                {(p) => (
+                  <Select {...p} value={searchForm.familia} onChange={(e) => setSearchForm({ ...searchForm, familia: e.target.value })}>
+                    <option value="">Seleccionar familia</option>
+                    {familias.map((f, i) => (
+                      <option key={i} value={f.FAMILIA}>{f.FAMILIA}</option>
+                    ))}
+                  </Select>
+                )}
+              </Field>
+              <Field label="Sistema de medida">
+                {(p) => (
+                  <Select {...p} value={searchForm.sist_med} onChange={(e) => setSearchForm({ ...searchForm, sist_med: e.target.value })}>
+                    <option value="std">Pulgadas (STD)</option>
                     <option value="mm">Milímetros (mm)</option>
-                  </select>
-                </div>
-                <div className="flex-1">
-                  <label className="block text-xs font-semibold text-sales-slate-400 mb-1">Diam. Interior</label>
-                  <input
-                    type="text"
-                    value={searchForm.diam_int}
-                    onChange={(e) => setSearchForm({...searchForm, diam_int: e.target.value})}
-                    placeholder="Ej. 1.25"
-                    className="w-full bg-sales-slate-900 border border-sales-slate-700 text-sales-slate-200 text-sm rounded-lg focus:ring-sales-blue-500 focus:border-sales-blue-500 block p-2"
-                  />
-                </div>
+                  </Select>
+                )}
+              </Field>
+              <Field label="Diámetro interior">
+                {(p) => <Input {...p} mono value={searchForm.diam_int} onChange={(e) => setSearchForm({ ...searchForm, diam_int: e.target.value })} placeholder="1.25" />}
+              </Field>
+              <Field label="Diámetro exterior">
+                {(p) => <Input {...p} mono value={searchForm.diam_ext} onChange={(e) => setSearchForm({ ...searchForm, diam_ext: e.target.value })} placeholder="2.5" />}
+              </Field>
+              <Field label="Altura">
+                {(p) => <Input {...p} mono value={searchForm.altura} onChange={(e) => setSearchForm({ ...searchForm, altura: e.target.value })} placeholder="0.25" />}
+              </Field>
+              <Field label="Sección">
+                {(p) => <Input {...p} mono value={searchForm.seccion} onChange={(e) => setSearchForm({ ...searchForm, seccion: e.target.value })} placeholder="139" />}
+              </Field>
+              <div className="col-span-2 flex flex-col gap-2">
+                <Button type="submit" variant="primary" icon={Search} loading={isSearching} disabled={!searchForm.familia} className="w-full">
+                  Buscar
+                </Button>
+                {searchError && <p className="text-xs text-danger" role="alert">{searchError}</p>}
               </div>
-
-              <div className="flex gap-3">
-                <div className="flex-1">
-                  <label className="block text-xs font-semibold text-sales-slate-400 mb-1">Diam. Exterior</label>
-                  <input
-                    type="text"
-                    value={searchForm.diam_ext}
-                    onChange={(e) => setSearchForm({...searchForm, diam_ext: e.target.value})}
-                    placeholder="Ej. 2.5"
-                    className="w-full bg-sales-slate-900 border border-sales-slate-700 text-sales-slate-200 text-sm rounded-lg focus:ring-sales-blue-500 focus:border-sales-blue-500 block p-2"
-                  />
-                </div>
-                <div className="flex-1">
-                  <label className="block text-xs font-semibold text-sales-slate-400 mb-1">Altura</label>
-                  <input
-                    type="text"
-                    value={searchForm.altura}
-                    onChange={(e) => setSearchForm({...searchForm, altura: e.target.value})}
-                    placeholder="Ej. 0.25"
-                    className="w-full bg-sales-slate-900 border border-sales-slate-700 text-sales-slate-200 text-sm rounded-lg focus:ring-sales-blue-500 focus:border-sales-blue-500 block p-2"
-                  />
-                </div>
-                <div className="flex-1">
-                  <label className="block text-xs font-semibold text-sales-slate-400 mb-1">Sección</label>
-                  <input
-                    type="text"
-                    value={searchForm.seccion}
-                    onChange={(e) => setSearchForm({...searchForm, seccion: e.target.value})}
-                    placeholder="Ej. 139"
-                    className="w-full bg-sales-slate-900 border border-sales-slate-700 text-sales-slate-200 text-sm rounded-lg focus:ring-sales-blue-500 focus:border-sales-blue-500 block p-2"
-                  />
-                </div>
-              </div>
-
-              <button
-                type="submit"
-                disabled={isSearching || !searchForm.familia}
-                className="w-full bg-sales-blue-600 hover:bg-sales-blue-500 text-white font-medium rounded-lg text-sm px-4 py-2 mt-2 disabled:opacity-50 transition-colors flex justify-center items-center gap-2"
-              >
-                {isSearching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Filter className="w-4 h-4" />}
-                Filtrar Catálogo
-              </button>
             </form>
 
-            {searchError && (
-              <div className="p-3 mb-4 text-sm text-red-400 bg-red-900/20 rounded-lg border border-red-900/50">
-                {searchError}
-              </div>
+            {/* Results */}
+            {isSearching ? (
+              <div className="flex justify-center py-10"><Spinner /></div>
+            ) : searchResults.length === 0 ? (
+              <EmptyState
+                compact
+                icon={Database}
+                title="Sin resultados"
+                description={searchForm.familia ? 'Ajusta las medidas o la familia y vuelve a buscar.' : 'Selecciona una familia y aplica filtros para ver productos.'}
+              />
+            ) : (
+              <ul className="divide-y divide-border/70">
+                {searchResults.map((product, idx) => {
+                  const totalExt = Object.values(product.existencias || {}).reduce((a, b) => a + (b || 0), 0);
+                  const desc = product.DESC_ECOMM || product.DESCR || product.NOMBRE;
+                  return (
+                    <li key={idx} className="flex flex-col gap-2.5 px-5 py-3 hover:bg-surface-2/60">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="truncate font-mono text-[11px] text-fg-subtle">{product.CVE_ART}</div>
+                          <div className="mt-0.5 line-clamp-2 text-sm text-fg" title={desc}>{desc}</div>
+                        </div>
+                        <Badge tone={totalExt > 0 ? 'success' : 'neutral'} className="shrink-0">
+                          {totalExt > 0 ? `${totalExt} en existencia` : 'Sin existencia'}
+                        </Badge>
+                      </div>
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="tnum text-sm">
+                          <span className="font-mono font-semibold text-fg">{formatMoney((product.PRECIO || 0) * 1.16)}</span>
+                          <span className="ml-1.5 text-xs text-fg-subtle">IVA incluido</span>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-1.5">
+                          <Button
+                            type="button"
+                            variant="chip"
+                            size="xs"
+                            icon={MessageSquare}
+                            title="Sugerir en el chat"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              handleSuggestProduct(product);
+                            }}
+                          >
+                            Sugerir al cliente
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="chip-accent"
+                            size="xs"
+                            icon={Plus}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              handleInjectProduct(product);
+                            }}
+                          >
+                            Agregar
+                          </Button>
+                        </div>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
             )}
-
-            <div className="flex-1 overflow-y-auto space-y-3 custom-scrollbar">
-              {!isSearching && searchResults.length === 0 && searchForm.familia && !searchError && (
-                <div className="text-center text-sales-slate-500 mt-10">
-                  <Database className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                  <p>Aplica filtros para ver resultados.</p>
-                </div>
-              )}
-
-              {searchResults.map((product, idx) => {
-                const totalExt = Object.values(product.existencias || {}).reduce((a, b) => a + (b || 0), 0);
-                return (
-                  <div key={idx} className="bg-sales-slate-800/40 rounded-lg p-3 border border-sales-slate-700/30 hover:border-sales-slate-600/50 transition-colors">
-                    <div className="flex justify-between items-start mb-2 gap-2">
-                      <div className="flex-1 min-w-0">
-                        <span className="inline-block px-2 py-0.5 rounded text-xs font-mono font-bold bg-sales-slate-700 text-sales-slate-200 mb-1">
-                          {product.CVE_ART}
-                        </span>
-                        <p className="text-sm text-sales-slate-300 leading-snug line-clamp-2" title={product.DESC_ECOMM || product.DESCR || product.NOMBRE}>
-                          {product.DESC_ECOMM || product.DESCR || product.NOMBRE}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="flex justify-between items-center mt-3 pt-3 border-t border-sales-slate-700/50">
-                      <div className="flex flex-col">
-                        <span className="text-sm font-bold text-sales-slate-100">
-                          ${((product.PRECIO || 0) * 1.16).toFixed(2)} <span className="text-[10px] font-normal text-sales-slate-400">Neto (IVA Inc.)</span>
-                        </span>
-                        <span className="text-xs text-sales-slate-400">
-                          Stock: {totalExt > 0 ? <span className="text-green-400 font-bold">{totalExt}</span> : '0'}
-                        </span>
-                      </div>
-                      <div className="flex flex-col gap-1.5 items-end">
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.preventDefault();
-                            handleSuggestProduct(product);
-                          }}
-                          className="flex items-center justify-center gap-1 bg-sales-slate-700/50 text-sales-slate-300 hover:bg-sales-slate-600 hover:text-white px-3 py-1 rounded-md text-[10px] font-semibold transition-colors border border-sales-slate-600"
-                          title="Sugerir en el chat"
-                        >
-                          <MessageSquare className="w-3 h-3" /> Sugerir
-                        </button>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.preventDefault();
-                            handleInjectProduct(product);
-                          }}
-                          className="flex items-center justify-center gap-1 bg-sales-blue-600/20 text-sales-blue-400 hover:bg-sales-blue-600 hover:text-white px-3 py-1 rounded-md text-[10px] font-semibold transition-colors"
-                        >
-                          <ShoppingCart className="w-3 h-3" /> Añadir
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+          </>
         )}
       </div>
 
+      {/* Footer */}
       {activeTab === 'current' && (
-        <div className="p-4 bg-sales-slate-900 border-t border-sales-slate-800 shrink-0">
-          <div className="space-y-2 mb-4">
-            <div className="flex justify-between text-sm text-sales-slate-400">
+        <div className="shrink-0 border-t border-border px-5 py-4">
+          <div className="space-y-1 text-[13px]">
+            <div className="flex justify-between text-fg-muted">
               <span>Subtotal</span>
-              <span>${subtotal.toFixed(2)}</span>
+              <span className="tnum font-mono">{formatMoney(subtotal)}</span>
             </div>
-            <div className="flex justify-between text-sm text-sales-slate-400">
+            <div className="flex justify-between text-fg-muted">
               <span>IVA (16%)</span>
-              <span>${iva.toFixed(2)}</span>
+              <span className="tnum font-mono">{formatMoney(iva)}</span>
             </div>
-            <div className="flex justify-between text-base font-bold text-sales-slate-100 pt-2 border-t border-sales-slate-700/50">
-              <span>Total (Neto)</span>
-              <span className="text-sales-blue-400">${total.toFixed(2)}</span>
+            <div className="flex justify-between border-t border-border pt-2 text-sm font-semibold text-fg">
+              <span>Total</span>
+              <span className="tnum font-mono">{formatMoney(total)}</span>
             </div>
           </div>
-          <div className="flex gap-2 flex-col">
-            <div className="flex gap-2">
-              <button
-                className="flex-1 py-2.5 px-3 bg-sales-slate-800 hover:bg-sales-slate-700 border border-sales-slate-700 text-sales-blue-400 rounded-lg font-medium transition-colors shadow-lg flex justify-center items-center gap-2"
-                onClick={handleSendSummary}
-                disabled={cartItems.length === 0}
-                title="Enviar resumen al chat"
-              >
-                <Send className="w-4 h-4" />
-                Resumen a Chat
-              </button>
-              <button
-                className="flex-1 py-2.5 px-3 bg-sales-blue-600 hover:bg-sales-blue-500 text-white rounded-lg font-medium transition-colors shadow-lg shadow-sales-blue-900/20 flex justify-center items-center gap-2"
-                onClick={async () => {
-                  try {
-                    const token = useAuthStore.getState().token;
-                    const reqBody = {
-                      conversationId: useChatStore.getState().currentConversationId,
-                      client: {
-                        name: razonSocial || client?.name || '',
-                        chatName: client?.name || '',
-                        rfc: rfc || '',
-                        billingAddress: billingAddress || '',
-                        address: shippingAddress || '',
-                        phone: client?.phoneNumber || client?.phone || '',
-                      },
-                      cartItems: cartItems,
-                    };
-                    const res = await fetch('/api/chat/quote/generate', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                      body: JSON.stringify(reqBody),
-                    });
-                    if (!res.ok) throw new Error('Falló al generar PDF');
-                    const blob = await res.blob();
-                    const url = window.URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.style.display = 'none';
-                    a.href = url;
-                    a.download = `Cotizacion_${Date.now()}.pdf`;
-                    document.body.appendChild(a);
-                    a.click();
-                    window.URL.revokeObjectURL(url);
-                  } catch (error) {
-                    console.error('Error:', error);
-                    alert('Error al generar la cotización PDF');
-                  }
-                }}
-              >
-                Cotización PDF
-              </button>
-            </div>
-            <button
-              className="w-full py-2 px-3 bg-sales-slate-800 hover:bg-sales-slate-700 border border-sales-slate-700 text-sales-slate-300 rounded-lg font-medium transition-colors shadow-lg flex justify-center items-center gap-2 text-sm"
-              onClick={async () => {
-                const email = window.prompt('Ingrese el correo electrónico al que desea enviar la cotización:');
-                if (!email) return;
-
-                try {
-                  const token = useAuthStore.getState().token;
-                  const reqBody = {
-                    email,
-                    client: {
-                      name: razonSocial || client?.name || '',
-                      chatName: client?.name || '',
-                      rfc: rfc || '',
-                      billingAddress: billingAddress || '',
-                      address: shippingAddress || '',
-                      phone: client?.phoneNumber || client?.phone || '',
-                    },
-                    cartItems: cartItems,
-                  };
-                  const res = await fetch('/api/chat/quote/send-email', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                    body: JSON.stringify(reqBody),
-                  });
-                  if (!res.ok) {
-                    const data = await res.json();
-                    throw new Error(data.error || 'Error al enviar');
-                  }
-                  alert('Cotización enviada exitosamente por correo electrónico.');
-                } catch (error) {
-                  console.error('Error:', error);
-                  alert('Error al enviar cotización por correo: ' + error.message);
-                }
-              }}
-              disabled={cartItems.length === 0}
-            >
-              Enviar por Correo
-            </button>
+          <div className="mt-4 flex flex-col gap-2">
+            <Button variant="primary" icon={FileText} className="w-full" loading={isGeneratingPdf} disabled={isEmpty} onClick={handleGeneratePdf}>
+              Generar cotización PDF
+            </Button>
+            <Button variant="secondary" icon={Mail} className="w-full" disabled={isEmpty} onClick={() => setEmailModalOpen(true)}>
+              Enviar por correo
+            </Button>
+            <Button variant="outline" icon={Send} className="w-full" disabled={isEmpty} onClick={handleSendSummary}>
+              Enviar resumen al chat
+            </Button>
           </div>
         </div>
       )}
 
       <ConfirmModal
         open={confirmModal.open}
-        title={confirmModal.type === 'CLEAR' ? 'Vaciar Carrito' : 'Eliminar Artículo'}
+        title={confirmModal.type === 'CLEAR' ? 'Vaciar carrito' : 'Eliminar artículo'}
         message={confirmModal.type === 'CLEAR' ? '¿Estás seguro de vaciar todo el carrito?' : '¿Seguro que deseas eliminar este artículo del carrito?'}
-        confirmText="Eliminar"
+        confirmText={confirmModal.type === 'CLEAR' ? 'Vaciar' : 'Eliminar'}
         onConfirm={executeConfirm}
         onCancel={() => setConfirmModal({ open: false, type: null, idx: null })}
       />
+
+      <Modal
+        open={emailModalOpen}
+        onClose={closeEmailModal}
+        size="sm"
+        eyebrow="Cotización"
+        title="Enviar por correo"
+        description="Se enviará el PDF de la cotización con las partidas actuales del pedido."
+        footer={
+          <>
+            <Button variant="ghost" onClick={closeEmailModal} disabled={isSendingEmail}>Cancelar</Button>
+            <Button variant="primary" type="submit" form="cart-email-form" icon={Mail} loading={isSendingEmail} disabled={!emailTo.trim()}>
+              Enviar
+            </Button>
+          </>
+        }
+      >
+        <form id="cart-email-form" onSubmit={handleSendEmail}>
+          <Field label="Correo del cliente">
+            {(p) => (
+              <Input
+                {...p}
+                type="email"
+                required
+                autoComplete="email"
+                value={emailTo}
+                onChange={(e) => setEmailTo(e.target.value)}
+                placeholder="cliente@empresa.com"
+                disabled={isSendingEmail}
+                data-autofocus
+              />
+            )}
+          </Field>
+        </form>
+      </Modal>
     </div>
   );
 }

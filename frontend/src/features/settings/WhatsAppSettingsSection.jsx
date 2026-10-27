@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { get, put } from '../../services/api.js';
 import useAuthStore from '../../stores/useAuthStore.js';
+import { Panel, Field, Input, Button, Spinner, Eyebrow } from '../../components/ui/index.js';
+import { toast } from '../../stores/useToastStore.js';
 
 /**
  * WhatsAppSettingsSection - Componente para administrar las credenciales de la API de WhatsApp Business
@@ -24,7 +26,6 @@ export default function WhatsAppSettingsSection() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [saved, setSaved] = useState(false);
 
   // URL base, en producción será api.chat.sealmarket.net o equivalente
   const webhookUrl = `${window.location.origin}/api/whatsapp/webhook/${user?.tenantId}`;
@@ -49,7 +50,6 @@ export default function WhatsAppSettingsSection() {
   async function handleSubmit(e) {
     e.preventDefault();
     setError('');
-    setSaved(false);
     setSaving(true);
     try {
       const res = await put('/whatsapp/settings', form);
@@ -57,8 +57,7 @@ export default function WhatsAppSettingsSection() {
         const body = await res.json();
         throw new Error(body.error?.message || 'Error al guardar');
       }
-      setSaved(true);
-      setTimeout(() => setSaved(false), 3000);
+      toast.success('Credenciales actualizadas');
     } catch (err) {
       setError(err.message);
     } finally {
@@ -66,93 +65,98 @@ export default function WhatsAppSettingsSection() {
     }
   }
 
-  if (loading) return <p className="text-sm text-sales-slate-400">Cargando...</p>;
+  if (loading) {
+    return (
+      <div className="flex justify-center py-16">
+        <Spinner size={20} />
+      </div>
+    );
+  }
 
   return (
-    <div>
-      <h3 className="mb-4 text-lg font-semibold text-sales-slate-100">WhatsApp Business API</h3>
-      <p className="mb-6 text-sm text-sales-slate-400">
-        Configura las credenciales de Meta Graph API para habilitar la recepción y envío de mensajes vía WhatsApp.
-      </p>
-
+    <form onSubmit={handleSubmit} className="space-y-6">
       {error && (
-        <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-400">
+        <div role="alert" className="rounded-md border border-danger/40 bg-danger/10 px-3 py-2.5 text-sm text-danger">
           {error}
         </div>
       )}
 
-      {saved && (
-        <div className="mb-4 rounded-lg border border-green-500/30 bg-green-500/10 px-4 py-2 text-sm text-green-400">
-          Credenciales actualizadas correctamente
+      <Panel
+        eyebrow="Canal"
+        title="WhatsApp Business"
+        description="Credenciales de Meta Graph API para recibir y enviar mensajes por WhatsApp."
+      >
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Phone Number ID" required>
+            {(p) => (
+              <Input
+                {...p}
+                mono
+                value={form.phoneNumberId}
+                onChange={(e) => setForm({ ...form, phoneNumberId: e.target.value })}
+                required
+                placeholder="Ej. 10293847561"
+              />
+            )}
+          </Field>
+          <Field label="Business Account ID">
+            {(p) => (
+              <Input
+                {...p}
+                mono
+                value={form.businessAccountId}
+                onChange={(e) => setForm({ ...form, businessAccountId: e.target.value })}
+                placeholder="Ej. 1092837465"
+              />
+            )}
+          </Field>
+          <Field label="Access token" hint="Token permanente de la app de Meta." required className="sm:col-span-2">
+            {(p) => (
+              <Input
+                {...p}
+                type="password"
+                mono
+                value={form.accessToken}
+                onChange={(e) => setForm({ ...form, accessToken: e.target.value })}
+                required
+                placeholder="EAAG…"
+              />
+            )}
+          </Field>
         </div>
-      )}
+      </Panel>
 
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="mb-1 block text-sm text-sales-slate-400">Phone Number ID</label>
-            <input
-              value={form.phoneNumberId}
-              onChange={(e) => setForm({ ...form, phoneNumberId: e.target.value })}
-              required
-              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-sales-slate-100 focus:outline-none focus:ring-2 focus:ring-sales-coral/50"
-              placeholder="Ej. 10293847561"
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-sm text-sales-slate-400">Business Account ID</label>
-            <input
-              value={form.businessAccountId}
-              onChange={(e) => setForm({ ...form, businessAccountId: e.target.value })}
-              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-sales-slate-100 focus:outline-none focus:ring-2 focus:ring-sales-coral/50"
-              placeholder="Ej. 1092837465"
-            />
-          </div>
-          <div className="col-span-1 md:col-span-2">
-            <label className="mb-1 block text-sm text-sales-slate-400">Access Token (Permanent)</label>
-            <input
-              type="password"
-              value={form.accessToken}
-              onChange={(e) => setForm({ ...form, accessToken: e.target.value })}
-              required
-              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-sales-slate-100 focus:outline-none focus:ring-2 focus:ring-sales-coral/50"
-              placeholder="EAAG..."
-            />
-          </div>
-          <div className="col-span-1 md:col-span-2 border-t border-slate-800 pt-4 mt-2">
-            <h4 className="text-sm font-medium text-sales-slate-300 mb-3">Configuración del Webhook</h4>
-            <div className="space-y-4">
-              <div>
-                <label className="mb-1 block text-sm text-sales-slate-400">Verify Token (Personalizado)</label>
-                <input
-                  value={form.verifyToken}
-                  onChange={(e) => setForm({ ...form, verifyToken: e.target.value })}
-                  required
-                  className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-sales-slate-100 focus:outline-none focus:ring-2 focus:ring-sales-coral/50"
-                  placeholder="Un token secreto inventado por ti"
-                />
-              </div>
+      <Panel
+        eyebrow="Webhook"
+        title="Recepción de mensajes"
+        description="Registra esta URL y el token de verificación en la configuración del webhook de Meta."
+      >
+        <div className="space-y-4">
+          <Field label="Verify token" hint="Un secreto que tú defines; Meta lo usará para validar el webhook." required>
+            {(p) => (
+              <Input
+                {...p}
+                mono
+                value={form.verifyToken}
+                onChange={(e) => setForm({ ...form, verifyToken: e.target.value })}
+                required
+                placeholder="Un token secreto inventado por ti"
+              />
+            )}
+          </Field>
 
-              <div className="rounded-lg border border-slate-700 bg-slate-800/50 p-4">
-                <label className="mb-1 block text-xs text-sales-slate-500 uppercase tracking-wider">Callback URL (Copiar a Meta)</label>
-                <code className="text-sm text-sales-coral block break-all select-all">
-                  {webhookUrl}
-                </code>
-              </div>
-            </div>
+          <div className="rounded-md border border-border bg-surface-2 px-4 py-3">
+            <Eyebrow tone="muted" className="mb-1.5 block">Callback URL</Eyebrow>
+            <code className="block select-all break-all font-mono text-[13px] text-accent">{webhookUrl}</code>
           </div>
         </div>
+      </Panel>
 
-        <div className="pt-4">
-          <button
-            type="submit"
-            disabled={saving}
-            className="rounded-lg bg-sales-orange px-6 py-2 text-sm font-medium text-white hover:bg-sales-orange-light transition-colors disabled:opacity-50"
-          >
-            {saving ? 'Guardando...' : 'Guardar Credenciales'}
-          </button>
-        </div>
-      </form>
-    </div>
+      <div className="flex justify-end">
+        <Button type="submit" variant="primary" loading={saving}>
+          {saving ? 'Guardando…' : 'Guardar credenciales'}
+        </Button>
+      </div>
+    </form>
   );
 }

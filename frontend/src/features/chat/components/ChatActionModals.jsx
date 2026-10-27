@@ -1,7 +1,17 @@
-import React, { useState, useEffect } from 'react';
-import { createPortal } from 'react-dom';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { ArrowRight, AlertTriangle } from 'lucide-react';
 import ConfirmModal from '../../../components/ConfirmModal';
 import useChatStore from '../../../stores/useChatStore';
+import { Modal, Button, Field, Input, Select, Textarea } from '../../../components/ui/index.js';
+
+const HOLD_REASONS = [
+  'Esperando proveedor logístico',
+  'Falla técnica / Soporte',
+  'Validación de pago',
+  'Esperando aprobación interna',
+];
+
+const toLocalInputValue = (date) => new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
 
 export default function ChatActionModals({
   activeModal,
@@ -13,18 +23,17 @@ export default function ChatActionModals({
   const [reason, setReason] = useState('');
   const [note, setNote] = useState('');
   const [timebombHours, setTimebombHours] = useState(24);
-
   const [scheduledAt, setScheduledAt] = useState('');
-  const modalRef = React.useRef(null);
+  const [formError, setFormError] = useState(null);
 
   const conversations = useChatStore(state => state.conversations);
   const currentConvId = useChatStore(state => state.currentConversationId);
-  const hasCollision = React.useMemo(() => {
+  const hasCollision = useMemo(() => {
     if (activeModal !== 'SCHEDULED' || !scheduledAt) return false;
     const [year, month, day, hour, minute] = scheduledAt.split(/[-T:]/).map(Number);
     if (isNaN(year) || isNaN(hour)) return false;
     const selectedDate = new Date(year, month - 1, day, hour, minute).getTime();
-    
+
     return conversations.some(c => {
       if (c.id === currentConvId) return false; // ignore self
       if (c.status !== 'SCHEDULED' || !c.scheduledAt) return false;
@@ -40,104 +49,92 @@ export default function ChatActionModals({
       setNote('');
       setTimebombHours(24);
       setScheduledAt('');
+      setFormError(null);
     }
   }, [activeModal]);
 
   // Set smart default for scheduledAt when modal opens
   useEffect(() => {
     if (activeModal === 'SCHEDULED') {
-        const date = new Date(Date.now() + 24 * 60 * 60 * 1000);
-        date.setMinutes(0, 0, 0);
-        setScheduledAt(new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16));
-      }
+      const date = new Date(Date.now() + 24 * 60 * 60 * 1000);
+      date.setMinutes(0, 0, 0);
+      setScheduledAt(toLocalInputValue(date));
+    }
   }, [activeModal]);
 
-  // Accessibility: Escape key and click-outside
-  useEffect(() => {
-    if (!activeModal) return;
-
-    const handleKeyDown = (e) => {
-      if (e.key === 'Escape' && !isPatching) onClose();
-    };
-
-    const handleClickOutside = (e) => {
-      if (modalRef.current && !modalRef.current.contains(e.target)) {
-        // Prevent closing if we are patching to avoid interrupting requests
-        if (!isPatching) onClose();
-      }
-    };
-
-    document.addEventListener('keydown', handleKeyDown);
-    document.addEventListener('mousedown', handleClickOutside);
-
-    return () => {
-      document.removeEventListener('keydown', handleKeyDown);
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [activeModal, onClose, isPatching]);
+  // Prevent closing while a request is in flight.
+  const handleClose = useCallback(() => {
+    if (!isPatching) onClose();
+  }, [isPatching, onClose]);
 
   if (!activeModal) return null;
 
+  const errorBlock = apiError ? (
+    <p className="mb-4 text-sm text-danger" role="alert">{apiError}</p>
+  ) : null;
+
   if (activeModal === 'RESOLVE') {
     return (
-      <div className="fixed inset-0 bg-sales-slate-950/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-        <div ref={modalRef} className="bg-sales-slate-900 border border-sales-slate-800 rounded-lg shadow-2xl w-full max-w-sm overflow-hidden">
-          <div className="p-4 border-b border-sales-slate-800 flex justify-between items-center">
-            <h3 className="text-lg font-bold text-white">Finalizar Conversación</h3>
-            <button onClick={onClose} disabled={isPatching} className="text-sales-slate-400 hover:text-white">&times;</button>
-          </div>
-          {apiError && (
-            <div className="mx-4 mt-4 p-3 bg-red-900/50 border border-red-500/50 rounded text-red-200 text-sm">
-              {apiError}
-            </div>
-          )}
-          <div className="p-6 flex flex-col gap-3">
-            <button
-              onClick={() => onSubmit({ status: 'CLOSED_WON' })}
-              disabled={isPatching}
-              className="w-full px-4 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded font-medium disabled:opacity-50 flex justify-between items-center transition-colors"
-            >
-              Cierre con Venta
-              {isPatching ? <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" /> : <span>→</span>}
-            </button>
-            <button
-              onClick={() => onSubmit({ status: 'CLOSED' })}
-              disabled={isPatching}
-              className="w-full px-4 py-3 bg-sales-slate-700 hover:bg-sales-slate-600 text-white rounded font-medium disabled:opacity-50 flex justify-between items-center transition-colors"
-            >
-              Cierre sin Venta
-              {isPatching ? <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" /> : <span>→</span>}
-            </button>
-          </div>
+      <Modal
+        open
+        onClose={handleClose}
+        size="sm"
+        eyebrow="Conversación"
+        title="Finalizar conversación"
+        description="Elige cómo cerrar este chat. El resultado se refleja en tus métricas."
+      >
+        {errorBlock}
+        <div className="flex flex-col gap-2">
+          <Button
+            variant="success"
+            size="lg"
+            iconRight={ArrowRight}
+            className="w-full justify-between"
+            onClick={() => onSubmit({ status: 'CLOSED_WON' })}
+            loading={isPatching}
+          >
+            Cierre con venta
+          </Button>
+          <Button
+            variant="secondary"
+            size="lg"
+            iconRight={ArrowRight}
+            className="w-full justify-between"
+            onClick={() => onSubmit({ status: 'CLOSED' })}
+            disabled={isPatching}
+          >
+            Cierre sin venta
+          </Button>
         </div>
-      </div>
+      </Modal>
     );
   }
 
   if (activeModal === 'DISCARDED') {
     return (
       <ConfirmModal
-        open={true}
-        title="Descartar Conversación"
+        open
+        title="Descartar conversación"
         message={
-          <div>
-            {apiError && <div className="text-red-500 mb-2 font-medium">{apiError}</div>}
+          <>
+            {apiError && <span className="mb-2 block text-danger">{apiError}</span>}
             ¿Estás seguro de marcar este chat como spam? Esto no afectará tus métricas.
-          </div>
+          </>
         }
         confirmText="Descartar"
         confirmVariant="danger"
         onConfirm={() => onSubmit({ status: 'DISCARDED' })}
-        onCancel={onClose}
-        disabled={isPatching}
+        onCancel={handleClose}
+        loading={isPatching}
       />
     );
   }
 
   const handleHoldSubmit = (e) => {
     e.preventDefault();
+    setFormError(null);
     if (Number(timebombHours) % 1 !== 0) {
-      alert("Las horas límite deben ser un número entero.");
+      setFormError('Las horas límite deben ser un número entero.');
       return;
     }
     const hours = parseInt(timebombHours, 10);
@@ -152,155 +149,152 @@ export default function ChatActionModals({
 
   const handleScheduledSubmit = (e) => {
     e.preventDefault();
+    setFormError(null);
     if (!scheduledAt) return;
     const [year, month, day, hour, minute] = scheduledAt.split(/[-T:]/).map(Number);
-      if (minute !== 0) {
-        alert('Por favor, selecciona una hora en punto (ej. 15:00). El sistema evalúa programaciones al inicio de cada hora.');
-        return;
-      }
-      const selectedDate = new Date(year, month - 1, day, hour, minute);
+    if (minute !== 0) {
+      setFormError('Selecciona una hora en punto (ej. 15:00). El sistema evalúa programaciones al inicio de cada hora.');
+      return;
+    }
+    const selectedDate = new Date(year, month - 1, day, hour, minute);
     if (isNaN(selectedDate.getTime())) {
-      alert('Fecha inválida.');
+      setFormError('Fecha inválida.');
       return;
     }
     if (selectedDate.getTime() <= Date.now()) {
-        alert('La fecha programada debe ser en el futuro.');
-        return;
-      }
+      setFormError('La fecha programada debe ser en el futuro.');
+      return;
+    }
     if (selectedDate.getTime() > Date.now() + 30 * 24 * 60 * 60000) {
-      alert('La fecha programada no puede exceder los 30 días.');
+      setFormError('La fecha programada no puede exceder los 30 días.');
       return;
     }
 
     onSubmit({
       status: 'SCHEDULED',
       scheduledAt: (() => {
-          const [year, month, day, hour, minute] = scheduledAt.split(/[-T:]/).map(Number);
-          return new Date(year, month - 1, day, hour, minute).toISOString();
-        })(),
+        const [year, month, day, hour, minute] = scheduledAt.split(/[-T:]/).map(Number);
+        return new Date(year, month - 1, day, hour, minute).toISOString();
+      })(),
     });
   };
 
-  const modalContent = (
-    <div className="fixed inset-0 bg-sales-slate-950/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-      <div ref={modalRef} className="bg-sales-slate-900 border border-sales-slate-800 rounded-lg shadow-2xl w-full max-w-md overflow-hidden">
-
-        {activeModal === 'ON_HOLD' && (
-          <form onSubmit={handleHoldSubmit} className="flex flex-col">
-            <div className="p-4 border-b border-sales-slate-800">
-              <h3 className="text-lg font-bold text-white">Poner en Espera</h3>
-            </div>
-            {apiError && (
-              <div className="mx-4 mt-4 p-3 bg-red-900/50 border border-red-500/50 rounded text-red-200 text-sm">
-                {apiError}
-              </div>
+  if (activeModal === 'ON_HOLD') {
+    return (
+      <Modal
+        open
+        onClose={handleClose}
+        eyebrow="Conversación"
+        title="Poner en espera"
+        description="La conversación se pausará y volverá a tu bandeja al cumplirse el plazo."
+        footer={
+          <>
+            <Button variant="ghost" onClick={handleClose} disabled={isPatching}>Cancelar</Button>
+            <Button variant="primary" type="submit" form="on-hold-form" loading={isPatching}>Confirmar espera</Button>
+          </>
+        }
+      >
+        {errorBlock}
+        <form id="on-hold-form" onSubmit={handleHoldSubmit} className="space-y-4">
+          <Field label="Razón" required>
+            {(p) => (
+              <Select {...p} required value={reason} onChange={(e) => setReason(e.target.value)} disabled={isPatching}>
+                <option value="" disabled>Selecciona una razón</option>
+                {HOLD_REASONS.map((r) => (
+                  <option key={r} value={r}>{r}</option>
+                ))}
+              </Select>
             )}
-            <div className="p-4 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-sales-slate-300 mb-1">Razón</label>
-                <select
-                  required
-                  value={reason}
-                  onChange={(e) => setReason(e.target.value)}
-                  className="w-full bg-sales-slate-800 border border-sales-slate-700 rounded p-2 text-white focus:border-sales-cyan-500 focus:outline-none"
-                  disabled={isPatching}
-                >
-                  <option value="" disabled>Seleccione una razón...</option>
-                  <option value="Esperando proveedor logístico">Esperando proveedor logístico</option>
-                  <option value="Falla técnica / Soporte">Falla técnica / Soporte</option>
-                  <option value="Validación de pago">Validación de pago</option>
-                  <option value="Esperando aprobación interna">Esperando aprobación interna</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-sales-slate-300 mb-1">Nota Explicativa</label>
-                <textarea
-                  required
-                  value={note}
-                  onChange={(e) => setNote(e.target.value)}
-                  className="w-full bg-sales-slate-800 border border-sales-slate-700 rounded p-2 text-white focus:border-sales-cyan-500 focus:outline-none"
-                  rows={3}
-                  disabled={isPatching}
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-sales-slate-300 mb-1">Horas límite (Max 168)</label>
-                <input
-                  type="number"
-                  step="1"
-                  min="1"
-                  max="168"
-                  required
-                  value={timebombHours}
-                  onChange={(e) => setTimebombHours(e.target.value)}
-                  className="w-full bg-sales-slate-800 border border-sales-slate-700 rounded p-2 text-white focus:border-sales-cyan-500 focus:outline-none"
-                  disabled={isPatching}
-                />
-              </div>
-            </div>
-            <div className="p-4 border-t border-sales-slate-800 flex justify-end gap-3 bg-sales-slate-800/50">
-              <button type="button" onClick={onClose} disabled={isPatching} className="px-4 py-2 rounded text-sales-slate-300 hover:text-white font-medium">Cancelar</button>
-              <button type="submit" disabled={isPatching} className="px-4 py-2 rounded bg-sales-cyan-600 hover:bg-sales-cyan-500 text-white font-medium flex items-center gap-2">
-                {isPatching && <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></span>}
-                Confirmar Espera
-              </button>
-            </div>
-          </form>
-        )}
-
-        {activeModal === 'SCHEDULED' && (
-          <form onSubmit={handleScheduledSubmit} className="flex flex-col">
-            <div className="p-4 border-b border-sales-slate-800">
-              <h3 className="text-lg font-bold text-white">Programar Seguimiento</h3>
-            </div>
-            {apiError && (
-              <div className="mx-4 mt-4 p-3 bg-red-900/50 border border-red-500/50 rounded text-red-200 text-sm">
-                {apiError}
-              </div>
+          </Field>
+          <Field label="Nota explicativa" required>
+            {(p) => (
+              <Textarea
+                {...p}
+                required
+                rows={3}
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder="Qué estamos esperando y de quién"
+                disabled={isPatching}
+              />
             )}
-            <div className="p-4 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-sales-slate-300 mb-1">Fecha y Hora</label>
-                <input
-                  type="datetime-local"
-                  required
-                  step="3600"
-                    min={(() => {
-                      const d = new Date();
-                      d.setHours(d.getHours() + 1, 0, 0, 0);
-                      return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-                    })()}
-                    max={(() => {
-                      const d = new Date();
-                      d.setDate(d.getDate() + 30);
-                      d.setMinutes(0, 0, 0);
-                      return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-                    })()}
-                  value={scheduledAt}
-                  onChange={(e) => setScheduledAt(e.target.value)}
-                    className="w-full bg-sales-slate-800 border border-sales-slate-700 rounded p-2 text-white focus:border-sales-cyan-500 focus:outline-none [color-scheme:dark]"
-                    disabled={isPatching}
-                  />
-                  {hasCollision && (
-                    <div className="mt-3 text-xs text-amber-400 bg-amber-900/30 p-2.5 rounded border border-amber-500/30 flex items-start gap-2">
-                      <span className="text-base leading-none">⚠️</span>
-                      <p>Ya tienes otra conversación programada para este mismo día y hora.</p>
-                    </div>
-                  )}
-              </div>
-            </div>
-            <div className="p-4 border-t border-sales-slate-800 flex justify-end gap-3 bg-sales-slate-800/50">
-              <button type="button" onClick={onClose} disabled={isPatching} className="px-4 py-2 rounded text-sales-slate-300 hover:text-white font-medium">Cancelar</button>
-              <button type="submit" disabled={isPatching} className="px-4 py-2 rounded bg-sales-cyan-600 hover:bg-sales-cyan-500 text-white font-medium flex items-center gap-2">
-                {isPatching && <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></span>}
-                Programar
-              </button>
-            </div>
-          </form>
-        )}
-      </div>
-    </div>
-  );
+          </Field>
+          <Field label="Horas límite" hint="Máximo 168 horas (7 días)." error={formError} required>
+            {(p) => (
+              <Input
+                {...p}
+                type="number"
+                step="1"
+                min="1"
+                max="168"
+                required
+                mono
+                value={timebombHours}
+                onChange={(e) => setTimebombHours(e.target.value)}
+                disabled={isPatching}
+              />
+            )}
+          </Field>
+        </form>
+      </Modal>
+    );
+  }
 
-  return createPortal(modalContent, document.body);
+  if (activeModal === 'SCHEDULED') {
+    const minValue = (() => {
+      const d = new Date();
+      d.setHours(d.getHours() + 1, 0, 0, 0);
+      return toLocalInputValue(d);
+    })();
+    const maxValue = (() => {
+      const d = new Date();
+      d.setDate(d.getDate() + 30);
+      d.setMinutes(0, 0, 0);
+      return toLocalInputValue(d);
+    })();
+
+    return (
+      <Modal
+        open
+        onClose={handleClose}
+        eyebrow="Conversación"
+        title="Programar seguimiento"
+        description="La conversación volverá a tu bandeja en la fecha y hora indicadas."
+        footer={
+          <>
+            <Button variant="ghost" onClick={handleClose} disabled={isPatching}>Cancelar</Button>
+            <Button variant="primary" type="submit" form="scheduled-form" loading={isPatching}>Programar</Button>
+          </>
+        }
+      >
+        {errorBlock}
+        <form id="scheduled-form" onSubmit={handleScheduledSubmit} className="space-y-4">
+          <Field label="Fecha y hora" hint="Solo horas en punto, hasta 30 días adelante." error={formError} required>
+            {(p) => (
+              <Input
+                {...p}
+                type="datetime-local"
+                required
+                step="3600"
+                min={minValue}
+                max={maxValue}
+                mono
+                value={scheduledAt}
+                onChange={(e) => setScheduledAt(e.target.value)}
+                disabled={isPatching}
+              />
+            )}
+          </Field>
+          {hasCollision && (
+            <div className="flex items-start gap-2 rounded-md border border-warning/40 bg-warning/10 px-3 py-2.5 text-xs text-warning" role="status">
+              <AlertTriangle size={14} className="mt-px shrink-0" aria-hidden />
+              <p>Ya tienes otra conversación programada para este mismo día y hora.</p>
+            </div>
+          )}
+        </form>
+      </Modal>
+    );
+  }
+
+  return null;
 }
