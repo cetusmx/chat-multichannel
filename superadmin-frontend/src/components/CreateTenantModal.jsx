@@ -206,7 +206,7 @@ export default function CreateTenantModal({ isOpen, onClose, onSuccess, triggerR
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
       <div 
         ref={modalRef}
-        className="bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]"
+        className="bg-white text-gray-900 rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]"
         role="dialog"
         aria-modal="true"
         aria-labelledby="modal-title"
@@ -234,7 +234,7 @@ export default function CreateTenantModal({ isOpen, onClose, onSuccess, triggerR
                   id="tenant-name"
                   type="text"
                   disabled={isSubmitting}
-                  className={`w-full px-3 py-2 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 ${errors.name ? 'border-red-500' : 'border-gray-300'}`}
+                  className={`w-full px-3 py-2 bg-white text-gray-900 placeholder:text-gray-400 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 ${errors.name ? 'border-red-500' : 'border-gray-300'}`}
                   placeholder="Ej. Acme Corp"
                   {...register('name')}
                 />
@@ -249,7 +249,7 @@ export default function CreateTenantModal({ isOpen, onClose, onSuccess, triggerR
                     id="tenant-slug"
                     type="text"
                     disabled={isSubmitting}
-                    className={`w-full px-3 py-2 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 ${errors.slug ? 'border-red-500' : 'border-gray-300'}`}
+                    className={`w-full px-3 py-2 bg-white text-gray-900 placeholder:text-gray-400 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 ${errors.slug ? 'border-red-500' : 'border-gray-300'}`}
                     placeholder="acmecorp"
                     {...register('slug')}
                   />
@@ -269,7 +269,7 @@ export default function CreateTenantModal({ isOpen, onClose, onSuccess, triggerR
                   id="admin-firstName"
                   type="text"
                   disabled={isSubmitting}
-                  className={`w-full px-3 py-2 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 ${errors.firstName ? 'border-red-500' : 'border-gray-300'}`}
+                  className={`w-full px-3 py-2 bg-white text-gray-900 placeholder:text-gray-400 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 ${errors.firstName ? 'border-red-500' : 'border-gray-300'}`}
                   placeholder="John"
                   {...register('firstName')}
                 />
@@ -283,7 +283,7 @@ export default function CreateTenantModal({ isOpen, onClose, onSuccess, triggerR
                   id="admin-lastName"
                   type="text"
                   disabled={isSubmitting}
-                  className={`w-full px-3 py-2 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 ${errors.lastName ? 'border-red-500' : 'border-gray-300'}`}
+                  className={`w-full px-3 py-2 bg-white text-gray-900 placeholder:text-gray-400 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 ${errors.lastName ? 'border-red-500' : 'border-gray-300'}`}
                   placeholder="Doe"
                   {...register('lastName')}
                 />
@@ -297,7 +297,7 @@ export default function CreateTenantModal({ isOpen, onClose, onSuccess, triggerR
                   id="admin-email"
                   type="email"
                   disabled={isSubmitting}
-                  className={`w-full px-3 py-2 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 ${errors.email ? 'border-red-500' : 'border-gray-300'}`}
+                  className={`w-full px-3 py-2 bg-white text-gray-900 placeholder:text-gray-400 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 ${errors.email ? 'border-red-500' : 'border-gray-300'}`}
                   placeholder="john@acmecorp.com"
                   {...register('email')}
                 />
@@ -323,7 +323,7 @@ export default function CreateTenantModal({ isOpen, onClose, onSuccess, triggerR
                     id="admin-password"
                     type={showPassword ? 'text' : 'password'}
                     disabled={isSubmitting}
-                    className={`w-full px-3 py-2 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 pr-10 ${errors.password ? 'border-red-500' : 'border-gray-300'}`}
+                    className={`w-full px-3 py-2 bg-white text-gray-900 placeholder:text-gray-400 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 pr-10 ${errors.password ? 'border-red-500' : 'border-gray-300'}`}
                     placeholder="••••••••"
                     {...register('password')}
                   />
