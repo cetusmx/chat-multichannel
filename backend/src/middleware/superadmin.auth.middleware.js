@@ -18,6 +18,7 @@ function isSuperadmin(req, res, next) {
     }
 
     req.superadmin = decoded;
+    req.user = decoded;
     next();
   } catch (err) {
     if (err.name === 'JsonWebTokenError' && err.message === 'invalid signature') {

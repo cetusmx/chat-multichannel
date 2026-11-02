@@ -213,4 +213,35 @@ describe('Superadmin Tenant Controller', () => {
       }));
     });
   });
+
+  describe('updateTenantLicenses', () => {
+    it('should update tenant licenses using req.superadmin.id from superadmin auth middleware', async () => {
+      const validCuid = 'cmvyov3dt0000m501k3ny6wkf';
+      const mockResult = {
+        id: validCuid,
+        maxUsers: 10,
+        maxAiTokens: 50000,
+        licenseType: 'SUBSCRIPTION',
+        currentActiveUsers: 1,
+      };
+      superadminTenantService.updateTenantLicenses.mockResolvedValue(mockResult);
+
+      const req = {
+        params: { id: validCuid },
+        body: { maxUsers: 10, maxAiTokens: 50000, licenseType: 'SUBSCRIPTION' },
+        superadmin: { id: 'sa-1', role: 'SUPERADMIN' },
+      };
+      const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+      const next = jest.fn();
+
+      await superadminTenantController.updateTenantLicenses(req, res, next);
+
+      expect(superadminTenantService.updateTenantLicenses).toHaveBeenCalledWith(
+        validCuid,
+        { maxUsers: 10, maxAiTokens: 50000, licenseType: 'SUBSCRIPTION' },
+        'sa-1'
+      );
+      expect(success).toHaveBeenCalledWith(res, mockResult);
+    });
+  });
 });

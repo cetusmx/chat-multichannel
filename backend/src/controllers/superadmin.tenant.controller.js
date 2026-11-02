@@ -24,7 +24,7 @@ const updateTenantStatusSchema = z.object({
 const tenantIdSchema = z.string().refine(val => /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(val) || /^c[a-z0-9]{24}$/.test(val), { message: 'Invalid tenant ID format (must be UUID or CUID)' });
 
 const updateTenantLicensesSchema = z.object({
-  maxUsers: z.number().int().min(-1).max(2147483647),
+  maxUsers: z.number().int().min(-1).max(2147483647).refine(val => val === -1 || val >= 1, { message: 'maxUsers must be -1 or at least 1' }),
   maxAiTokens: z.number().int().min(-1).max(2147483647),
   licenseType: z.enum(['SUBSCRIPTION', 'LIFETIME']),
 }).strict();
@@ -179,7 +179,7 @@ async function updateTenantLicenses(req, res, next) {
     }
     const validatedData = parsedData.data;
 
-    const superadminId = req.user.id;
+    const superadminId = req.superadmin?.id || req.user?.id;
 
     const result = await superadminTenantService.updateTenantLicenses(id, validatedData, superadminId);
     

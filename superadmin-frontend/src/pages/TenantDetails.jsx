@@ -55,7 +55,8 @@ export default function TenantDetails() {
   const handleSave = async (e) => {
     e.preventDefault();
     
-    const numUsers = isUnlimitedUsers ? -1 : (maxUsers === "" ? 0 : Number(maxUsers));
+    const minValidUsers = Math.max(1, tenant?.currentActiveUsers ?? 1);
+    const numUsers = isUnlimitedUsers ? -1 : (maxUsers === "" ? minValidUsers : Math.max(1, Number(maxUsers)));
     const payloadTokens = licenseType === 'LIFETIME' ? 0 : (isUnlimitedTokens ? -1 : (maxAiTokens === "" ? 0 : Number(maxAiTokens)));
 
     if (tenant) {
@@ -76,12 +77,13 @@ export default function TenantDetails() {
         maxAiTokens: payloadTokens,
         licenseType
       });
+      const updatedData = response?.data || response;
       
       // Pessimistic update: only update on success
       setTenant(prev => ({
         ...prev,
-        ...response,
-        currentActiveUsers: prev.currentActiveUsers // preserve unless backend returns it in PUT
+        ...updatedData,
+        currentActiveUsers: updatedData?.currentActiveUsers ?? prev.currentActiveUsers
       }));
       toast.success('Licencias actualizadas exitosamente');
     } catch (err) {
@@ -159,14 +161,26 @@ export default function TenantDetails() {
               <div className="flex gap-2 items-center">
                 <input 
                   type="number"
-                  min={tenant.currentActiveUsers ?? 0}
+                  min={Math.max(1, tenant.currentActiveUsers ?? 1)}
                   value={maxUsers}
                   onChange={(e) => setMaxUsers(e.target.value)}
                   disabled={saving || isUnlimitedUsers}
                   className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-2 text-slate-200 focus:outline-none focus:border-blue-500 transition-colors disabled:opacity-50"
                 />
                 <label className="flex items-center gap-2 text-sm text-slate-300 whitespace-nowrap cursor-pointer">
-                  <input type="checkbox" className="rounded bg-slate-800 border-slate-700 text-blue-600 focus:ring-blue-600 focus:ring-offset-slate-950" checked={isUnlimitedUsers} onChange={(e) => setIsUnlimitedUsers(e.target.checked)} disabled={saving} /> Ilimitado
+                  <input
+                    type="checkbox"
+                    className="rounded bg-slate-800 border-slate-700 text-blue-600 focus:ring-blue-600 focus:ring-offset-slate-950"
+                    checked={isUnlimitedUsers}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      setIsUnlimitedUsers(checked);
+                      if (!checked && maxUsers === '') {
+                        setMaxUsers(Math.max(1, tenant.currentActiveUsers ?? 1));
+                      }
+                    }}
+                    disabled={saving}
+                  /> Ilimitado
                 </label>
               </div>
             </div>
@@ -186,7 +200,19 @@ export default function TenantDetails() {
                 />
                 {licenseType !== 'LIFETIME' && (
                   <label className="flex items-center gap-2 text-sm text-slate-300 whitespace-nowrap cursor-pointer">
-                    <input type="checkbox" className="rounded bg-slate-800 border-slate-700 text-blue-600 focus:ring-blue-600 focus:ring-offset-slate-950" checked={isUnlimitedTokens} onChange={(e) => setIsUnlimitedTokens(e.target.checked)} disabled={saving} /> Ilimitado
+                    <input
+                      type="checkbox"
+                      className="rounded bg-slate-800 border-slate-700 text-blue-600 focus:ring-blue-600 focus:ring-offset-slate-950"
+                      checked={isUnlimitedTokens}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setIsUnlimitedTokens(checked);
+                        if (!checked && maxAiTokens === '') {
+                          setMaxAiTokens(0);
+                        }
+                      }}
+                      disabled={saving}
+                    /> Ilimitado
                   </label>
                 )}
               </div>
