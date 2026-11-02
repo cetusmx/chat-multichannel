@@ -91,7 +91,6 @@ async function createTenantWithAdmin(data) {
         role: 'ADMIN',
         tenantId: tenant.id,
         isActive: true,
-        emailVerified: new Date(),
       },
     });
 

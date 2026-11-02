@@ -146,7 +146,6 @@ describe('Superadmin Tenant Service', () => {
           role: 'ADMIN',
           tenantId: 't1',
           isActive: true,
-          emailVerified: expect.any(Date),
         },
       });
       expect(result).toEqual({ tenant: mockTenant, user: mockUser });

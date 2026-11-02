@@ -166,8 +166,8 @@ export default function CreateTenantModal({ isOpen, onClose, onSuccess, triggerR
       if (error.name === 'AbortError') return;
 
       if (error.status === 409) {
-        const errField = error.data?.field || '';
-        const errMsgStr = error.data?.message || '';
+        const errField = error.data?.error?.field || error.data?.field || '';
+        const errMsgStr = error.data?.error?.message || error.data?.message || error.message || '';
         
         let field = 'slug';
         let msg = 'El dominio ya existe';
@@ -182,16 +182,17 @@ export default function CreateTenantModal({ isOpen, onClose, onSuccess, triggerR
         
         toast.error(msg);
         setError(field, { type: 'manual', message: msg });
-      } else if (error.status === 400 && Array.isArray(error.data?.errors)) {
+      } else if (error.status === 400 && Array.isArray(error.data?.error?.details || error.data?.errors)) {
         // map field errors
-        error.data.errors.forEach(err => {
+        const validationErrors = error.data?.error?.details || error.data?.errors;
+        validationErrors.forEach(err => {
           if (err.path && err.path[0]) {
             setError(err.path[0], { type: 'manual', message: err.message });
           }
         });
         toast.error('Por favor revisa los errores en el formulario');
       } else {
-        toast.error(error.data?.message || 'Error al crear el inquilino');
+        toast.error(error.data?.error?.message || error.data?.message || error.message || 'Error al crear el inquilino');
       }
     } finally {
       setIsSubmitting(false);
