@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Users, Server, Clock, Activity, Search, AlertCircle, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
 import { api } from '../services/api';
 import CreateTenantModal from '../components/CreateTenantModal';
+import ConfirmModal from '../components/ui/ConfirmModal';
 import { toast } from 'sonner';
 export default function Tenants() {
   const [tenants, setTenants] = useState([]);
@@ -12,6 +13,7 @@ export default function Tenants() {
   const [meta, setMeta] = useState({ total: 0, page: 1, limit: 10 });
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [togglingTenantIds, setTogglingTenantIds] = useState(new Set());
+  const [tenantToToggle, setTenantToToggle] = useState(null);
   const newTenantBtnRef = useRef(null);
 
   const abortControllerRef = useRef(null);
@@ -60,17 +62,18 @@ export default function Tenants() {
     if (page < Math.ceil(meta.total / meta.limit)) setPage(page + 1);
   };
 
-  const handleToggleStatus = async (tenant) => {
+  const handleToggleStatus = (tenant) => {
     if (togglingTenantIds.has(tenant.id)) return;
-    
+    setTenantToToggle(tenant);
+  };
+
+  const confirmToggleStatus = async () => {
+    const tenant = tenantToToggle;
+    setTenantToToggle(null);
+    if (!tenant || togglingTenantIds.has(tenant.id)) return;
+
     const isCurrentlyActive = tenant.status?.toLowerCase() === 'active';
     const newStatus = isCurrentlyActive ? 'suspended' : 'active';
-    const actionText = isCurrentlyActive ? 'suspender' : 'reactivar';
-    
-    if (!window.confirm(`¿Estás seguro de que deseas ${actionText} el inquilino "${tenant.name}"?`)) {
-      return;
-    }
-
     const previousStatus = tenant.status;
 
     try {
@@ -252,6 +255,21 @@ export default function Tenants() {
           else setPage(1); // Will trigger effect to fetch
         }}
         triggerRef={newTenantBtnRef}
+      />
+
+      <ConfirmModal
+        isOpen={Boolean(tenantToToggle)}
+        title={tenantToToggle?.status?.toLowerCase() === 'active' ? 'Suspender inquilino' : 'Reactivar inquilino'}
+        message={
+          tenantToToggle
+            ? `¿Estás seguro de que deseas ${tenantToToggle.status?.toLowerCase() === 'active' ? 'suspender' : 'reactivar'} el inquilino "${tenantToToggle.name}"?`
+            : ''
+        }
+        confirmText={tenantToToggle?.status?.toLowerCase() === 'active' ? 'Sí, suspender' : 'Sí, reactivar'}
+        cancelText="Cancelar"
+        variant={tenantToToggle?.status?.toLowerCase() === 'active' ? 'danger' : 'primary'}
+        onCancel={() => setTenantToToggle(null)}
+        onConfirm={confirmToggleStatus}
       />
     </div>
   );

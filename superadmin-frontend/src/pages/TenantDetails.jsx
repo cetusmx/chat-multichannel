@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { ChevronLeft, Save, AlertTriangle } from 'lucide-react';
 import { api } from '../services/api';
 import { toast } from 'sonner';
+import ConfirmModal from '../components/ui/ConfirmModal';
 
 export default function TenantDetails() {
   const { id } = useParams();
@@ -12,6 +13,7 @@ export default function TenantDetails() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [pendingPayload, setPendingPayload] = useState(null);
 
   // Form state
   const [maxUsers, setMaxUsers] = useState(0);
@@ -52,31 +54,10 @@ export default function TenantDetails() {
     }
   };
 
-  const handleSave = async (e) => {
-    e.preventDefault();
-    
-    const minValidUsers = Math.max(1, tenant?.currentActiveUsers ?? 1);
-    const numUsers = isUnlimitedUsers ? -1 : (maxUsers === "" ? minValidUsers : Math.max(1, Number(maxUsers)));
-    const payloadTokens = licenseType === 'LIFETIME' ? 0 : (isUnlimitedTokens ? -1 : (maxAiTokens === "" ? 0 : Number(maxAiTokens)));
-
-    if (tenant) {
-      const isReducingUsers = numUsers !== -1 && (tenant.maxUsers === -1 || numUsers < tenant.maxUsers);
-      const isReducingTokens = payloadTokens !== -1 && (tenant.maxAiTokens === -1 || payloadTokens < tenant.maxAiTokens) && licenseType !== 'LIFETIME';
-
-      if (isReducingUsers || isReducingTokens) {
-        if (!window.confirm("Estás reduciendo los límites de licencia actuales para este inquilino. ¿Proceder?")) {
-          return;
-        }
-      }
-    }
-
+  const executeSave = async (payload) => {
     try {
       setSaving(true);
-      const response = await api.put(`/api/superadmin/tenants/${id}/licenses`, {
-        maxUsers: numUsers,
-        maxAiTokens: payloadTokens,
-        licenseType
-      });
+      const response = await api.put(`/api/superadmin/tenants/${id}/licenses`, payload);
       const updatedData = response?.data || response;
       
       // Pessimistic update: only update on success
@@ -95,6 +76,31 @@ export default function TenantDetails() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleSave = async (e) => {
+    e.preventDefault();
+    
+    const minValidUsers = Math.max(1, tenant?.currentActiveUsers ?? 1);
+    const numUsers = isUnlimitedUsers ? -1 : (maxUsers === "" ? minValidUsers : Math.max(1, Number(maxUsers)));
+    const payloadTokens = licenseType === 'LIFETIME' ? 0 : (isUnlimitedTokens ? -1 : (maxAiTokens === "" ? 0 : Number(maxAiTokens)));
+    const payload = {
+      maxUsers: numUsers,
+      maxAiTokens: payloadTokens,
+      licenseType,
+    };
+
+    if (tenant) {
+      const isReducingUsers = numUsers !== -1 && (tenant.maxUsers === -1 || numUsers < tenant.maxUsers);
+      const isReducingTokens = payloadTokens !== -1 && (tenant.maxAiTokens === -1 || payloadTokens < tenant.maxAiTokens) && licenseType !== 'LIFETIME';
+
+      if (isReducingUsers || isReducingTokens) {
+        setPendingPayload(payload);
+        return;
+      }
+    }
+
+    await executeSave(payload);
   };
 
   if (loading) {
@@ -231,6 +237,21 @@ export default function TenantDetails() {
           </div>
         </form>
       </div>
+
+      <ConfirmModal
+        isOpen={Boolean(pendingPayload)}
+        title="Reducir límites de licencia"
+        message="Estás reduciendo los límites de licencia actuales para este inquilino. ¿Deseas proceder con los cambios?"
+        confirmText="Sí, guardar cambios"
+        cancelText="Cancelar"
+        variant="warning"
+        onCancel={() => setPendingPayload(null)}
+        onConfirm={() => {
+          const payload = pendingPayload;
+          setPendingPayload(null);
+          if (payload) executeSave(payload);
+        }}
+      />
     </div>
   );
 }

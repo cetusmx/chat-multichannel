@@ -74,8 +74,12 @@ describe('Tenants Page', () => {
     // For active tenant, aria-pressed should be false
     expect(toggleBtn).toHaveAttribute('aria-pressed', 'false');
 
-    // Click to suspend
+    // Click to open confirmation modal
     fireEvent.click(toggleBtn);
+
+    // Click confirm button in modal
+    const confirmBtn = screen.getByRole('button', { name: /Sí, suspender/i });
+    fireEvent.click(confirmBtn);
     
     // Should immediately show loading state
     expect(toggleBtn).toHaveTextContent('Procesando...');
@@ -108,8 +112,9 @@ describe('Tenants Page', () => {
 
     const toggleBtn = screen.getByRole('button', { name: /Suspender inquilino Acme Corp/i });
 
-    // Click to suspend
+    // Click to open confirmation modal and confirm
     fireEvent.click(toggleBtn);
+    fireEvent.click(screen.getByRole('button', { name: /Sí, suspender/i }));
 
     // Expect error toast and reverted state
     await waitFor(() => {
