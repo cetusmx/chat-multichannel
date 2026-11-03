@@ -293,6 +293,7 @@ async function sendTenantAdminPasswordReset(tenantId, origin = '') {
     tenantName: tenant.name,
     tenantId: tenant.id,
     preferPlatform: true,
+    validityLabel: '24 horas',
   });
 
   return {

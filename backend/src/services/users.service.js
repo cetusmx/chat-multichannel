@@ -676,6 +676,7 @@ async function sendUserWelcomeOrResetEmail(userId, tenantId, actorRole, options 
         resetUrl,
         tenantName,
         tenantId,
+        validityLabel: '24 horas',
       });
 
   return {

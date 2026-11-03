@@ -2,6 +2,21 @@ const nodemailer = require('nodemailer');
 const prisma = require('../config/database');
 require('dotenv').config();
 
+function formatAccountScope(tenantName, isSuperadminAccount = false) {
+  if (isSuperadminAccount || !tenantName || tenantName === 'SalesFlow' || tenantName === 'SalesFlow Superadmin') {
+    return {
+      subjectSuffix: 'SalesFlow',
+      inlineText: 'en la plataforma SalesFlow',
+      inlineHtml: 'en la plataforma <strong>SalesFlow</strong>',
+    };
+  }
+  return {
+    subjectSuffix: `SalesFlow (${tenantName})`,
+    inlineText: `en la plataforma SalesFlow para la empresa ${tenantName}`,
+    inlineHtml: `en la plataforma <strong>SalesFlow</strong> para la empresa <strong>${tenantName}</strong>`,
+  };
+}
+
 class EmailService {
   constructor() {
     this.defaultTransporter = null;
@@ -58,7 +73,7 @@ class EmailService {
             },
           }),
           fromEmail: platformConfig.fromEmail || platformConfig.user,
-          fromName: platformConfig.fromName || defaultSenderName,
+          fromName: platformConfig.fromName || 'SalesFlow',
         };
       }
     } catch (err) {
@@ -123,7 +138,7 @@ class EmailService {
   }) {
     const { transporter, fromEmail, fromName } = await this.resolveTransporter({
       tenantId,
-      defaultSenderName: tenantName || 'SalesFlow',
+      defaultSenderName: preferPlatform ? 'SalesFlow' : `${tenantName} — SalesFlow`,
       preferPlatform,
     });
 
@@ -132,8 +147,10 @@ class EmailService {
       return false;
     }
 
+    const scope = formatAccountScope(tenantName, !tenantId && tenantName === 'SalesFlow Superadmin');
+
     const tempPassSectionText = temporaryPassword
-      ? `\nContraseña temporal: ${temporaryPassword}\n(Al iniciar sesión por primera vez o usar el enlace inferior deberás establecer una contraseña definitiva.)\n`
+      ? `\nUsuario: ${to}\nContraseña temporal: ${temporaryPassword}\n(Al iniciar sesión por primera vez o usar el enlace inferior deberás establecer una contraseña definitiva.)\n`
       : '';
     const tempPassSectionHtml = temporaryPassword
       ? `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px 16px;margin:16px 0;">
@@ -146,12 +163,12 @@ class EmailService {
       await transporter.sendMail({
         from: `"${fromName}" <${fromEmail}>`,
         to,
-        subject: `Bienvenido a ${tenantName} — Configura tu contraseña`,
-        text: `Hola ${name},\n\nTu cuenta en ${tenantName} ha sido creada.${tempPassSectionText}\nPara establecer tu contraseña personalizada, ingresa al siguiente enlace (válido por 48 horas):\n${resetUrl}\n\nSi no reconoces esta cuenta, ignora este mensaje.`,
+        subject: `Bienvenido a ${scope.subjectSuffix} — Configura tu contraseña`,
+        text: `Hola ${name},\n\nSe ha creado tu cuenta de acceso ${scope.inlineText}.${tempPassSectionText}\nPara establecer tu contraseña personalizada, ingresa al siguiente enlace (válido por 48 horas):\n${resetUrl}\n\nSi no reconoces esta cuenta, ignora este mensaje.`,
         html: `
           <div style="font-family:Inter,Arial,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#0f172a;">
-            <h2 style="margin:0 0 12px;font-size:20px;">Bienvenido a ${tenantName}</h2>
-            <p style="font-size:14px;line-height:1.6;color:#334155;">Hola <strong>${name}</strong>, se ha creado tu cuenta de acceso.</p>
+            <h2 style="margin:0 0 12px;font-size:20px;">Bienvenido a SalesFlow</h2>
+            <p style="font-size:14px;line-height:1.6;color:#334155;">Hola <strong>${name}</strong>, se ha creado tu cuenta de acceso ${scope.inlineHtml}.</p>
             ${tempPassSectionHtml}
             <p style="font-size:14px;line-height:1.6;color:#334155;">Por seguridad, establece tu contraseña personal haciendo clic en el siguiente botón (enlace válido por 48 horas):</p>
             <p style="margin:24px 0;">
@@ -177,10 +194,11 @@ class EmailService {
     tenantName = 'SalesFlow',
     tenantId = null,
     preferPlatform = false,
+    validityLabel = '1 hora',
   }) {
     const { transporter, fromEmail, fromName } = await this.resolveTransporter({
       tenantId,
-      defaultSenderName: tenantName || 'SalesFlow',
+      defaultSenderName: preferPlatform ? 'SalesFlow' : `${tenantName} — SalesFlow`,
       preferPlatform,
     });
 
@@ -189,17 +207,19 @@ class EmailService {
       return false;
     }
 
+    const scope = formatAccountScope(tenantName, !tenantId && tenantName === 'SalesFlow Superadmin');
+
     try {
       await transporter.sendMail({
         from: `"${fromName}" <${fromEmail}>`,
         to,
-        subject: `Recuperación de contraseña — ${tenantName}`,
-        text: `Hola ${name},\n\nRecibimos una solicitud para restablecer tu contraseña en ${tenantName}.\n\nUsa el siguiente enlace para crear una nueva contraseña (válido por 1 hora):\n${resetUrl}\n\nSi tú no solicitaste este cambio, puedes ignorar este correo de forma segura.`,
+        subject: `Recuperación de contraseña — ${scope.subjectSuffix}`,
+        text: `Hola ${name},\n\nRecibimos una solicitud para restablecer la contraseña de tu cuenta ${scope.inlineText}.\n\nUsa el siguiente enlace para definir una nueva contraseña (válido por ${validityLabel}):\n${resetUrl}\n\nSi tú no solicitaste este cambio, puedes ignorar este correo de forma segura.`,
         html: `
           <div style="font-family:Inter,Arial,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#0f172a;">
-            <h2 style="margin:0 0 12px;font-size:20px;">Restablecer contraseña</h2>
+            <h2 style="margin:0 0 12px;font-size:20px;">Restablecer contraseña en SalesFlow</h2>
             <p style="font-size:14px;line-height:1.6;color:#334155;">Hola <strong>${name}</strong>,</p>
-            <p style="font-size:14px;line-height:1.6;color:#334155;">Recibimos una solicitud para restablecer la contraseña de tu cuenta en <strong>${tenantName}</strong>. Haz clic en el siguiente botón para definir una nueva contraseña (válido por 1 hora):</p>
+            <p style="font-size:14px;line-height:1.6;color:#334155;">Recibimos una solicitud para restablecer la contraseña de tu cuenta ${scope.inlineHtml}. Haz clic en el siguiente botón para definir una nueva contraseña (válido por ${validityLabel}):</p>
             <p style="margin:24px 0;">
               <a href="${resetUrl}" style="background:#2563eb;color:#ffffff;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:600;font-size:14px;display:inline-block;">
                 Restablecer contraseña
@@ -227,23 +247,25 @@ class EmailService {
   }) {
     const { transporter, fromEmail, fromName } = await this.resolveTransporter({
       tenantId,
-      defaultSenderName: tenantName || 'SalesFlow',
+      defaultSenderName: preferPlatform ? 'SalesFlow' : `${tenantName} — SalesFlow`,
       preferPlatform,
     });
 
     if (!transporter) return false;
 
+    const scope = formatAccountScope(tenantName, !tenantId && tenantName === 'SalesFlow Superadmin');
+
     try {
       await transporter.sendMail({
         from: `"${fromName}" <${fromEmail}>`,
         to,
-        subject: `Tu contraseña ha sido actualizada — ${tenantName}`,
-        text: `Hola ${name},\n\nTe confirmamos que la contraseña de tu cuenta en ${tenantName} fue actualizada exitosamente.\n\nSi no reconoces esta actividad, contacta de inmediato a tu administrador.`,
+        subject: `Tu contraseña ha sido actualizada — ${scope.subjectSuffix}`,
+        text: `Hola ${name},\n\nTe confirmamos que la contraseña de tu cuenta ${scope.inlineText} fue actualizada exitosamente.\n\nSi no reconoces esta actividad, contacta de inmediato a tu administrador.`,
         html: `
           <div style="font-family:Inter,Arial,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#0f172a;">
-            <h2 style="margin:0 0 12px;font-size:20px;">Contraseña actualizada</h2>
+            <h2 style="margin:0 0 12px;font-size:20px;">Contraseña actualizada en SalesFlow</h2>
             <p style="font-size:14px;line-height:1.6;color:#334155;">Hola <strong>${name}</strong>,</p>
-            <p style="font-size:14px;line-height:1.6;color:#334155;">Te confirmamos que la contraseña de tu cuenta en <strong>${tenantName}</strong> ha sido modificada exitosamente.</p>
+            <p style="font-size:14px;line-height:1.6;color:#334155;">Te confirmamos que la contraseña de tu cuenta ${scope.inlineHtml} ha sido modificada exitosamente.</p>
             <p style="font-size:12px;color:#64748b;margin-top:20px;">Si tú no realizaste este cambio, contacta de inmediato al administrador.</p>
           </div>
         `,
