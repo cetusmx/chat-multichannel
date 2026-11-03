@@ -10,6 +10,7 @@ export default function ChangePasswordModal({ isOpen, onClose, forced = false })
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showCurrent, setShowCurrent] = useState(false);
   const [showNew, setShowNew] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -154,15 +155,25 @@ export default function ChangePasswordModal({ isOpen, onClose, forced = false })
 
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-slate-300">Confirmar nueva contraseña</label>
-            <input
-              type={showNew ? 'text' : 'password'}
-              required
-              disabled={loading}
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-700 text-white rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-blue-500"
-              placeholder="Repite la nueva contraseña"
-            />
+            <div className="relative">
+              <input
+                type={showConfirm ? 'text' : 'password'}
+                required
+                disabled={loading}
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-700 text-white rounded-xl px-3.5 py-2.5 pr-10 text-sm focus:outline-none focus:border-blue-500"
+                placeholder="Repite la nueva contraseña"
+              />
+              <button
+                type="button"
+                onClick={() => setShowConfirm(!showConfirm)}
+                aria-label={showConfirm ? 'Ocultar contraseña' : 'Ver contraseña'}
+                className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-200"
+              >
+                {showConfirm ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
           </div>
 
           <div className="pt-2 flex justify-end gap-3">

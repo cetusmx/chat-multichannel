@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Mail, Save, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Mail, Save, Loader2, CheckCircle2, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../services/api';
 
@@ -13,6 +13,7 @@ export default function Settings() {
     fromName: 'SalesFlow Platform',
     fromEmail: '',
   });
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [isConfigured, setIsConfigured] = useState(false);
@@ -133,14 +134,24 @@ export default function Settings() {
 
               <div className="space-y-2">
                 <label className="text-sm font-medium text-slate-300">Contraseña SMTP *</label>
-                <input
-                  type="password"
-                  required
-                  value={config.password}
-                  onChange={(e) => setConfig({ ...config, password: e.target.value })}
-                  placeholder="••••••••••••"
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-2.5 text-slate-100 text-sm focus:outline-none focus:border-blue-500"
-                />
+                <div className="relative">
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    required
+                    value={config.password}
+                    onChange={(e) => setConfig({ ...config, password: e.target.value })}
+                    placeholder="••••••••••••"
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-2.5 pr-10 text-slate-100 text-sm focus:outline-none focus:border-blue-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    aria-label={showPassword ? 'Ocultar contraseña' : 'Ver contraseña'}
+                    className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-200 transition-colors"
+                  >
+                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
               </div>
 
               <div className="space-y-2">

@@ -1,5 +1,5 @@
-import { forwardRef, useId } from 'react';
-import { ChevronDown } from 'lucide-react';
+import { forwardRef, useId, useState } from 'react';
+import { ChevronDown, Eye, EyeOff } from 'lucide-react';
 import { cn } from '../../utils/cn.js';
 
 const control =
@@ -42,16 +42,45 @@ export function Field({ label, hint, error, required, className, children, htmlF
   );
 }
 
-export const Input = forwardRef(function Input({ size = 'md', mono = false, leftIcon: LeftIcon, className, ...props }, ref) {
-  if (LeftIcon) {
+export const Input = forwardRef(function Input({ size = 'md', mono = false, leftIcon: LeftIcon, type, className, ...props }, ref) {
+  const [showPassword, setShowPassword] = useState(false);
+  const isPassword = type === 'password';
+  const resolvedType = isPassword ? (showPassword ? 'text' : 'password') : type;
+
+  if (LeftIcon || isPassword) {
     return (
       <div className="relative">
-        <LeftIcon size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-fg-subtle" aria-hidden />
-        <input ref={ref} className={cn(control, sizes[size], 'pl-9', mono && 'font-mono', className)} {...props} />
+        {LeftIcon && (
+          <LeftIcon size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-fg-subtle" aria-hidden />
+        )}
+        <input
+          ref={ref}
+          type={resolvedType}
+          className={cn(
+            control,
+            sizes[size],
+            LeftIcon && 'pl-9',
+            isPassword && 'pr-9',
+            mono && 'font-mono',
+            className,
+          )}
+          {...props}
+        />
+        {isPassword && (
+          <button
+            type="button"
+            tabIndex={-1}
+            onClick={() => setShowPassword((prev) => !prev)}
+            aria-label={showPassword ? 'Ocultar contraseña' : 'Ver contraseña'}
+            className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded p-1 text-fg-subtle transition-colors hover:text-fg"
+          >
+            {showPassword ? <EyeOff size={15} aria-hidden /> : <Eye size={15} aria-hidden />}
+          </button>
+        )}
       </div>
     );
   }
-  return <input ref={ref} className={cn(control, sizes[size], mono && 'font-mono', className)} {...props} />;
+  return <input ref={ref} type={resolvedType} className={cn(control, sizes[size], mono && 'font-mono', className)} {...props} />;
 });
 
 export const Textarea = forwardRef(function Textarea({ className, ...props }, ref) {
