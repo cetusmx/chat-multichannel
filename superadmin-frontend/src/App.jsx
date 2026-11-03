@@ -1,9 +1,11 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import Login from './pages/Login';
+import ResetPassword from './pages/ResetPassword';
 import Dashboard from './pages/Dashboard';
 import Tenants from './pages/Tenants';
 import TenantDetails from './pages/TenantDetails';
+import Settings from './pages/Settings';
 import SuperadminLayout from './components/SuperadminLayout';
 import useAuthStore from './store/authStore';
 
@@ -16,20 +18,22 @@ function App() {
     <BrowserRouter>
       <Toaster position="top-right" richColors />
       <Routes>
-        <Route 
-          path="/login" 
-          element={token ? <Navigate to="/" replace /> : <Login />} 
+        <Route
+          path="/login"
+          element={token ? <Navigate to="/" replace /> : <Login />}
         />
-        
+        <Route path="/reset-password" element={<ResetPassword />} />
+
         <Route element={<ProtectedRoute allowedRoles={['superadmin']} />}>
           <Route element={<SuperadminLayout />}>
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/tenants" element={<Tenants />} />
             <Route path="/tenants/:id" element={<TenantDetails />} />
+            <Route path="/settings" element={<Settings />} />
           </Route>
         </Route>
-        
+
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

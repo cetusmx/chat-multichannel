@@ -11,5 +11,6 @@ router.post('/', superadminTenantController.createTenant);
 router.get('/:id', superadminTenantController.getTenantById);
 router.patch('/:id/status', superadminTenantController.updateTenantStatus);
 router.put('/:id/licenses', superadminTenantController.updateTenantLicenses);
+router.post('/:id/reset-admin-password', superadminTenantController.resetTenantAdminPassword);
 
 module.exports = router;

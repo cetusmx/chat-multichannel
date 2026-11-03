@@ -5,7 +5,7 @@ const { z } = require('zod');
 
 const loginSchema = z.object({
   email: z.string().email('Formato de email inválido'),
-  password: z.string().min(1, 'Contraseña es requerida').max(72, 'Contraseña excede el límite permitido')
+  password: z.string().min(1, 'Contraseña es requerida').max(72, 'Contraseña excede el límite permitido'),
 });
 
 const loginAttempts = new Map();
@@ -44,11 +44,11 @@ function rateLimitLogin(req, res, next) {
   }
 
   const timestamps = loginAttempts.get(ip).filter((t) => now - t < WINDOW_MS);
-  
+
   if (timestamps.length >= MAX_ATTEMPTS) {
     return next(ApiError.rateLimited('Demasiados intentos. Intente más tarde.'));
   }
-  
+
   timestamps.push(now);
   loginAttempts.set(ip, timestamps);
 
@@ -62,7 +62,7 @@ async function login(req, res, next) {
       return res.status(400).json({
         success: false,
         message: 'Validation failed',
-        errors: parsed.error.errors
+        errors: parsed.error.errors,
       });
     }
     const { email, password } = parsed.data;
@@ -75,7 +75,68 @@ async function login(req, res, next) {
   }
 }
 
+async function forgotPassword(req, res, next) {
+  try {
+    const { email } = req.body || {};
+    if (!email) {
+      throw ApiError.badRequest('El correo electrónico es requerido');
+    }
+    const origin = req.headers.origin || '';
+    const result = await superadminAuthService.forgotPassword(email, origin);
+    success(res, result);
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function resetPassword(req, res, next) {
+  try {
+    const { token, password } = req.body || {};
+    if (!token || !password) {
+      throw ApiError.badRequest('El token y la nueva contraseña son requeridos');
+    }
+    const result = await superadminAuthService.resetPassword(token, password);
+    success(res, result);
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function changePassword(req, res, next) {
+  try {
+    const superadminId = req.superadmin?.id || req.user?.id;
+    const { currentPassword, newPassword } = req.body || {};
+    const result = await superadminAuthService.changePassword(superadminId, currentPassword, newPassword);
+    success(res, result);
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function getEmailConfig(req, res, next) {
+  try {
+    const result = await superadminAuthService.getPlatformEmailConfig();
+    success(res, result);
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function updateEmailConfig(req, res, next) {
+  try {
+    const result = await superadminAuthService.updatePlatformEmailConfig(req.body);
+    success(res, result);
+  } catch (err) {
+    next(err);
+  }
+}
+
 module.exports = {
   rateLimitLogin,
   login,
+  forgotPassword,
+  resetPassword,
+  changePassword,
+  getEmailConfig,
+  updateEmailConfig,
 };

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Bell, LogOut, ChevronDown, Sun, Moon } from 'lucide-react';
+import { Bell, LogOut, ChevronDown, Sun, Moon, KeyRound } from 'lucide-react';
 import useUIStore from '../../stores/useUIStore.js';
 import useAuthStore from '../../stores/useAuthStore.js';
 import { disconnectSockets } from '../../services/socket.js';
@@ -10,6 +10,7 @@ import { ROLE_LABELS } from '../../utils/constants.js';
 import { formatTime } from '../../utils/formatDate.js';
 import { getTheme, toggleTheme } from '../../utils/theme.js';
 import { cn } from '../../utils/cn.js';
+import ChangePasswordModal from '../../features/auth/ChangePasswordModal.jsx';
 
 const SECTION_TITLES = [
   { match: /^\/chat/, label: 'Bandeja de ventas' },
@@ -40,8 +41,10 @@ export default function Header() {
   const unreadCount = notifications.filter(n => !n.read).length;
   const [showNotifications, setShowNotifications] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
+  const [showChangePassword, setShowChangePassword] = useState(false);
   const [theme, setTheme] = useState(getTheme());
   const user = useAuthStore((s) => s.user);
+  const mustChangePassword = Boolean(user?.mustChangePassword);
   const clearAuth = useAuthStore((s) => s.clearAuth);
   const navigate = useNavigate();
   const location = useLocation();
@@ -133,6 +136,17 @@ export default function Header() {
               </div>
               <button
                 role="menuitem"
+                onClick={() => {
+                  setShowMenu(false);
+                  setShowChangePassword(true);
+                }}
+                className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm text-fg-muted transition-colors hover:bg-surface-2 hover:text-fg"
+              >
+                <KeyRound size={15} aria-hidden />
+                Cambiar contraseña
+              </button>
+              <button
+                role="menuitem"
                 onClick={() => setTheme(toggleTheme())}
                 className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm text-fg-muted transition-colors hover:bg-surface-2 hover:text-fg"
               >
@@ -151,6 +165,12 @@ export default function Header() {
           )}
         </div>
       </div>
+
+      <ChangePasswordModal
+        open={mustChangePassword || showChangePassword}
+        forced={mustChangePassword}
+        onClose={() => setShowChangePassword(false)}
+      />
     </header>
   );
 }

@@ -201,7 +201,107 @@ async function getTenantById(id) {
     }
   });
 
-  return { ...tenant, currentActiveUsers };
+  let primaryAdmin = null;
+  if (typeof prisma.user.findFirst === 'function') {
+    primaryAdmin = await prisma.user.findFirst({
+      where: { tenantId: id, role: 'ADMIN', isActive: true },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true, name: true, email: true },
+    });
+  }
+
+  return {
+    ...tenant,
+    currentActiveUsers,
+    adminUser: primaryAdmin,
+  };
+}
+
+async function sendTenantAdminWelcomeEmail(tenant, user, temporaryPassword, origin = '') {
+  try {
+    const emailService = require('./email.service');
+    const { generatePasswordResetToken, resolveTenantBaseUrl } = require('../utils/passwordToken');
+    const { rawToken, tokenHash, expiresAt } = generatePasswordResetToken(48 * 60);
+
+    if (typeof prisma.user.update === 'function' && user?.id) {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          mustChangePassword: true,
+          passwordResetTokenHash: tokenHash,
+          passwordResetExpiresAt: expiresAt,
+        },
+      });
+    }
+
+    const baseUrl = resolveTenantBaseUrl(origin);
+    const resetUrl = `${baseUrl}/reset-password?token=${rawToken}`;
+
+    await emailService.sendWelcomePasswordEmail({
+      to: user.email,
+      name: user.name,
+      tenantName: tenant.name,
+      resetUrl,
+      temporaryPassword,
+      tenantId: tenant.id,
+      preferPlatform: true,
+    });
+  } catch (err) {
+    logger.warn(`Could not send welcome email for tenant ${tenant?.id}: ${err.message}`);
+  }
+}
+
+async function sendTenantAdminPasswordReset(tenantId, origin = '') {
+  const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
+  if (!tenant) {
+    const error = new Error('Tenant not found');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  const adminUser = await prisma.user.findFirst({
+    where: { tenantId, role: 'ADMIN', isActive: true },
+    orderBy: { createdAt: 'asc' },
+  });
+
+  if (!adminUser) {
+    const error = new Error('No active admin user found for this tenant');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  const emailService = require('./email.service');
+  const { generatePasswordResetToken, resolveTenantBaseUrl } = require('../utils/passwordToken');
+  const { rawToken, tokenHash, expiresAt } = generatePasswordResetToken(24 * 60);
+
+  await prisma.user.update({
+    where: { id: adminUser.id },
+    data: {
+      mustChangePassword: true,
+      passwordResetTokenHash: tokenHash,
+      passwordResetExpiresAt: expiresAt,
+    },
+  });
+
+  const baseUrl = resolveTenantBaseUrl(origin);
+  const resetUrl = `${baseUrl}/reset-password?token=${rawToken}`;
+
+  const sent = await emailService.sendPasswordResetEmail({
+    to: adminUser.email,
+    name: adminUser.name,
+    resetUrl,
+    tenantName: tenant.name,
+    tenantId: tenant.id,
+    preferPlatform: true,
+  });
+
+  return {
+    message: sent
+      ? `Correo de restablecimiento enviado a ${adminUser.email}`
+      : `Token de restablecimiento generado para ${adminUser.email} (configura el servidor SMTP de plataforma para envío automático)`,
+    email: adminUser.email,
+    emailSent: sent,
+  };
 }
 
 /**
@@ -297,4 +397,6 @@ module.exports = {
   createTenantWithAdmin,
   updateTenantStatus,
   updateTenantLicenses,
+  sendTenantAdminWelcomeEmail,
+  sendTenantAdminPasswordReset,
 };

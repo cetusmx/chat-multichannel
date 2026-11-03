@@ -116,7 +116,30 @@ router.get('/:id', authorize('ADMIN', 'COORDINATOR'), async (req, res, next) => 
 router.post('/', authorize('ADMIN', 'COORDINATOR'), async (req, res, next) => {
   try {
     const user = await usersService.createUser(req.body, req.user.tenantId, req.user.role);
+    if (user && user.id && !Array.isArray(req.body) && typeof usersService.sendUserWelcomeOrResetEmail === 'function') {
+      Promise.resolve(
+        usersService.sendUserWelcomeOrResetEmail(user.id, req.user.tenantId, req.user.role, {
+          isWelcome: true,
+          temporaryPassword: req.body.password,
+          origin: req.headers.origin || '',
+        })
+      ).catch(() => {});
+    }
     created(res, user);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/:id/send-reset-password', authorize('ADMIN', 'COORDINATOR'), async (req, res, next) => {
+  try {
+    const result = await usersService.sendUserWelcomeOrResetEmail(
+      req.params.id,
+      req.user.tenantId,
+      req.user.role,
+      { isWelcome: false, origin: req.headers.origin || '' }
+    );
+    success(res, result);
   } catch (err) {
     next(err);
   }

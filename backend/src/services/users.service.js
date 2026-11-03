@@ -627,4 +627,74 @@ async function testPushNotification(userId) {
   });
 }
 
-module.exports = { createUser, listUsers, getUserById, updateUser, reactivateUser, registerFcmToken, removeFcmToken, testPushNotification };
+async function sendUserWelcomeOrResetEmail(userId, tenantId, actorRole, options = {}) {
+  const { isWelcome = false, temporaryPassword = null, origin = '' } = options;
+
+  const user = await prisma.user.findFirst({
+    where: { id: userId, tenantId },
+    include: { tenant: { select: { id: true, name: true } } },
+  });
+
+  if (!user) {
+    throw ApiError.notFound('User not found');
+  }
+
+  if (actorRole === 'COORDINATOR' && user.role !== 'VENDOR') {
+    throw ApiError.forbidden('Coordinator can only manage vendor accounts');
+  }
+
+  const emailService = require('./email.service');
+  const { generatePasswordResetToken, resolveTenantBaseUrl } = require('../utils/passwordToken');
+  const ttlMinutes = isWelcome ? 48 * 60 : 24 * 60;
+  const { rawToken, tokenHash, expiresAt } = generatePasswordResetToken(ttlMinutes);
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      mustChangePassword: true,
+      passwordResetTokenHash: tokenHash,
+      passwordResetExpiresAt: expiresAt,
+    },
+  });
+
+  const baseUrl = resolveTenantBaseUrl(origin);
+  const resetUrl = `${baseUrl}/reset-password?token=${rawToken}`;
+  const tenantName = user.tenant?.name || 'SalesFlow';
+
+  const sent = isWelcome
+    ? await emailService.sendWelcomePasswordEmail({
+        to: user.email,
+        name: user.name,
+        tenantName,
+        resetUrl,
+        temporaryPassword,
+        tenantId,
+      })
+    : await emailService.sendPasswordResetEmail({
+        to: user.email,
+        name: user.name,
+        resetUrl,
+        tenantName,
+        tenantId,
+      });
+
+  return {
+    message: sent
+      ? `Correo enviado a ${user.email}`
+      : `Token de restablecimiento generado para ${user.email} (configura el correo SMTP en Configuración para el envío automático)`,
+    email: user.email,
+    emailSent: sent,
+  };
+}
+
+module.exports = {
+  createUser,
+  listUsers,
+  getUserById,
+  updateUser,
+  reactivateUser,
+  registerFcmToken,
+  removeFcmToken,
+  testPushNotification,
+  sendUserWelcomeOrResetEmail,
+};

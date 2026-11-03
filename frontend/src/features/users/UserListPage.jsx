@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Pencil, Trash2, Search, Plus, Users, ShieldOff } from 'lucide-react';
-import { get, put } from '../../services/api.js';
+import { Pencil, Trash2, Search, Plus, Users, ShieldOff, Mail } from 'lucide-react';
+import { get, put, post } from '../../services/api.js';
 import useAuthStore from '../../stores/useAuthStore.js';
 import { toast } from '../../stores/useToastStore.js';
 import { ROLE_LABELS } from '../../utils/constants.js';
@@ -185,6 +185,31 @@ function EditUserModal({ user, onClose, onSaved }) {
         </div>
 
         <Switch checked={isActive} onChange={setIsActive} label="Usuario activo" />
+
+        <div className="flex items-center justify-between rounded-md border border-border bg-surface-2/40 px-3.5 py-2.5">
+          <div>
+            <p className="text-xs font-medium text-fg">Recuperación de contraseña por correo</p>
+            <p className="text-[11px] text-fg-muted">Envía un enlace de restablecimiento a {form.email}</p>
+          </div>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={async () => {
+              try {
+                const res = await post(`/users/${user.id}/send-reset-password`, {});
+                const body = await res.json();
+                if (!res.ok) throw new Error(body.error?.message || 'No se pudo enviar el correo');
+                toast.success('Enlace de contraseña generado', { description: body.data?.message || form.email });
+              } catch (err) {
+                toast.error('Error al enviar enlace', { description: err.message });
+              }
+            }}
+          >
+            <Mail size={14} className="mr-1.5" />
+            Enviar enlace
+          </Button>
+        </div>
 
         {user.role !== 'ADMIN' && allGroups.length > 0 && (
           <Field

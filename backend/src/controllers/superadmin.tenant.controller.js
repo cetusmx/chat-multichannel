@@ -64,6 +64,17 @@ async function createTenant(req, res, next) {
       password: validatedData.password,
     });
 
+    if (typeof superadminTenantService.sendTenantAdminWelcomeEmail === 'function') {
+      Promise.resolve(
+        superadminTenantService.sendTenantAdminWelcomeEmail(
+          result.tenant,
+          result.user,
+          validatedData.password,
+          req.headers?.origin || ''
+        )
+      ).catch(() => {});
+    }
+
     // Strip passwordHash from user object
     const userWithoutPassword = { ...result.user };
     delete userWithoutPassword.passwordHash;
@@ -202,10 +213,35 @@ async function updateTenantLicenses(req, res, next) {
   }
 }
 
+async function resetTenantAdminPassword(req, res) {
+  try {
+    const parsedId = tenantIdSchema.safeParse(req.params.id);
+    if (!parsedId.success) {
+      return res.status(400).json({
+        error: { message: 'Invalid tenant ID format', details: parsedId.error.errors },
+      });
+    }
+    const id = parsedId.data;
+    const origin = req.headers?.origin || '';
+    const result = await superadminTenantService.sendTenantAdminPasswordReset(id, origin);
+    success(res, result);
+  } catch (err) {
+    if (err.statusCode === 404) {
+      return res.status(404).json({ error: { message: err.message || 'Not found' } });
+    }
+    const logger = require('../utils/logger');
+    logger.error(`Error sending admin password reset for tenant ${req.params.id}:`, err);
+    return res.status(500).json({
+      error: { message: 'Internal server error while sending password reset' },
+    });
+  }
+}
+
 module.exports = {
   getTenants,
   createTenant,
   updateTenantStatus,
   getTenantById,
   updateTenantLicenses,
+  resetTenantAdminPassword,
 };

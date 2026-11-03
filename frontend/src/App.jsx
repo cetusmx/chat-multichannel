@@ -12,6 +12,7 @@ import History from './pages/History.jsx';
 import UserListPage from './features/users/UserListPage.jsx';
 import CreateUserForm from './features/users/CreateUserForm.jsx';
 import LoginPage from './features/auth/LoginPage.jsx';
+import ResetPasswordPage from './features/auth/ResetPasswordPage.jsx';
 import SearchPage from './pages/SearchPage.jsx';
 import ClientProfile from './pages/ClientProfile.jsx';
 import useChatStore from './stores/useChatStore.js';
@@ -111,6 +112,7 @@ export default function App() {
     <>
       <Routes>
         <Route path="/login" element={token ? <Navigate to="/" replace /> : <LoginPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
         {UIPreview && <Route path="/__ui" element={<Suspense fallback={null}><UIPreview /></Suspense>} />}
         <Route path="/*" element={<ProtectedRoute><AppLayout /></ProtectedRoute>} />
       </Routes>

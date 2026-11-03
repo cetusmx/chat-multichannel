@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ChevronLeft, Save, AlertTriangle } from 'lucide-react';
+import { ChevronLeft, Save, AlertTriangle, Mail, KeyRound, Loader2 } from 'lucide-react';
 import { api } from '../services/api';
 import { toast } from 'sonner';
 import ConfirmModal from '../components/ui/ConfirmModal';
@@ -13,6 +13,7 @@ export default function TenantDetails() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [sendingReset, setSendingReset] = useState(false);
   const [pendingPayload, setPendingPayload] = useState(null);
 
   // Form state
@@ -236,6 +237,49 @@ export default function TenantDetails() {
             </button>
           </div>
         </form>
+      </div>
+
+      {/* Cuenta del Administrador */}
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-sm overflow-hidden flex flex-col p-6 mt-6">
+        <h3 className="text-xl font-medium mb-2 flex items-center gap-2">
+          <KeyRound className="text-blue-400" size={20} />
+          Cuenta del Administrador Principal
+        </h3>
+        <p className="text-sm text-slate-400 mb-6">
+          Envía un enlace seguro de restablecimiento de contraseña al administrador del inquilino usando el servidor SMTP de plataforma.
+        </p>
+
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-950/60 border border-slate-800 rounded-xl p-4 max-w-2xl">
+          <div>
+            <p className="text-sm font-medium text-slate-200">
+              {tenant.adminUser?.name || 'Administrador del Inquilino'}
+            </p>
+            <p className="text-xs text-slate-400 mt-0.5">
+              {tenant.adminUser?.email || tenant.email || 'Correo registrado del administrador'}
+            </p>
+          </div>
+
+          <button
+            type="button"
+            disabled={sendingReset}
+            onClick={async () => {
+              try {
+                setSendingReset(true);
+                const res = await api.post(`/api/superadmin/tenants/${id}/reset-admin-password`, {});
+                const msg = res?.data?.message || 'Correo de restablecimiento enviado';
+                toast.success(msg);
+              } catch (err) {
+                toast.error(err.message || 'No se pudo enviar el correo de restablecimiento');
+              } finally {
+                setSendingReset(false);
+              }
+            }}
+            className="flex items-center justify-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 rounded-xl text-sm font-medium transition-colors disabled:opacity-50"
+          >
+            {sendingReset ? <Loader2 size={16} className="animate-spin" /> : <Mail size={16} />}
+            {sendingReset ? 'Enviando...' : 'Enviar enlace de contraseña'}
+          </button>
+        </div>
       </div>
 
       <ConfirmModal

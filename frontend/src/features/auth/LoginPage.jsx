@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, CheckCircle2 } from 'lucide-react';
 import useAuthStore from '../../stores/useAuthStore.js';
 import { connectSockets, disconnectSockets } from '../../services/socket.js';
 import { Logo } from '../../components/Logo.jsx';
@@ -12,13 +12,16 @@ export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [infoMessage, setInfoMessage] = useState('');
   const [loading, setLoading] = useState(false);
+  const [forgotMode, setForgotMode] = useState(false);
   const setAuth = useAuthStore((s) => s.setAuth);
   const navigate = useNavigate();
 
   async function handleSubmit(e) {
     e.preventDefault();
     setError('');
+    setInfoMessage('');
     setLoading(true);
 
     try {
@@ -46,6 +49,35 @@ export default function LoginPage() {
     }
   }
 
+  async function handleForgotSubmit(e) {
+    e.preventDefault();
+    setError('');
+    setInfoMessage('');
+    setLoading(true);
+
+    try {
+      const res = await fetch(`${BASE_URL}/auth/forgot-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim() }),
+      });
+
+      const body = await res.json();
+      if (!res.ok) {
+        throw new Error(body.error?.message || 'No se pudo procesar la solicitud');
+      }
+
+      setInfoMessage(
+        body.data?.message ||
+          'Si el correo está registrado, recibirás un enlace para restablecer tu contraseña.'
+      );
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
     <div className="bg-grid flex min-h-screen items-center justify-center p-4">
       <div className="w-full max-w-sm">
@@ -58,8 +90,14 @@ export default function LoginPage() {
         </div>
 
         <div className="rounded-xl border border-border bg-surface p-6 shadow-2xl shadow-black/30">
-          <h1 className="text-base font-semibold text-fg">Inicia sesión</h1>
-          <p className="mt-1 text-sm text-fg-muted">Usa la cuenta que te asignó tu administrador.</p>
+          <h1 className="text-base font-semibold text-fg">
+            {forgotMode ? 'Recuperar contraseña' : 'Inicia sesión'}
+          </h1>
+          <p className="mt-1 text-sm text-fg-muted">
+            {forgotMode
+              ? 'Ingresa tu correo para enviarte un enlace de restablecimiento.'
+              : 'Usa la cuenta que te asignó tu administrador.'}
+          </p>
 
           {error && (
             <div role="alert" className="mt-5 flex items-start gap-2.5 rounded-md border border-danger/40 bg-danger/10 px-3 py-2.5 text-sm text-danger">
@@ -68,39 +106,96 @@ export default function LoginPage() {
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="mt-5 space-y-4">
-            <Field label="Correo electrónico" htmlFor="login-email">
-              <Input
-                id="login-email"
-                type="email"
-                size="lg"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="tu@empresa.com"
-                autoComplete="email"
-                required
-                autoFocus
-              />
-            </Field>
+          {infoMessage && (
+            <div role="status" className="mt-5 flex items-start gap-2.5 rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-2.5 text-sm text-emerald-400">
+              <CheckCircle2 size={16} className="mt-px shrink-0" aria-hidden />
+              <span>{infoMessage}</span>
+            </div>
+          )}
 
-            <Field label="Contraseña" htmlFor="login-password">
-              <Input
-                id="login-password"
-                type="password"
-                size="lg"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                autoComplete="current-password"
-                required
-                minLength={6}
-              />
-            </Field>
+          {forgotMode ? (
+            <form onSubmit={handleForgotSubmit} className="mt-5 space-y-4">
+              <Field label="Correo electrónico" htmlFor="forgot-email">
+                <Input
+                  id="forgot-email"
+                  type="email"
+                  size="lg"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="tu@empresa.com"
+                  autoComplete="email"
+                  required
+                  autoFocus
+                />
+              </Field>
 
-            <Button type="submit" variant="primary" size="lg" loading={loading} className="w-full mt-2">
-              {loading ? 'Entrando…' : 'Entrar'}
-            </Button>
-          </form>
+              <Button type="submit" variant="primary" size="lg" loading={loading} className="w-full mt-2">
+                {loading ? 'Enviando…' : 'Enviar enlace de recuperación'}
+              </Button>
+
+              <div className="text-center pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setForgotMode(false);
+                    setError('');
+                    setInfoMessage('');
+                  }}
+                  className="text-xs text-fg-muted hover:text-fg"
+                >
+                  Volver a iniciar sesión
+                </button>
+              </div>
+            </form>
+          ) : (
+            <form onSubmit={handleSubmit} className="mt-5 space-y-4">
+              <Field label="Correo electrónico" htmlFor="login-email">
+                <Input
+                  id="login-email"
+                  type="email"
+                  size="lg"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="tu@empresa.com"
+                  autoComplete="email"
+                  required
+                  autoFocus
+                />
+              </Field>
+
+              <Field label="Contraseña" htmlFor="login-password">
+                <Input
+                  id="login-password"
+                  type="password"
+                  size="lg"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  autoComplete="current-password"
+                  required
+                  minLength={6}
+                />
+              </Field>
+
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setForgotMode(true);
+                    setError('');
+                    setInfoMessage('');
+                  }}
+                  className="text-xs text-accent hover:underline"
+                >
+                  ¿Olvidaste tu contraseña?
+                </button>
+              </div>
+
+              <Button type="submit" variant="primary" size="lg" loading={loading} className="w-full mt-1">
+                {loading ? 'Entrando…' : 'Entrar'}
+              </Button>
+            </form>
+          )}
         </div>
 
         <p className="mt-6 text-center text-xs text-fg-subtle">

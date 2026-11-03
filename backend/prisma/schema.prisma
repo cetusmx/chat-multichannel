@@ -143,29 +143,38 @@ model Group {
 }
 
 model Superadmin {
-  id           String   @id @default(cuid())
-  email        String   @unique
-  passwordHash String   @map("password_hash")
-  name         String
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  id                     String    @id @default(cuid())
+  email                  String    @unique
+  passwordHash           String    @map("password_hash")
+  name                   String
+  mustChangePassword     Boolean   @default(false) @map("must_change_password")
+  passwordResetTokenHash String?   @map("password_reset_token_hash")
+  passwordResetExpiresAt DateTime? @map("password_reset_expires_at")
+  passwordChangedAt      DateTime? @map("password_changed_at")
+  createdAt              DateTime  @default(now()) @map("created_at")
+  updatedAt              DateTime  @updatedAt @map("updated_at")
 
+  @@index([passwordResetTokenHash])
   @@map("superadmins")
 }
 
 model User {
-  id           String    @id @default(cuid())
-  name         String
-  email        String    @unique
-  phone        String?
-  passwordHash String    @map("password_hash")
-  role         RoleType
-  tenantId     String    @map("tenant_id")
-  isActive     Boolean   @default(true) @map("is_active")
-  lastLoginAt  DateTime? @map("last_login_at")
-  fcmTokens    String[]  @default([]) @map("fcm_tokens")
-  createdAt    DateTime  @default(now()) @map("created_at")
-  updatedAt    DateTime  @updatedAt @map("updated_at")
+  id                     String    @id @default(cuid())
+  name                   String
+  email                  String    @unique
+  phone                  String?
+  passwordHash           String    @map("password_hash")
+  role                   RoleType
+  tenantId               String    @map("tenant_id")
+  isActive               Boolean   @default(true) @map("is_active")
+  mustChangePassword     Boolean   @default(false) @map("must_change_password")
+  passwordResetTokenHash String?   @map("password_reset_token_hash")
+  passwordResetExpiresAt DateTime? @map("password_reset_expires_at")
+  passwordChangedAt      DateTime? @map("password_changed_at")
+  lastLoginAt            DateTime? @map("last_login_at")
+  fcmTokens              String[]  @default([]) @map("fcm_tokens")
+  createdAt              DateTime  @default(now()) @map("created_at")
+  updatedAt              DateTime  @updatedAt @map("updated_at")
 
   coordinatorId String? @map("coordinator_id")
 
@@ -180,6 +189,7 @@ model User {
   @@index([tenantId])
   @@index([role])
   @@index([coordinatorId])
+  @@index([passwordResetTokenHash])
   @@map("users")
 }
 
@@ -457,4 +467,19 @@ model EmailConfig {
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@map("email_configs")
+}
+
+model PlatformEmailConfig {
+  id        String   @id @default("default")
+  host      String
+  port      Int      @default(465)
+  secure    Boolean  @default(true)
+  user      String
+  password  String
+  fromName  String?  @map("from_name")
+  fromEmail String?  @map("from_email")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("platform_email_configs")
 }

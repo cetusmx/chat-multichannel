@@ -1,12 +1,13 @@
 const { Router } = require('express');
 const authService = require('../services/auth.service');
+const authenticate = require('../middleware/auth');
 const ApiError = require('../utils/ApiError');
 const { success } = require('../utils/response');
 
 const loginAttempts = new Map();
 
-function rateLimitLogin(req, res, next) {
-  const ip = req.ip || req.connection.remoteAddress;
+function rateLimitAuth(req, res, next) {
+  const ip = req.ip || req.connection?.remoteAddress || 'unknown';
   const now = Date.now();
   const windowMs = 60 * 1000;
   const maxAttempts = 10;
@@ -20,7 +21,7 @@ function rateLimitLogin(req, res, next) {
   loginAttempts.set(ip, timestamps);
 
   if (timestamps.length > maxAttempts) {
-    return res.status(429).json({ error: { message: 'Too many login attempts. Try again later.', code: 'RATE_LIMITED' } });
+    return res.status(429).json({ error: { message: 'Too many attempts. Try again later.', code: 'RATE_LIMITED' } });
   }
 
   next();
@@ -28,59 +29,7 @@ function rateLimitLogin(req, res, next) {
 
 const router = Router();
 
-/**
- * @openapi
- * /auth/login:
- *   post:
- *     tags: [Auth]
- *     summary: Authenticate user with email and password
- *     security: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required: [email, password]
- *             properties:
- *               email:
- *                 type: string
- *                 format: email
- *                 example: admin@demo.com
- *               password:
- *                 type: string
- *                 format: password
- *                 example: admin123
- *     responses:
- *       200:
- *         description: Login successful
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 data:
- *                   type: object
- *                   properties:
- *                     user:
- *                       type: object
- *                       properties:
- *                         id: { type: string }
- *                         name: { type: string }
- *                         email: { type: string }
- *                         phone: { type: string }
- *                         role: { type: string }
- *                         tenantId: { type: string }
- *                     token:
- *                       type: string
- *                     refreshToken:
- *                       type: string
- *       400:
- *         description: Missing email or password
- *       401:
- *         description: Invalid credentials
- */
-router.post('/login', rateLimitLogin, async (req, res, next) => {
+router.post('/login', rateLimitAuth, async (req, res, next) => {
   try {
     const { email, password } = req.body;
     if (!email || !password) {
@@ -93,41 +42,6 @@ router.post('/login', rateLimitLogin, async (req, res, next) => {
   }
 });
 
-/**
- * @openapi
- * /auth/refresh:
- *   post:
- *     tags: [Auth]
- *     summary: Refresh access token
- *     security: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required: [refreshToken]
- *             properties:
- *               refreshToken:
- *                 type: string
- *     responses:
- *       200:
- *         description: Token refreshed successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 data:
- *                   type: object
- *                   properties:
- *                     token:
- *                       type: string
- *       400:
- *         description: Missing refresh token
- *       401:
- *         description: Invalid or expired refresh token
- */
 router.post('/refresh', async (req, res, next) => {
   try {
     const { refreshToken } = req.body;
@@ -135,6 +49,43 @@ router.post('/refresh', async (req, res, next) => {
       throw ApiError.badRequest('Refresh token is required');
     }
     const result = await authService.refresh(refreshToken);
+    success(res, result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/forgot-password', rateLimitAuth, async (req, res, next) => {
+  try {
+    const { email } = req.body || {};
+    if (!email) {
+      throw ApiError.badRequest('El correo electrónico es requerido');
+    }
+    const origin = req.headers.origin || '';
+    const result = await authService.forgotPassword(email, origin);
+    success(res, result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/reset-password', rateLimitAuth, async (req, res, next) => {
+  try {
+    const { token, password } = req.body || {};
+    if (!token || !password) {
+      throw ApiError.badRequest('El token y la nueva contraseña son requeridos');
+    }
+    const result = await authService.resetPassword(token, password);
+    success(res, result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/change-password', authenticate, async (req, res, next) => {
+  try {
+    const { currentPassword, newPassword } = req.body || {};
+    const result = await authService.changePassword(req.user.id, currentPassword, newPassword);
     success(res, result);
   } catch (err) {
     next(err);
