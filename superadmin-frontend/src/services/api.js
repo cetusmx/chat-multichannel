@@ -55,7 +55,10 @@ export const api = {
       }
 
       // Intentar extraer el mensaje de error del backend, si existe.
-      let errorMessage = 'Network response was not ok';
+      let errorMessage =
+        response.status === 502 || response.status === 503 || response.status === 504
+          ? 'El servidor se está reiniciando temporalmente. Intenta de nuevo en unos segundos.'
+          : 'Error de comunicación con el servidor';
       let errorDataObj = null;
       try {
         const contentType = response.headers.get('content-type');
@@ -63,9 +66,6 @@ export const api = {
           const errorData = await response.json();
           errorMessage = errorData?.error?.message || errorData.message || errorMessage;
           errorDataObj = errorData;
-        } else {
-          const text = await response.text();
-          errorMessage = text || errorMessage;
         }
       } catch (e) {
         // Ignorar si no se puede parsear

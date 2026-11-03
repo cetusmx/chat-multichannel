@@ -48,8 +48,12 @@ export default function ResetPasswordPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token, password }),
       });
-      const body = await res.json();
+      const contentType = res.headers.get('content-type') || '';
+      const body = contentType.includes('application/json') ? await res.json().catch(() => ({})) : {};
       if (!res.ok) {
+        if (res.status === 502 || res.status === 503 || res.status === 504) {
+          throw new Error('El servidor se está reiniciando temporalmente. Por favor, intenta de nuevo en unos segundos.');
+        }
         throw new Error(body.error?.message || 'El enlace es inválido o ha expirado');
       }
 
