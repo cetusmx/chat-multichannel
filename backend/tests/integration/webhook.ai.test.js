@@ -39,10 +39,6 @@ describe('Webhook AI Auto-Response', () => {
     });
   });
 
-  afterAll(async () => {
-    await prisma.$disconnect();
-  });
-
   afterEach(() => {
     jest.clearAllMocks();
   });
@@ -88,7 +84,7 @@ describe('Webhook AI Auto-Response', () => {
     let messages = [];
     let conversation;
     try {
-      for (let i = 0; i < 20; i++) {
+      for (let i = 0; i < 80; i++) {
         await new Promise(resolve => setTimeout(resolve, 50));
         conversation = await prisma.conversation.findFirst({
           where: { tenantId: tenant.id }
@@ -155,7 +151,7 @@ describe('Webhook AI Auto-Response', () => {
     expect(res.status).toBe(200);
 
     try {
-      for (let i = 0; i < 20; i++) {
+      for (let i = 0; i < 80; i++) {
         await new Promise(resolve => setTimeout(resolve, 50));
         conversation = await prisma.conversation.findFirst({
           where: { tenantId: tenant.id, client: { phoneNumber: '5215555555556' } }
@@ -190,6 +186,8 @@ describe('Webhook AI Auto-Response', () => {
   });
 
   afterAll(async () => {
+    // Let fire-and-forget work (timeline events, AI summary) settle before cleanup.
+    await new Promise(resolve => setTimeout(resolve, 150));
     if (tenant) {
       await prisma.message.deleteMany({ where: { conversation: { tenantId: tenant.id } } });
       await prisma.conversation.deleteMany({ where: { tenantId: tenant.id } });
@@ -197,5 +195,7 @@ describe('Webhook AI Auto-Response', () => {
       await prisma.whatsAppConfig.deleteMany({ where: { tenantId: tenant.id } });
       await prisma.tenant.delete({ where: { id: tenant.id } });
     }
+    // Disconnect only once everything that uses the client has finished.
+    await prisma.$disconnect();
   });
 });

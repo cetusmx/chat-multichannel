@@ -1,6 +1,7 @@
 const { getProvider } = require('../providers');
 const ApiError = require('../utils/ApiError');
 const prisma = require('../config/database');
+const { requireCatalogConfig, catalogHeaders } = require('../config/catalog');
 /**
  * AI Service 
  * Acts as a facade to the AI Provider Adapter.
@@ -180,19 +181,14 @@ class AIService {
           
           const searchParams = new URLSearchParams(parsedParams);
           searchParams.set('limit', '100'); // Solicitar suficientes registros para no perder vivos en páginas posteriores
-          // TODO: En el futuro esto debe leerse de la base de datos (Tenant.catalogApiUrl)
-          const apiUrl = process.env.VITE_API_BASE_URL || 'http://75.119.150.222:3010';
-          const apiKey = process.env.VITE_INTERNAL_SECRET || 'sm_ecommerce_x2ve9yFf0aiDxh1HelezpVeyRAcngGwgEg3ZnSZwhGg2SaZrd2gQiysiVo86R3LcUZFFxZDSMADepof1jMLSumIbiqBRcbjyhvA78haaxnLrrbOuU3zqCi0kQXJf1gSc';
+          const { baseUrl: apiUrl } = requireCatalogConfig();
           
           const endpoint = `${apiUrl}/api/clavesalternas/filter-v2?${searchParams.toString()}`;
           console.log('[AI TOOL] Fetching API:', endpoint);
           
           const fetchRes = await fetch(endpoint, {
             method: 'GET',
-            headers: {
-              'Content-Type': 'application/json',
-              'x-api-key': apiKey
-            }
+            headers: catalogHeaders()
           });
           
           if (!fetchRes.ok) {
@@ -349,18 +345,14 @@ class AIService {
           console.log('[AI TOOL] consultar_cliente_rfc invocado con args:', args);
           const rfc = args.rfc;
           
-          const apiUrl = process.env.VITE_API_BASE_URL || 'http://75.119.150.222:3010';
-          const apiKey = process.env.VITE_INTERNAL_SECRET || 'sm_ecommerce_x2ve9yFf0aiDxh1HelezpVeyRAcngGwgEg3ZnSZwhGg2SaZrd2gQiysiVo86R3LcUZFFxZDSMADepof1jMLSumIbiqBRcbjyhvA78haaxnLrrbOuU3zqCi0kQXJf1gSc';
+          const { baseUrl: apiUrl } = requireCatalogConfig();
           
           const endpoint = `${apiUrl}/api/clientes/rfc/${rfc}`;
           console.log('[AI TOOL] Fetching API:', endpoint);
           
           const fetchRes = await fetch(endpoint, {
             method: 'GET',
-            headers: {
-              'Content-Type': 'application/json',
-              'x-api-key': apiKey
-            }
+            headers: catalogHeaders()
           });
           
           if (!fetchRes.ok) {
@@ -615,11 +607,10 @@ class AIService {
           // INTENTO DE BD: Si sacamos el RFC por regex básico, probamos leerlo de la BD primero
           if (extractedRfc) {
             try {
-              const apiUrl = process.env.VITE_API_BASE_URL || 'http://75.119.150.222:3010';
-              const apiKey = process.env.VITE_INTERNAL_SECRET || 'sm_ecommerce_x2ve9yFf0aiDxh1HelezpVeyRAcngGwgEg3ZnSZwhGg2SaZrd2gQiysiVo86R3LcUZFFxZDSMADepof1jMLSumIbiqBRcbjyhvA78haaxnLrrbOuU3zqCi0kQXJf1gSc';
+              const { baseUrl: apiUrl } = requireCatalogConfig();
               const fetchRes = await fetch(`${apiUrl}/api/clientes/rfc/${extractedRfc}`, {
                 method: 'GET',
-                headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey }
+                headers: catalogHeaders()
               });
               
               if (fetchRes.ok) {

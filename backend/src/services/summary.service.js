@@ -43,6 +43,12 @@ async function generateConversationSummary(tenantId, conversationId, { reason = 
     });
     if (!conversation || conversation.tenantId !== tenantId) return null;
 
+    const quotaService = require('./quota.service');
+    if (await quotaService.checkAiQuotaExceeded(tenantId)) {
+      logger.warn(`[SUMMARY] Cuota de IA agotada para ${tenantId}; se omite el resumen.`);
+      return null;
+    }
+
     const history = await prisma.message.findMany({
       where: {
         conversationId,
@@ -77,8 +83,17 @@ No inventes datos. No uses markdown ni comillas.
 [FIN]`;
 
     const messages = [{ role: 'user', content: `Conversación:\n${transcript}\n\nEscribe el resumen.` }];
-    let summary = await aiService.generateResponse(tenantId, messages, context);
+    const response = await aiService.generateResponse(tenantId, messages, context);
+    let summary = typeof response === 'string' ? response : response?.content;
     if (!summary || typeof summary !== 'string') return null;
+
+    const consumedTokens = response?.tokens ?? Math.ceil((context.length + transcript.length + summary.length) / 4);
+    if (consumedTokens > 0) {
+      prisma.tenant.updateMany({
+        where: { id: tenantId, licenseType: { not: 'LIFETIME' } },
+        data: { currentMonthAiTokens: { increment: consumedTokens } },
+      }).catch((e) => logger.error('[SUMMARY] No se pudo contabilizar tokens:', e.message));
+    }
 
     summary = summary.replace(/\[\[ESCALATE\]\]/gi, '').replace(/\s+/g, ' ').replace(/^["'\s]+|["'\s]+$/g, '').trim();
     if (summary.length > MAX_SUMMARY_CHARS) summary = `${summary.slice(0, MAX_SUMMARY_CHARS - 1).trimEnd()}…`;
