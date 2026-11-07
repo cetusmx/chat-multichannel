@@ -19,7 +19,11 @@ jest.mock('../../src/config/database', () => ({
     findMany: jest.fn()
   },
   tenant: {
-    findUnique: jest.fn()
+    findUnique: jest.fn(),
+    updateMany: jest.fn().mockResolvedValue({ count: 0 })
+  },
+  catalogConfig: {
+    findUnique: jest.fn().mockResolvedValue(null)
   }
 }));
 

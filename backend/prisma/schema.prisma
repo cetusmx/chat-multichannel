@@ -97,6 +97,7 @@ model Tenant {
   branches        Branch[]
   whatsappConfig  WhatsAppConfig?
   aiConfig        AiConfig?
+  catalogConfig   CatalogConfig?
   emailConfig     EmailConfig?
   assignmentRule  AssignmentRule?
   slaConfig       SlaConfig?
@@ -369,6 +370,34 @@ model AiConfig {
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@map("ai_configs")
+}
+
+/// Per-tenant product catalog integration. The `provider` names an adapter
+/// in backend/src/catalog/providers; everything else is data the adapter
+/// reads, so onboarding a new ERP is configuration, not code.
+model CatalogConfig {
+  id        String   @id @default(cuid())
+  tenantId  String   @unique @map("tenant_id")
+  provider  String   @default("none") // none | sealmarket | generic_rest | <custom>
+  isActive  Boolean  @default(true) @map("is_active")
+  baseUrl   String?  @map("base_url")
+  apiKey    String?  @map("api_key") // Encrypted
+  /// Adapter-specific connection details: auth style, endpoints, field mapping, pagination.
+  connection Json?
+  /// Declarative search schema: text search + typed attributes. Drives UI forms and AI tools.
+  searchSchema Json?  @map("search_schema")
+  /// { taxRate: 0.16, pricesIncludeTax: false, currency: 'MXN' }
+  pricing   Json?
+  /// { customerLookup, csfExtraction, stockByLocation, productImages }
+  features  Json?
+  /// Domain rules injected into the agent prompt as {{catalog_rules}}.
+  aiRules   String?  @db.Text @map("ai_rules")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("catalog_configs")
 }
 
 model Document {
