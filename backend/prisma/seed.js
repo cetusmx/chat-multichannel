@@ -1,3 +1,11 @@
+/**
+ * Development / CI demo data. Never run this in production: use prisma/bootstrap.js,
+ * which is idempotent and reads credentials from the environment.
+ */
+if (process.env.NODE_ENV === 'production' && process.env.SEED_DEMO !== 'true') {
+  console.log('[SEED] NODE_ENV=production sin SEED_DEMO=true: se omiten los datos demo.');
+  process.exit(0);
+}
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
@@ -79,7 +87,7 @@ async function main() {
   
   const superadmin = await prisma.superadmin.upsert({
     where: { email: superadminEmail },
-    update: { passwordHash: superadminPwd },
+    update: {}, // never reset an existing superadmin password
     create: {
       email: superadminEmail,
       name: 'Superadmin Algor',

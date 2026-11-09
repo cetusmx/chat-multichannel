@@ -21,7 +21,7 @@ services:
     build: .
     container_name: salesflow-app
     restart: unless-stopped
-    command: sh -c "npx prisma db push --accept-data-loss && node prisma/seed.js && node src/index.js"
+    command: sh -c "npx prisma db push --accept-data-loss && node prisma/bootstrap.js && node src/index.js"
     ports:
       - "4005:4000"
     environment:
@@ -37,6 +37,17 @@ services:
       CATALOG_API_URL: ${CATALOG_API_URL:-}
       CATALOG_API_KEY: ${CATALOG_API_KEY:-}
       CATALOG_TEXT_PARAMS: ${CATALOG_TEXT_PARAMS:-}
+      SUPERADMIN_EMAIL: ${SUPERADMIN_EMAIL:-}
+      SUPERADMIN_PASSWORD: ${SUPERADMIN_PASSWORD:-}
+      SUPERADMIN_NAME: ${SUPERADMIN_NAME:-}
+      SUPERADMIN_RESET_PASSWORD: ${SUPERADMIN_RESET_PASSWORD:-}
+      TENANT_NAME: ${TENANT_NAME:-}
+      TENANT_DOMAIN: ${TENANT_DOMAIN:-}
+      TENANT_ADMIN_NAME: ${TENANT_ADMIN_NAME:-}
+      TENANT_ADMIN_EMAIL: ${TENANT_ADMIN_EMAIL:-}
+      TENANT_ADMIN_PASSWORD: ${TENANT_ADMIN_PASSWORD:-}
+      TENANT_CATALOG_CONFIG_JSON: ${TENANT_CATALOG_CONFIG_JSON:-}
+      SEED_DEMO: ${SEED_DEMO:-}
       PORT: 4000
     depends_on:
       postgres:
