@@ -31,7 +31,7 @@ services:
     image: ${APP_IMAGE}
     container_name: sf-${CLIENT_SLUG}-app
     restart: unless-stopped
-    command: sh -c "npx prisma db push --accept-data-loss && node prisma/bootstrap.js && node src/index.js"
+    command: sh -c "npx prisma db push --accept-data-loss --skip-generate && node prisma/bootstrap.js && node src/index.js"
     environment:
       NODE_ENV: production
       PORT: 4000
