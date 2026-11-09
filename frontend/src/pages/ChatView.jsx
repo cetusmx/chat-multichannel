@@ -13,6 +13,7 @@ import { toast } from '../stores/useToastStore.js';
 import { Button, IconButton, Badge, Eyebrow, EmptyState } from '../components/ui/index.js';
 import { getStatusMeta, isClosedStatus } from '../utils/conversationStatus.js';
 import { getCartItems } from '../utils/cart.js';
+import useCatalogStore from '../stores/useCatalogStore.js';
 import { cn } from '../utils/cn.js';
 
 const ChatHeaderActions = ({ activeConv, setIsCartOpen, showCartButton }) => {
@@ -236,6 +237,7 @@ export default function ChatView() {
     isLoadingMore,
   } = useChatStore();
   const user = useAuthStore((s) => s.user);
+  const catalogConfigured = useCatalogStore((s) => s.isConfigured);
 
   const location = useLocation();
 
@@ -296,7 +298,7 @@ export default function ChatView() {
           )}
         </section>
 
-        {activeConv?.client && (
+        {activeConv?.client && catalogConfigured && (
           <aside className="hidden h-full w-72 shrink-0 border-l border-border xl:flex">
             <CatalogPanel client={activeConv.client} conversationId={activeConv.id !== 'draft' ? activeConv.id : null} disabled={closed} onOpenCart={() => setIsCartOpen(true)} />
           </aside>

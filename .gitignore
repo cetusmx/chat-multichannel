@@ -8,3 +8,9 @@ coverage/
 .tmp/
 nul
 .vps-keys/
+
+# Per-client deployment stacks: secrets and backups never leave the host
+deploy/clients/*/.env
+deploy/clients/*/.env.*
+deploy/backups/
+

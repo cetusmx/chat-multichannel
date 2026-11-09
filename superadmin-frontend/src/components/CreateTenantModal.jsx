@@ -2,9 +2,25 @@ import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { X, Eye, EyeOff, KeyRound, Loader2 } from 'lucide-react';
+import { X, Eye, EyeOff, KeyRound, Loader2, ChevronDown, Database } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../services/api';
+import { PROVIDER_LABELS, DEFAULT_PROVIDERS, TEMPLATES } from '../lib/catalogTemplates';
+
+const EMPTY_CATALOG = { provider: 'none', baseUrl: '', apiKey: '', template: '' };
+
+/** Builds the optional `catalogConfig` payload; returns undefined when the section is left at "Sin catálogo". */
+function buildCatalogConfig(catalog) {
+  if (!catalog || catalog.provider === 'none') return undefined;
+  const template = catalog.provider === 'generic_rest' ? TEMPLATES[catalog.template] : null;
+  return {
+    provider: catalog.provider,
+    isActive: true,
+    baseUrl: catalog.baseUrl.trim(),
+    ...(catalog.apiKey ? { apiKey: catalog.apiKey } : {}),
+    ...(template ? { connection: template.connection, searchSchema: template.searchSchema } : {}),
+  };
+}
 
 const schema = z.object({
   name: z.string().trim().min(2, 'Name must be at least 2 characters').max(100, 'Name must be less than 100 characters'),
@@ -23,6 +39,9 @@ const schema = z.object({
 export default function CreateTenantModal({ isOpen, onClose, onSuccess, triggerRef }) {
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [catalogOpen, setCatalogOpen] = useState(false);
+  const [catalog, setCatalog] = useState(EMPTY_CATALOG);
+  const [catalogError, setCatalogError] = useState(null);
   const modalRef = useRef(null);
   const abortControllerRef = useRef(null);
   
@@ -56,15 +75,27 @@ export default function CreateTenantModal({ isOpen, onClose, onSuccess, triggerR
 
   const slugValue = watch('slug');
 
+  const resetCatalog = useCallback(() => {
+    setCatalog(EMPTY_CATALOG);
+    setCatalogOpen(false);
+    setCatalogError(null);
+  }, []);
+
+  const setCatalogField = (key, value) => {
+    setCatalogError(null);
+    setCatalog((c) => ({ ...c, [key]: value }));
+  };
+
   const handleDismiss = useCallback(() => {
     if (isSubmitting) return;
     reset();
+    resetCatalog();
     setShowPassword(false);
     onClose();
     if (triggerRef && triggerRef.current) {
       triggerRef.current.focus();
     }
-  }, [isSubmitting, reset, onClose, triggerRef]);
+  }, [isSubmitting, reset, resetCatalog, onClose, triggerRef]);
 
   // Click outside and ESC handling
   useEffect(() => {
@@ -142,16 +173,24 @@ export default function CreateTenantModal({ isOpen, onClose, onSuccess, triggerR
   };
 
   const onSubmit = async (data) => {
+    const catalogConfig = buildCatalogConfig(catalog);
+    if (catalogConfig && !catalogConfig.baseUrl) {
+      setCatalogOpen(true);
+      setCatalogError('La URL base de la API es obligatoria cuando se elige un proveedor de catálogo.');
+      return;
+    }
+
     setIsSubmitting(true);
     abortControllerRef.current = new AbortController();
 
     try {
-      await api.post('/api/superadmin/tenants', data, {
+      await api.post('/api/superadmin/tenants', catalogConfig ? { ...data, catalogConfig } : data, {
         signal: abortControllerRef.current.signal
       });
 
       // 1. Close Modal explicitly
       reset();
+      resetCatalog();
       setShowPassword(false);
       onClose();
       if (triggerRef && triggerRef.current) {
@@ -186,11 +225,19 @@ export default function CreateTenantModal({ isOpen, onClose, onSuccess, triggerR
         // map field errors
         const validationErrors = error.data?.error?.details || error.data?.errors;
         validationErrors.forEach(err => {
-          if (err.path && err.path[0]) {
+          if (err.path && err.path[0] === 'catalogConfig') {
+            setCatalogOpen(true);
+            setCatalogError(`${err.path.slice(1).join('.') || 'Catálogo'}: ${err.message}`);
+          } else if (err.path && err.path[0]) {
             setError(err.path[0], { type: 'manual', message: err.message });
           }
         });
         toast.error('Por favor revisa los errores en el formulario');
+      } else if (error.status === 400 && catalogConfig) {
+        // Catalog-level rejections (unknown provider / invalid schema) come back as a plain message.
+        setCatalogOpen(true);
+        setCatalogError(error.data?.error?.message || error.message || 'Configuración de catálogo inválida');
+        toast.error('Revisa la configuración del catálogo');
       } else {
         toast.error(error.data?.error?.message || error.data?.message || error.message || 'Error al crear el inquilino');
       }
@@ -339,6 +386,102 @@ export default function CreateTenantModal({ isOpen, onClose, onSuccess, triggerR
                 {errors.password && <p className="text-red-500 text-xs mt-1">{errors.password.message}</p>}
               </div>
 
+            </div>
+
+            {/* Catálogo (opcional) */}
+            <div className={`border rounded-lg ${catalogError ? 'border-red-300' : 'border-gray-200'}`}>
+              <button
+                type="button"
+                onClick={() => setCatalogOpen((o) => !o)}
+                disabled={isSubmitting}
+                aria-expanded={catalogOpen}
+                aria-controls="create-tenant-catalog"
+                className="w-full flex items-center justify-between px-4 py-3 text-left text-sm font-medium text-gray-700 hover:bg-gray-50 rounded-lg disabled:opacity-50"
+              >
+                <span className="flex items-center gap-2">
+                  <Database size={16} className="text-blue-600" />
+                  Catálogo de productos
+                  <span className="text-xs font-normal text-gray-400">(opcional)</span>
+                  {catalog.provider !== 'none' && (
+                    <span className="ml-1 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-100">
+                      {PROVIDER_LABELS[catalog.provider] || catalog.provider}
+                    </span>
+                  )}
+                </span>
+                <ChevronDown size={16} className={`text-gray-400 transition-transform ${catalogOpen ? 'rotate-180' : ''}`} />
+              </button>
+
+              {catalogOpen && (
+                <div id="create-tenant-catalog" className="px-4 pb-4 pt-1 space-y-4 border-t border-gray-100">
+                  <p className="text-xs text-gray-500">
+                    Conecta el ERP o API de productos del inquilino desde el inicio. Podrás afinar el esquema de búsqueda, impuestos y reglas de IA después, en la pestaña "Catálogo" del inquilino.
+                  </p>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label htmlFor="catalog-create-provider" className="block text-sm font-medium text-gray-700">Proveedor</label>
+                      <select
+                        id="catalog-create-provider"
+                        value={catalog.provider}
+                        disabled={isSubmitting}
+                        onChange={(e) => setCatalogField('provider', e.target.value)}
+                        className="w-full px-3 py-2 bg-white text-gray-900 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+                      >
+                        {DEFAULT_PROVIDERS.map((id) => <option key={id} value={id}>{PROVIDER_LABELS[id] || id}</option>)}
+                      </select>
+                    </div>
+
+                    {catalog.provider === 'generic_rest' && (
+                      <div className="space-y-2">
+                        <label htmlFor="catalog-create-template" className="block text-sm font-medium text-gray-700">Plantilla</label>
+                        <select
+                          id="catalog-create-template"
+                          value={catalog.template}
+                          disabled={isSubmitting}
+                          onChange={(e) => setCatalogField('template', e.target.value)}
+                          className="w-full px-3 py-2 bg-white text-gray-900 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+                        >
+                          <option value="">Sin plantilla (configurar después)</option>
+                          {Object.entries(TEMPLATES).map(([k, t]) => <option key={k} value={k}>{t.label}</option>)}
+                        </select>
+                      </div>
+                    )}
+
+                    {catalog.provider !== 'none' && (
+                      <>
+                        <div className="space-y-2">
+                          <label htmlFor="catalog-create-baseUrl" className="block text-sm font-medium text-gray-700">URL base de la API *</label>
+                          <input
+                            id="catalog-create-baseUrl"
+                            type="url"
+                            value={catalog.baseUrl}
+                            disabled={isSubmitting}
+                            onChange={(e) => setCatalogField('baseUrl', e.target.value)}
+                            placeholder="https://api.negocio.mx"
+                            className={`w-full px-3 py-2 bg-white text-gray-900 placeholder:text-gray-400 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 font-mono text-sm ${catalogError && !catalog.baseUrl.trim() ? 'border-red-500' : 'border-gray-300'}`}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label htmlFor="catalog-create-apiKey" className="block text-sm font-medium text-gray-700">API key</label>
+                          <input
+                            id="catalog-create-apiKey"
+                            type="password"
+                            value={catalog.apiKey}
+                            disabled={isSubmitting}
+                            onChange={(e) => setCatalogField('apiKey', e.target.value)}
+                            placeholder="Clave o token"
+                            autoComplete="new-password"
+                            className="w-full px-3 py-2 bg-white text-gray-900 placeholder:text-gray-400 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 font-mono text-sm"
+                          />
+                          <p className="text-xs text-gray-400">Se guarda cifrada.</p>
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  {catalogError && <p role="alert" className="text-red-500 text-xs">{catalogError}</p>}
+                </div>
+              )}
             </div>
           </form>
         </div>

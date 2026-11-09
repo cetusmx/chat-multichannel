@@ -1,0 +1,98 @@
+# One isolated SalesFlow stack for a single client (own database, own
+# domain, own secrets). Rendered into deploy/clients/<slug>/ by
+# scripts/new-client.sh; every value comes from that folder's .env.
+#
+# The app image is built once by CI (see .github/workflows/build-image.yml)
+# and pulled here, so N clients share one artifact and one rollout.
+
+name: salesflow-${CLIENT_SLUG}
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: sf-${CLIENT_SLUG}-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    mem_limit: ${DB_MEM_LIMIT:-512m}
+    networks:
+      - internal
+
+  app:
+    image: ${APP_IMAGE}
+    container_name: sf-${CLIENT_SLUG}-app
+    restart: unless-stopped
+    command: sh -c "npx prisma db push --accept-data-loss && node prisma/bootstrap.js && node src/index.js"
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?connection_limit=${DB_CONNECTION_LIMIT:-5}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      SUPERADMIN_JWT_SECRET: ${SUPERADMIN_JWT_SECRET}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      AI_PROVIDER: ${AI_PROVIDER:-gemini}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      FIREBASE_SERVICE_ACCOUNT: ${FIREBASE_SERVICE_ACCOUNT:-}
+      # Bootstrap (idempotent): first-run tenant, admin and superadmin
+      TENANT_NAME: ${TENANT_NAME}
+      TENANT_DOMAIN: ${APP_DOMAIN}
+      TENANT_ADMIN_NAME: ${TENANT_ADMIN_NAME:-Administrador}
+      TENANT_ADMIN_EMAIL: ${TENANT_ADMIN_EMAIL}
+      TENANT_ADMIN_PASSWORD: ${TENANT_ADMIN_PASSWORD}
+      TENANT_CATALOG_CONFIG_JSON: ${TENANT_CATALOG_CONFIG_JSON:-}
+      TENANT_MAX_USERS: ${TENANT_MAX_USERS:-}
+      TENANT_MAX_AI_TOKENS: ${TENANT_MAX_AI_TOKENS:-}
+      SUPERADMIN_EMAIL: ${SUPERADMIN_EMAIL:-}
+      SUPERADMIN_PASSWORD: ${SUPERADMIN_PASSWORD:-}
+      SUPERADMIN_RESET_PASSWORD: ${SUPERADMIN_RESET_PASSWORD:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - app_uploads:/app/backend/uploads
+    mem_limit: ${APP_MEM_LIMIT:-1g}
+    networks:
+      - internal
+      - edge
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=edge
+      - traefik.http.routers.sf-${CLIENT_SLUG}.rule=Host(`${APP_DOMAIN}`)
+      - traefik.http.routers.sf-${CLIENT_SLUG}.entrypoints=websecure
+      - traefik.http.routers.sf-${CLIENT_SLUG}.tls.certresolver=le
+      - traefik.http.services.sf-${CLIENT_SLUG}.loadbalancer.server.port=4000
+
+  # Optional per-client superadmin portal. Enable with: --profile superadmin
+  superadmin:
+    image: ${SUPERADMIN_IMAGE:-${APP_IMAGE}-superadmin}
+    container_name: sf-${CLIENT_SLUG}-superadmin
+    restart: unless-stopped
+    profiles: ["superadmin"]
+    networks:
+      - edge
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=edge
+      - traefik.http.routers.sf-${CLIENT_SLUG}-sa.rule=Host(`${SUPERADMIN_DOMAIN:-admin.${APP_DOMAIN}}`)
+      - traefik.http.routers.sf-${CLIENT_SLUG}-sa.entrypoints=websecure
+      - traefik.http.routers.sf-${CLIENT_SLUG}-sa.tls.certresolver=le
+      - traefik.http.services.sf-${CLIENT_SLUG}-sa.loadbalancer.server.port=80
+
+networks:
+  internal:
+  edge:
+    external: true
+
+volumes:
+  postgres_data:
+  app_uploads:

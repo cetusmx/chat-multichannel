@@ -109,6 +109,52 @@ export async function del(endpoint, data = null) {
   if (data) options.body = JSON.stringify(data);
   return request(endpoint, options);
 }
+
+// ---------------------------------------------------------------------------
+// Catalog (provider-agnostic). Shapes are documented in backend/src/catalog.
+// ---------------------------------------------------------------------------
+
+async function readJson(res, fallback) {
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err = new Error(json.error || fallback);
+    err.status = res.status;
+    err.code = json.code;
+    throw err;
+  }
+  return json;
+}
+
+/** Schema, capabilities, pricing and required attributes of the tenant catalog. */
+export async function getCatalogSchema() {
+  const json = await readJson(await get('/catalog/schema'), 'No se pudo cargar el esquema del catálogo');
+  return json.data;
+}
+
+/** Options for a select attribute: [{ value, label }]. */
+export async function getCatalogOptions(attributeKey) {
+  const json = await readJson(await get(`/catalog/options/${encodeURIComponent(attributeKey)}`), 'No se pudieron cargar las opciones');
+  return json.data || [];
+}
+
+/** Searches products. `params` = { q?, <attributeKey>: value, ... }. Returns Product[] (DTO). */
+export async function searchCatalog(params = {}, { limit } = {}) {
+  const filtered = Object.fromEntries(Object.entries(params).filter(([, v]) => v !== '' && v !== null && v !== undefined));
+  if (limit) filtered.limit = limit;
+  const query = new URLSearchParams(filtered).toString();
+  const json = await readJson(await get(`/catalog/search${query ? `?${query}` : ''}`), 'Error buscando en el catálogo');
+  return json.data || [];
+}
+
+/** Customer fiscal data by RFC: { taxId, legalName, address, isActive } or null. */
+export async function lookupCustomerByTaxId(taxId) {
+  const res = await get(`/catalog/customer/${encodeURIComponent(taxId)}`);
+  if (res.status === 404) return null;
+  const json = await readJson(res, 'Error al consultar el RFC');
+  return json.data;
+}
+
+/** @deprecated use getCatalogOptions(attributeKey); kept until the legacy endpoint is removed. */
 export async function getSealMarketFamilias() {
   const res = await get(`/sealmarket/catalog/familias`);
   if (!res.ok) {
@@ -117,6 +163,7 @@ export async function getSealMarketFamilias() {
   return res.json();
 }
 
+/** @deprecated use searchCatalog(params); kept until the legacy endpoint is removed. */
 export async function searchSealMarketCatalog(params) {
   const filteredParams = Object.fromEntries(
     Object.entries(params).filter(([_, v]) => v !== '' && v !== null && v !== undefined),

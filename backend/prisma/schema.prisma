@@ -97,6 +97,9 @@ model Tenant {
   branches        Branch[]
   whatsappConfig  WhatsAppConfig?
   aiConfig        AiConfig?
+  catalogConfig   CatalogConfig?
+  aiPromptConfig  AiPromptConfig?
+  aiPromptVersions AiPromptVersion[]
   emailConfig     EmailConfig?
   assignmentRule  AssignmentRule?
   slaConfig       SlaConfig?
@@ -183,6 +186,7 @@ model User {
   coordinator          User?                 @relation("UserCoordinator", fields: [coordinatorId], references: [id])
   assignees            User[]                @relation("UserCoordinator")
   conversations        Conversation[]        @relation("VendorConversations")
+  aiPromptVersions     AiPromptVersion[]
   eligibleRules        EligibleVendor[]
   cannedResponseUsages CannedResponseUsage[]
 
@@ -369,6 +373,67 @@ model AiConfig {
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@map("ai_configs")
+}
+
+/// Per-tenant product catalog integration. The `provider` names an adapter
+/// in backend/src/catalog/providers; everything else is data the adapter
+/// reads, so onboarding a new ERP is configuration, not code.
+model CatalogConfig {
+  id        String   @id @default(cuid())
+  tenantId  String   @unique @map("tenant_id")
+  provider  String   @default("none") // none | sealmarket | generic_rest | <custom>
+  isActive  Boolean  @default(true) @map("is_active")
+  baseUrl   String?  @map("base_url")
+  apiKey    String?  @map("api_key") // Encrypted
+  /// Adapter-specific connection details: auth style, endpoints, field mapping, pagination.
+  connection Json?
+  /// Declarative search schema: text search + typed attributes. Drives UI forms and AI tools.
+  searchSchema Json?  @map("search_schema")
+  /// { taxRate: 0.16, pricesIncludeTax: false, currency: 'MXN' }
+  pricing   Json?
+  /// { customerLookup, csfExtraction, stockByLocation, productImages }
+  features  Json?
+  /// Domain rules injected into the agent prompt as {{catalog_rules}}.
+  aiRules   String?  @db.Text @map("ai_rules")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("catalog_configs")
+}
+
+/// Tenant overrides of the agent prompt templates (defaults live in
+/// backend/src/prompts/default.es.json). Only keys that differ are stored.
+model AiPromptConfig {
+  id          String   @id @default(cuid())
+  tenantId    String   @unique @map("tenant_id")
+  overrides   Json     @default("{}")
+  version     Int      @default(0)
+  updatedById String?  @map("updated_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("ai_prompt_configs")
+}
+
+/// Immutable history of prompt overrides, for audit and rollback.
+model AiPromptVersion {
+  id          String   @id @default(cuid())
+  tenantId    String   @map("tenant_id")
+  version     Int
+  overrides   Json
+  note        String?
+  createdById String?  @map("created_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy User?  @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, version])
+  @@map("ai_prompt_versions")
 }
 
 model Document {

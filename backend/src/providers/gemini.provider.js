@@ -111,7 +111,13 @@ class GeminiProvider extends AIProvider {
       }
 
       if (!finalContent || finalContent.trim() === '') {
-        finalContent = 'He actualizado tu información. ¿Puedo ayudarte con algo más?';
+        try {
+          const promptService = require('../services/prompt.service');
+          const cfg = await promptService.getPromptConfig(tenantId);
+          finalContent = promptService.renderPath(cfg, 'customerMessages.emptyModelReply');
+        } catch {
+          finalContent = 'He actualizado tu información. ¿Puedo ayudarte con algo más?';
+        }
       }
 
       return { 

@@ -61,232 +61,181 @@ class AIService {
     }
   }
 
-  _getAiToolsAndHandlers(tenantId, conversationId, conversation) {
-    const tools = [{
-      functionDeclarations: [
-        {
-          name: "consultar_catalogo",
-          description: "Busca productos en el catálogo. Extrae los parámetros de búsqueda en JSON. REGLA DE ORO: El parámetro 'familia' es ESTRICTAMENTE OBLIGATORIO en TODAS las consultas. Si no tienes la certeza de cuál es el nombre EXACTO de la familia según el Contexto, NO inventes nombres (ej. no inventes 'ANILLOS GUIA' ni 'CINTA GUIA') y mejor pregúntale al usuario a qué se refiere. Si menciona una unidad (ej. mm), asume la misma para las demás (sist_med).",
-          parameters: {
-            type: "OBJECT",
-            properties: {
-              query_params: {
-                type: "STRING",
-                description: "Un string en formato JSON válido con las claves y valores a buscar. Ejemplo: '{\"familia\": \"ORINGS\", \"diam_int\": \"50\", \"diam_ext\": \"60\", \"altura\": \"6\", \"sist_med\": \"mm\"}'"
-              }
-            },
-            required: ["query_params"]
-          }
+  /**
+   * Builds the tool set for a conversation. Catalog-related tools are declared
+   * from the tenant's CatalogConfig (schema + capabilities) so nothing here
+   * knows about a particular ERP or product domain.
+   *
+   * @param {object} [catalogInfo] result of catalogService.describeForAi(); fetched when omitted
+   */
+  async _getAiToolsAndHandlers(tenantId, conversationId, conversation, catalogInfo = null) {
+    const catalogService = require('./catalog.service');
+    const promptService = require('./prompt.service');
+    const catalog = catalogInfo || await catalogService.describeForAi(tenantId);
+    const caps = catalog.capabilities || {};
+    const promptConfig = await promptService.getPromptConfig(tenantId);
+    const toolText = (name) => promptService.renderPath(promptConfig, `tools.${name}`);
+    const noteText = (name, vars) => promptService.renderPath(promptConfig, `catalogNotes.${name}`, vars);
+
+    const functionDeclarations = [];
+
+    if (catalog.isConfigured && (caps.textSearch || caps.attributeSearch)) {
+      functionDeclarations.push({
+        name: "consultar_catalogo",
+        description: toolText('consultar_catalogo'),
+        parameters: catalog.toolParameters
+      });
+    }
+
+    functionDeclarations.push({
+      name: "actualizar_carrito",
+      description: toolText('actualizar_carrito'),
+      parameters: {
+        type: "OBJECT",
+        properties: {
+          cart_items: {
+            type: "STRING",
+            description: "Un string JSON que representa un array de objetos con los productos del pedido actual. Ejemplo: '[{\"clave\": \"SKU-123\", \"descripcion\": \"Producto\", \"cantidad\": 2, \"precio\": 150}]'. El precio es el precio neto (IVA incluido) que devolvió el catálogo."
+          },
+          shipping_address: {
+            type: "STRING",
+            description: "Opcional. La dirección de envío depurada y con formato profesional (Calle, Número, Colonia, Código Postal, Ciudad, Estado). IMPORTANTE: NO pases el texto crudo del cliente, siempre corrígelo y dale formato antes."
+          },
+          razon_social: { type: "STRING", description: "Opcional. La Razón Social del cliente (si la extrajiste o la proporcionó)." },
+          rfc: { type: "STRING", description: "Opcional. El RFC del cliente (si lo extrajiste o lo proporcionó)." },
+          billing_address: { type: "STRING", description: "Opcional. El domicilio fiscal del cliente." }
         },
-        {
-          name: "actualizar_carrito",
-          description: "Actualiza el estado persistente del carrito de compras del cliente. Úsala CADA VEZ que el cliente confirme que quiere agregar un producto o modificar cantidades, o cuando confirme su dirección de envío o envíe sus datos fiscales.",
-          parameters: {
-            type: "OBJECT",
-            properties: {
-              cart_items: {
-                type: "STRING",
-                description: "Un string JSON que representa un array de objetos con los productos del pedido actual. Ejemplo: '[{\"clave\": \"OR-050\", \"descripcion\": \"Oring 50mm\", \"cantidad\": 2, \"precio\": 150}]'"
-              },
-              shipping_address: {
-                type: "STRING",
-                description: "Opcional. La dirección de envío depurada y con formato profesional (Calle, Número, Colonia, Código Postal, Ciudad, Estado). IMPORTANTE: NO pases el texto crudo del cliente, siempre corrígelo y dale formato antes."
-              },
-              razon_social: {
-                type: "STRING",
-                description: "Opcional. La Razón Social del cliente (si la extrajiste o la proporcionó)."
-              },
-              rfc: {
-                type: "STRING",
-                description: "Opcional. El RFC del cliente (si lo extrajiste o lo proporcionó)."
-              },
-              billing_address: {
-                type: "STRING",
-                description: "Opcional. El domicilio fiscal del cliente."
-              }
-            },
-            required: ["cart_items"]
-          }
-        },
-        {
-          name: "consultar_cliente_rfc",
-          description: "Busca los datos fiscales y comerciales de un cliente a partir de su RFC. Úsala cuando el cliente te proporcione su RFC para una cotización.",
-          parameters: {
-            type: "OBJECT",
-            properties: {
-              rfc: {
-                type: "STRING",
-                description: "El RFC proporcionado por el cliente. Ejemplo: 'XAXX010101000'"
-              }
-            },
-            required: ["rfc"]
-          }
-        },
-        {
-          name: "generar_cotizacion_pdf",
-          description: "Genera un PDF con la cotización formal de los artículos en el carrito y lo envía al cliente. Úsala SOLAMENTE cuando el cliente te pida explícitamente generar o enviarle la cotización formal en PDF.",
-          parameters: {
-            type: "OBJECT",
-            properties: {
-              razon_social: {
-                type: "STRING",
-                description: "Razón Social o nombre del cliente"
-              },
-              rfc: {
-                type: "STRING",
-                description: "RFC del cliente"
-              },
-              direccion: {
-                type: "STRING",
-                description: "Dirección completa del cliente (Calle, número, colonia, CP)"
-              }
-            },
-            required: []
-          }
-        },
-        {
-          name: "extraer_constancia_fiscal",
-          description: "Lee y extrae RFC, Razón Social y Código Postal del último archivo PDF adjunto enviado por el cliente (Constancia de Situación Fiscal o similar). Úsala cuando el cliente haya enviado un archivo adjunto para sus datos fiscales de facturación.",
-          parameters: {
-            type: "OBJECT",
-            properties: {
-              confirmar: { type: "BOOLEAN", description: "Siempre envía true" }
-            }
-          }
-        },
-        {
-          name: "enviar_cotizacion_email",
-          description: "Envía la cotización actual por correo electrónico al cliente. Úsala cuando el cliente solicite que se le envíe la cotización a un email específico.",
-          parameters: {
-            type: "OBJECT",
-            properties: {
-              email: {
-                type: "STRING",
-                description: "Correo electrónico del cliente"
-              }
-            },
-            required: ["email"]
-          }
+        required: ["cart_items"]
+      }
+    });
+
+    if (caps.customerLookup) {
+      functionDeclarations.push({
+        name: "consultar_cliente_rfc",
+        description: toolText('consultar_cliente_rfc'),
+        parameters: {
+          type: "OBJECT",
+          properties: { rfc: { type: "STRING", description: "El RFC proporcionado por el cliente. Ejemplo: 'XAXX010101000'" } },
+          required: ["rfc"]
         }
-      ]
-    }];
+      });
+    }
+
+    functionDeclarations.push({
+      name: "generar_cotizacion_pdf",
+      description: toolText('generar_cotizacion_pdf'),
+      parameters: {
+        type: "OBJECT",
+        properties: {
+          razon_social: { type: "STRING", description: "Razón Social o nombre del cliente" },
+          rfc: { type: "STRING", description: "RFC del cliente" },
+          direccion: { type: "STRING", description: "Dirección completa del cliente (Calle, número, colonia, CP)" }
+        },
+        required: []
+      }
+    });
+
+    if (caps.csfExtraction) {
+      functionDeclarations.push({
+        name: "extraer_constancia_fiscal",
+        description: toolText('extraer_constancia_fiscal'),
+        parameters: {
+          type: "OBJECT",
+          properties: { confirmar: { type: "BOOLEAN", description: "Siempre envía true" } }
+        }
+      });
+    }
+
+    functionDeclarations.push({
+      name: "enviar_cotizacion_email",
+      description: toolText('enviar_cotizacion_email'),
+      parameters: {
+        type: "OBJECT",
+        properties: { email: { type: "STRING", description: "Correo electrónico del cliente" } },
+        required: ["email"]
+      }
+    });
+
+    const tools = [{ functionDeclarations }];
 
     const toolHandlers = {
       consultar_catalogo: async (args) => {
         try {
           console.log('[AI TOOL] consultar_catalogo invocado con args:', args);
-          const paramsStr = args.query_params;
-          const parsedParams = JSON.parse(paramsStr);
-          
-          const searchParams = new URLSearchParams(parsedParams);
-          searchParams.set('limit', '100'); // Solicitar suficientes registros para no perder vivos en páginas posteriores
-          // TODO: En el futuro esto debe leerse de la base de datos (Tenant.catalogApiUrl)
-          const apiUrl = process.env.VITE_API_BASE_URL || 'http://75.119.150.222:3010';
-          const apiKey = process.env.VITE_INTERNAL_SECRET || 'sm_ecommerce_x2ve9yFf0aiDxh1HelezpVeyRAcngGwgEg3ZnSZwhGg2SaZrd2gQiysiVo86R3LcUZFFxZDSMADepof1jMLSumIbiqBRcbjyhvA78haaxnLrrbOuU3zqCi0kQXJf1gSc';
-          
-          const endpoint = `${apiUrl}/api/clavesalternas/filter-v2?${searchParams.toString()}`;
-          console.log('[AI TOOL] Fetching API:', endpoint);
-          
-          const fetchRes = await fetch(endpoint, {
-            method: 'GET',
-            headers: {
-              'Content-Type': 'application/json',
-              'x-api-key': apiKey
+          // Backward compatibility: older knowledge-base documents describe the
+          // previous contract ({ query_params: '<json>' }). Accept and merge it.
+          let searchArgs = { ...(args || {}) };
+          if (typeof searchArgs.query_params === 'string') {
+            try {
+              searchArgs = { ...JSON.parse(searchArgs.query_params), ...searchArgs };
+            } catch {
+              return { error: 'query_params no es JSON válido; envía cada criterio como parámetro independiente.' };
             }
-          });
-          
-          if (!fetchRes.ok) {
-            console.error('[AI TOOL] API HTTP Error:', fetchRes.status);
-            return { error: `El catálogo devolvió un error: ${fetchRes.statusText}` };
+            delete searchArgs.query_params;
           }
-          
-          const data = await fetchRes.json();
-          let results = data.data || [];
-          
-          if (Array.isArray(results) && results.length > 0) {
-            // 1. Omitir productos "muertos" (precio 0, sin stock, y sin fecha de última compra)
-            results = results.filter(item => {
-              const totalExt = Object.values(item.existencias || {}).reduce((a, b) => a + (b || 0), 0);
-              const isDead = (!item.PRECIO || item.PRECIO === 0) && totalExt === 0 && !item.FCH_ULTCOM;
-              return !isDead;
+          const { products, params } = await catalogService.search(tenantId, searchArgs, { limit: 50 });
+
+          if (!products || products.length === 0) {
+            return { resultados: [], total_encontrados: 0, criterios: params, nota: noteText('empty') };
+          }
+
+          // Keep the model's context small; the full list stays server side.
+          const finalResults = products.slice(0, 5);
+          let notaAdicional = noteText('limit');
+
+          // One or two matches: push interactive cards to the customer and tell the model not to repeat them.
+          if (finalResults.length <= 2) {
+            const whatsappService = require('./whatsapp.service');
+            const recentCards = await prisma.message.findMany({
+              where: { conversationId, type: 'PRODUCT_CARD' },
+              orderBy: { createdAt: 'desc' },
+              take: 10
             });
+            const recentSkus = recentCards.map(m => m.metadata && m.metadata.clave).filter(Boolean);
 
-            // 2. Priorizar productos con existencia si hay múltiples opciones
-            if (results.length > 1) {
-              const conExistencia = results.filter(item => {
-                const totalExt = Object.values(item.existencias || {}).reduce((a, b) => a + (b || 0), 0);
-                return totalExt > 0;
-              });
-              
-              if (conExistencia.length > 0) {
-                results = conExistencia;
-              } else {
-                // Si TODOS están agotados, solo mostrar los que tienen fecha de última compra (FCH_ULTCOM != null)
-                results = results.filter(item => item.FCH_ULTCOM);
+            let sentAny = false;
+            for (const product of finalResults) {
+              if (recentSkus.includes(product.sku)) continue;
+              const metadata = {
+                clave: product.sku,
+                description: product.name,
+                priceNet: product.priceNet != null ? product.priceNet.toFixed(2) : null,
+                imageUrl: product.imageUrl,
+                attributes: product.attributes,
+                rawProduct: product.raw
+              };
+              try {
+                await whatsappService.sendMessage(conversationId, '', null, 'SYSTEM', 'PRODUCT_CARD', metadata);
+                sentAny = true;
+              } catch (e) {
+                console.error('[AI TOOL] Fallo al enviar PRODUCT_CARD:', e);
               }
             }
 
-            // Limitar los resultados a 5 para no reventar la memoria de contexto de Gemini
-            let finalResults = results.slice(0, 5);
-            let notaAdicional = "Se están mostrando máximo 5 resultados. Si hay más, pide al cliente que sea más específico.";
-
-            // Si hay 1 o 2 resultados, enviar tarjetas interactivas directamente y avisarle a la IA
-            if (finalResults.length > 0 && finalResults.length <= 2) {
-              const whatsappService = require('./whatsapp.service');
-              
-              // Evitar duplicados revisando las últimas tarjetas enviadas
-              const recentCards = await prisma.message.findMany({
-                where: { conversationId, type: 'PRODUCT_CARD' },
-                orderBy: { createdAt: 'desc' },
-                take: 10
-              });
-              const recentClaves = recentCards.map(m => m.metadata && m.metadata.clave).filter(Boolean);
-
-              let sentAny = false;
-
-              for (const product of finalResults) {
-                if (recentClaves.includes(product.CVE_ART)) {
-                  continue; // Ya se envió esta tarjeta recientemente
-                }
-
-                const desc = product.DESC_ECOMM || product.DESCR || product.NOMBRE;
-                const priceNet = ((product.PRECIO || 0) * 1.16).toFixed(2);
-                const linea = product.LIN_PROD || '';
-                const imageUrl = `https://sistemahidraulico.mx/Perfiles/${linea}.jpg`;
-
-                const metadata = {
-                  clave: product.CVE_ART,
-                  description: desc,
-                  priceNet: priceNet,
-                  imageUrl: imageUrl,
-                  rawProduct: product
-                };
-
-                try {
-                  await whatsappService.sendMessage(conversationId, '', null, 'SYSTEM', 'PRODUCT_CARD', metadata);
-                  sentAny = true;
-                } catch(e) {
-                  console.error('[AI TOOL] Fallo al enviar PRODUCT_CARD:', e);
-                }
-              }
-
-              if (sentAny) {
-                notaAdicional = "IMPORTANTE: Ya se le enviaron automáticamente las TARJETAS INTERACTIVAS de estos productos al cliente por WhatsApp. En tu respuesta de texto, NO vuelvas a listar los productos ni des precios. Simplemente dile: 'Te he enviado las opciones aquí arriba en formato de tarjeta. ¿Te interesa alguna para agregarla a tu pedido?' o algo similar, pero muy breve.";
-              } else {
-                notaAdicional = "Nota: El cliente ya tiene las tarjetas de estos productos visibles en el chat. Procede a responderle de forma natural (ej. preguntando cuántas piezas necesita o resolviendo su duda).";
-              }
-            }
-
-            return { 
-              resultados: finalResults, 
-              total_encontrados: results.length,
-              nota: notaAdicional 
-            };
+            notaAdicional = sentAny ? noteText('cardsSent') : noteText('cardsAlreadyVisible');
           }
-          return data;
+
+          const showLocations = !!(catalog.capabilities && catalog.capabilities.stockByLocation);
+          return {
+            resultados: finalResults.map(p => ({
+              clave: p.sku,
+              nombre: p.name,
+              descripcion: p.description || undefined,
+              precio_neto: p.priceNet,
+              precio_sin_iva: p.pricePreTax,
+              moneda: p.currency,
+              existencia_total: p.stock ? p.stock.total : null,
+              existencia_por_sucursal: showLocations && p.stock ? p.stock.byLocation : undefined,
+              unidad: p.unit || undefined,
+              atributos: p.attributes
+            })),
+            total_encontrados: products.length,
+            criterios: params,
+            nota: `${notaAdicional} ${noteText('pricesAreNet')}`
+          };
         } catch (e) {
           console.error('[AI TOOL] Excepción:', e.message);
-          return { error: `Hubo un fallo al leer los parámetros o conectar con el catálogo: ${e.message}` };
+          return { error: `Hubo un fallo al consultar el catálogo: ${e.message}` };
         }
       },
       actualizar_carrito: async (args) => {
@@ -347,61 +296,30 @@ class AIService {
       consultar_cliente_rfc: async (args) => {
         try {
           console.log('[AI TOOL] consultar_cliente_rfc invocado con args:', args);
-          const rfc = args.rfc;
-          
-          const apiUrl = process.env.VITE_API_BASE_URL || 'http://75.119.150.222:3010';
-          const apiKey = process.env.VITE_INTERNAL_SECRET || 'sm_ecommerce_x2ve9yFf0aiDxh1HelezpVeyRAcngGwgEg3ZnSZwhGg2SaZrd2gQiysiVo86R3LcUZFFxZDSMADepof1jMLSumIbiqBRcbjyhvA78haaxnLrrbOuU3zqCi0kQXJf1gSc';
-          
-          const endpoint = `${apiUrl}/api/clientes/rfc/${rfc}`;
-          console.log('[AI TOOL] Fetching API:', endpoint);
-          
-          const fetchRes = await fetch(endpoint, {
-            method: 'GET',
-            headers: {
-              'Content-Type': 'application/json',
-              'x-api-key': apiKey
-            }
-          });
-          
-          if (!fetchRes.ok) {
-            console.error('[AI TOOL] API HTTP Error:', fetchRes.status);
-            return { error: `La API de clientes devolvió un error: ${fetchRes.statusText}` };
+          const customer = await catalogService.lookupCustomer(tenantId, args.rfc);
+
+          if (!customer) {
+            return { status: "not_found", message: "No se encontró el RFC exacto en la base de datos." };
           }
-          
-          const data = await fetchRes.json();
-          
-          if (data && data.data && data.data.length > 0) {
-            const cliente = data.data[0];
-            if (cliente.STATUS === 'A') {
-              const calle = cliente.CALLE || '';
-              const num = cliente.NUMEXT || '';
-              const col = cliente.COLONIA ? `Col. ${cliente.COLONIA}` : '';
-              const cp = cliente.CODIGO ? `C.P. ${cliente.CODIGO}` : '';
-              const mun = cliente.MUNICIPIO || '';
-              const est = cliente.ESTADO || '';
-              const direccion = `${calle} ${num}, ${col}, ${cp}, ${mun}, ${est}`.trim().replace(/,\s*,/g, ',');
-              
-              // Save fiscal name to cartData instead of overwriting Client name
-              if (conversation?.clientId) {
-                const client = await prisma.client.findUnique({ where: { id: conversation.clientId } });
-                const cartData = client.cartData || {};
-                const newCartData = Array.isArray(cartData) 
-                  ? { items: cartData, razonSocial: cliente.NOMBRE, rfc: cliente.RFC, billingAddress: direccion } 
-                  : { ...cartData, razonSocial: cliente.NOMBRE, rfc: cliente.RFC, billingAddress: direccion };
-                
-                await prisma.client.update({
-                  where: { id: conversation.clientId },
-                  data: { cartData: newCartData }
-                });
-              }
-              
-              return { status: "success", razon_social: cliente.NOMBRE, rfc: cliente.RFC, direccion };
-            } else {
-              return { status: "inactive", message: "El cliente existe pero no está activo en el sistema." };
-            }
+          if (!customer.isActive) {
+            return { status: "inactive", message: "El cliente existe pero no está activo en el sistema." };
           }
-          
-          return { status: "not_found", message: "No se encontró el RFC exacto en la base de datos." };
+
+          // Save fiscal data to cartData instead of overwriting the WhatsApp client name
+          if (conversation?.clientId) {
+            const client = await prisma.client.findUnique({ where: { id: conversation.clientId } });
+            const cartData = client.cartData || {};
+            const newCartData = Array.isArray(cartData)
+              ? { items: cartData, razonSocial: customer.legalName, rfc: customer.taxId, billingAddress: customer.address }
+              : { ...cartData, razonSocial: customer.legalName, rfc: customer.taxId, billingAddress: customer.address };
+
+            await prisma.client.update({
+              where: { id: conversation.clientId },
+              data: { cartData: newCartData }
+            });
+          }
+
+          return { status: "success", razon_social: customer.legalName, rfc: customer.taxId, direccion: customer.address };
         } catch (e) {
           console.error('[AI TOOL] Excepción en consultar_cliente_rfc:', e.message);
           return { error: `Error al consultar el RFC: ${e.message}` };
@@ -612,48 +530,28 @@ class AIService {
 
           if (rfcMatch) extractedRfc = rfcMatch[1].trim();
 
-          // INTENTO DE BD: Si sacamos el RFC por regex básico, probamos leerlo de la BD primero
+          // If the RFC is readable, prefer the ERP's customer record over parsing the rest of the PDF.
           if (extractedRfc) {
             try {
-              const apiUrl = process.env.VITE_API_BASE_URL || 'http://75.119.150.222:3010';
-              const apiKey = process.env.VITE_INTERNAL_SECRET || 'sm_ecommerce_x2ve9yFf0aiDxh1HelezpVeyRAcngGwgEg3ZnSZwhGg2SaZrd2gQiysiVo86R3LcUZFFxZDSMADepof1jMLSumIbiqBRcbjyhvA78haaxnLrrbOuU3zqCi0kQXJf1gSc';
-              const fetchRes = await fetch(`${apiUrl}/api/clientes/rfc/${extractedRfc}`, {
-                method: 'GET',
-                headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey }
-              });
-              
-              if (fetchRes.ok) {
-                const data = await fetchRes.json();
-                if (data && data.data && data.data.length > 0) {
-                  const cliente = data.data[0];
-                  if (cliente.STATUS === 'A') {
-                    const calle = cliente.CALLE || '';
-                    const num = cliente.NUMEXT || '';
-                    const col = cliente.COLONIA ? `Col. ${cliente.COLONIA}` : '';
-                    const cpStr = cliente.CODIGO ? `C.P. ${cliente.CODIGO}` : '';
-                    const mun = cliente.MUNICIPIO || '';
-                    const est = cliente.ESTADO || '';
-                    extractedAddress = `${calle} ${num}, ${col}, ${cpStr}, ${mun}, ${est}`.trim().replace(/,\s*,/g, ',');
-                    extractedRazonSocial = cliente.NOMBRE;
-                    extractedCp = cliente.CODIGO || '';
-                    
-                    // Encontrado en DB, no necesitamos seguir extrayendo el resto de la CSF
-                    // Procedemos a guardar en cartData y salir
-                    let currentCart = conversation.client?.cartData || {};
-                    if (Array.isArray(currentCart)) currentCart = { items: currentCart };
-                    currentCart.rfc = extractedRfc;
-                    currentCart.razonSocial = extractedRazonSocial;
-                    currentCart.billingAddress = extractedAddress;
-                    await prisma.client.update({
-                      where: { id: conversation.clientId },
-                      data: { cartData: currentCart }
-                    });
-                    return { status: "success", message: "RFC encontrado en la base de datos.", razon_social: extractedRazonSocial, rfc: extractedRfc, direccion: extractedAddress };
-                  }
-                }
+              const customer = await catalogService.lookupCustomer(tenantId, extractedRfc);
+              if (customer && customer.isActive) {
+                extractedAddress = customer.address;
+                extractedRazonSocial = customer.legalName;
+                extractedCp = (customer.raw && (customer.raw.CODIGO || customer.raw.cp || customer.raw.postalCode)) || '';
+
+                let currentCart = conversation.client?.cartData || {};
+                if (Array.isArray(currentCart)) currentCart = { items: currentCart };
+                currentCart.rfc = extractedRfc;
+                currentCart.razonSocial = extractedRazonSocial;
+                currentCart.billingAddress = extractedAddress;
+                await prisma.client.update({
+                  where: { id: conversation.clientId },
+                  data: { cartData: currentCart }
+                });
+                return { status: "success", message: "RFC encontrado en la base de datos.", razon_social: extractedRazonSocial, rfc: extractedRfc, direccion: extractedAddress };
               }
             } catch(e) {
-              console.error("[CSF DB Try] Error querying DB:", e.message);
+              console.error("[CSF DB Try] Error querying customer lookup:", e.message);
             }
           }
 
@@ -809,7 +707,7 @@ ${pdfText.substring(0, 3000)}`;
       // Fetch tenant to get timezone
       const tenant = await prisma.tenant.findUnique({
         where: { id: tenantId },
-        select: { businessHours: true }
+        select: { businessHours: true, name: true }
       });
       const tz = tenant?.businessHours?.timezone || 'America/Mexico_City';
       const currentTimeStr = new Date().toLocaleString('es-MX', { 
@@ -834,55 +732,41 @@ ${pdfText.substring(0, 3000)}`;
       const aiRulesList = await prisma.aiRule.findMany({
         where: { tenantId, isActive: true }
       });
-      let customRulesString = '';
-      if (aiRulesList.length > 0) {
-        customRulesString = '\n[REGLAS Y DICCIONARIO PERSONALIZADO]\n' + aiRulesList.map(r => `- "${r.term}": ${r.definition}`).join('\n');
-      }
 
-      const dynamicContext = `
-[DATOS EN TIEMPO REAL DEL SISTEMA]
-- Fecha y hora actual en la ubicación del negocio: ${currentTimeStr}
-- ¿Fuera de horario laboral?: ${isOffHours ? 'SÍ (Estamos cerrados)' : 'NO (Estamos abiertos)'}
-- Equipo de vendedores: ${vendorNames}
-- CARRITO DE COMPRAS DEL CLIENTE: ${JSON.stringify(clientCart)}
-- Instrucción de Carrito: Este es el estado persistente del carrito. Usa la herramienta 'actualizar_carrito' para modificarlo si el cliente pide agregar o quitar algo.
-- Instrucción dinámica: Si el cliente pregunta por un vendedor específico que esté en el equipo, indícale si estamos dentro o fuera de horario e incluye [[ESCALATE]] para asignarle el chat a esa persona.${customRulesString}
-[FIN DE DATOS]
-`;
+      // Prompt text lives in the tenant's prompt configuration (defaults in
+      // src/prompts/default.es.json); catalog knowledge in CatalogConfig.
+      // This block only gathers variables and lets prompt.service compose.
+      const catalogService = require('./catalog.service');
+      const promptService = require('./prompt.service');
+      const [catalogInfo, promptConfig] = await Promise.all([
+        catalogService.describeForAi(tenantId),
+        promptService.getPromptConfig(tenantId),
+      ]);
 
-      const aiRules = `
-[REGLAS ESTRICTAS DE COMPORTAMIENTO]
-1. NUNCA inventes familias de productos, opciones, ni des ejemplos que no estén literalmente listados en tu texto de Contexto provisto. Si el cliente menciona un término genérico (ej. "guías", "tapas") y en tu contexto no se detallan las clasificaciones o familias de ese término, BAJO NINGUNA CIRCUNSTANCIA uses tu conocimiento previo (pre-entrenamiento) para sugerir variantes inventadas (ej. "anillos guía", "cintas guía"). Si no está textualmente en el Contexto, NO EXISTE. Simplemente indícale al cliente que necesitas que especifique la familia correcta o bríndale únicamente las opciones que SÍ aparecen en tu contexto.
-2. Si menciona una unidad (ej. "50 mm") y luego da otras medidas sin unidad, asume SIEMPRE que comparten la misma unidad (mm).
-3. FRACCIONES Y PULGADAS: Si el cliente proporciona una medida en fracciones (ej. "1 5/16" o "3/4"), asume INMEDIATAMENTE que se trata del sistema "std" (pulgadas).
-4. CONVERSIÓN A DECIMAL: Antes de consultar el catálogo con una fracción, DEBES convertir matemáticamente la fracción a decimales en milésimas. Ejemplo: "1 5/16" debes enviarlo como "1.312" (o 1.3125) en el JSON de consulta.
-5. Asegúrate de mapear los parámetros de catálogo tal y como los espera la API.
-6. EXISTENCIAS: La API te devuelve el inventario desglosado por sucursal. Por defecto, DEBES SUMARLO y decirle al cliente ÚNICAMENTE el TOTAL GLOBAL disponible sin mencionar sucursales. EXCEPCIÓN: Si el cliente pregunta explícitamente si hay existencia en una ciudad o sucursal específica, verifica en el JSON si hay existencias ahí. Si sí hay, confírmale que SÍ tenemos en esa ciudad y pregúntale si conoce la dirección de la sucursal (NUNCA le digas la cantidad exacta que hay en la sucursal, solo dile que sí hay).
-7. SIN STOCK: Aunque el producto tenga existencia 0, SIEMPRE ofrécele la información y bríndale el precio.
-8. SIN PRECIO: Si un producto tiene precio $0 o nulo, NO le muestres el precio. Simplemente dile que "más tarde un asesor lo contactará para proporcionarle el precio exacto" y ofrécele seguir buscando más productos.
-9. PEDIDOS Y CARRITO: Tu rol incluye TOMAR EL PEDIDO. Ve recordando internamente qué productos y cantidades confirma el cliente. SIEMPRE usa la herramienta 'actualizar_carrito' para guardar este estado.
-10. FORMATO DE RESULTADOS Y PRECIOS: Cuando muestres productos, NO satures el chat. Muestra ÚNICAMENTE la clave del artículo, la descripción breve, el precio neto (ya con el 16% de IVA incluido) y el total global de existencias. TODOS los precios que devuelva el catálogo están antes de impuestos. DEBES multiplicar siempre el precio por 1.16 y mostrar el resultado final indicando explícitamente "Precio Neto (IVA Incluido)". Haz lo mismo para la suma total de cotizaciones.
-11. COTIZACIONES Y RFC: Si el cliente solicita explícitamente una cotización formal, primero pregúntale su RFC. Si responde que no tiene, asume que es un cliente genérico (Mostrador). Si en lugar de escribir el RFC, el cliente envía un archivo adjunto (como un PDF), ASUME INMEDIATAMENTE que se trata de su Constancia de Situación Fiscal (CSF) y llama a la herramienta 'extraer_constancia_fiscal' SIN pedirle confirmación. Si el cliente escribe su RFC manualmente, usa la herramienta 'consultar_cliente_rfc'. Si alguna de las herramientas devuelve 'success', CONFÍRMALE AL CLIENTE que encontraste sus datos (menciónale su Razón Social / NOMBRE) y dile que con esos datos se elaborará la cotización. MUY IMPORTANTE: Guarda celosamente la "razon_social" y la "direccion" exactas que te devuelvan. Cuando llames a 'generar_cotizacion_pdf', pásale esa "razon_social" exacta en los argumentos (NUNCA pases el nombre de pila o nombre de WhatsApp del cliente). NOTA: El PDF generado YA CONTIENE automáticamente los datos bancarios y las instrucciones de pago de la empresa; NO le digas al cliente que se los enviarás después, indícale que los datos bancarios vienen dentro del documento PDF adjunto.
-12. DATOS DE ENVÍO Y ESCALAMIENTO: Cuando el cliente confirme el pedido, te solicite datos bancarios y llegue el momento de coordinar el envío, ANTES de transferirlo a un humano, solicítale su Código Postal y Dirección de Envío completa. Si el cliente te da una dirección pero omite el Código Postal, DEBES pedirle específicamente el Código Postal antes de avanzar. Si previamente obtuviste sus datos fiscales, PREGÚNTALE si la dirección de envío es la misma que su dirección fiscal, MOSTRÁNDOSELA explícitamente. Una vez que tengas la dirección de envío completa (incluyendo Código Postal), DEBES corregir cualquier falta de ortografía y capitalizar correctamente los nombres propios de la dirección. Luego, DEBES invocar OBLIGATORIAMENTE la herramienta 'actualizar_carrito' para inyectar y guardar esa dirección corregida. Después de guardar la dirección, APLICA LA REGLA 14.
-13. RECOLECCIÓN EN SUCURSAL: Si el cliente indica que desea pasar a recoger los productos a una sucursal, ACÉPTALO de inmediato (no te muestres renuente). Ofrécele generarle la cotización y, MUY IMPORTANTE, APLICA LA REGLA 14.
-14. REGLA DE ORO ANTES DE ESCALAR (CUALQUIER FLUJO): IMPORTANTE: Sin importar cuál haya sido la última petición o respuesta del cliente, NUNCA ASUMAS QUE LA INTERACCIÓN HA TERMINADO. Siempre debes preguntarle al cliente si requiere consultar algún otro producto o necesita ayuda con algo más. **ESTÁ ESTRICTAMENTE PROHIBIDO COLOCAR LA ETIQUETA [[ESCALATE]] EN EL MISMO MENSAJE DONDE LE PREGUNTAS SI REQUIERE ALGO MÁS.** Primero haz la pregunta y espera a que el cliente responda. SÓLO si el cliente responde que ya no necesita nada más, entonces procedes a despedirte y AHORA SÍ colocas la etiqueta [[ESCALATE]]. Si el cliente dice que sí quiere agregar otro producto, ayúdalo con eso y no escales el chat todavía.
-`;
+      const promptVars = {
+        company_name: tenant?.name || 'esta empresa',
+        now: currentTimeStr,
+        is_off_hours: !!isOffHours,
+        vendors: vendorNames,
+        cart_json: JSON.stringify(clientCart),
+        custom_rules: aiRulesList.length > 0 ? aiRulesList.map(r => `- "${r.term}": ${r.definition}`).join('\n') : '',
+        knowledge_context: contextString || '',
+        has_knowledge_context: !!contextString,
+        has_catalog: !!catalogInfo.isConfigured,
+        catalog_description: catalogInfo.promptDescription || '',
+        catalog_rules: catalogInfo.aiRules || '',
+        tax_rate_pct: Math.round(((catalogInfo.pricing && catalogInfo.pricing.taxRate) || 0) * 100),
+        has_fiscal_tools: !!(catalogInfo.capabilities && (catalogInfo.capabilities.customerLookup || catalogInfo.capabilities.csfExtraction)),
+        can_lookup_customer: !!(catalogInfo.capabilities && catalogInfo.capabilities.customerLookup),
+        can_extract_csf: !!(catalogInfo.capabilities && catalogInfo.capabilities.csfExtraction),
+      };
 
-      let baseSystemInstruction = '';
-      if (!contextString) {
-        baseSystemInstruction = `Eres un asistente de ventas de esta empresa. Actualmente no tienes documentos en tu base de conocimientos. Sé amable, responde de forma general y DEBES incluir la cadena exacta [[ESCALATE]] en cualquier parte de tu respuesta para que un humano tome el chat.\n${dynamicContext}`;
-      } else {
-        baseSystemInstruction = `Eres un asistente de ventas de esta empresa. Usa ÚNICAMENTE el siguiente contexto de la base de conocimientos para responder. Si el cliente pide explícitamente hablar con un humano, pregunta por un vendedor específico, o si no sabes la respuesta basada en el contexto, DEBES incluir la cadena exacta [[ESCALATE]] en cualquier parte de tu respuesta.\n${aiRules}\n\nContexto:\n${contextString}\n${dynamicContext}`;
-      }
-
-      if (isOffHours) {
-        baseSystemInstruction += `\nAl estar fuera de horario laboral, preséntate brevemente como Inteligencia Artificial e infórmale al cliente que estamos cerrados. Usa el dato de 'Fecha y hora actual' EXCLUSIVAMENTE de forma interna para contextualizar tu respuesta de forma natural, pero TIENES ESTRICTAMENTE PROHIBIDO mencionar la hora o el día literal en tu mensaje (NUNCA digas cosas como "son las 11:23 p.m." ni "hoy es martes"). Úsalo solo para saber si debes decir "en unas horas más" (madrugada), "mañana a primera hora" (noche), o "el lunes" (sábado/domingo), y despídete acorde a la hora (ej. "buenas noches", "excelente fin de semana"). ESTÁ ESTRICTAMENTE PROHIBIDO hacerle preguntas al cliente (como "¿En qué te puedo ayudar?") o invitarlo a seguir conversando. Termina el mensaje despidiéndote e incluye siempre la etiqueta [[ESCALATE]].`;
-      }
+      const baseSystemInstruction = promptService.composeAgentInstruction(promptConfig, promptVars);
 
       // ----------------------------------------------------
       // DEFINICIÓN DE HERRAMIENTAS GENÉRICAS (AGNOSTICAS)
       // ----------------------------------------------------
-      const { tools, toolHandlers } = this._getAiToolsAndHandlers(tenantId, conversationId, conversation);
+      const { tools, toolHandlers } = await this._getAiToolsAndHandlers(tenantId, conversationId, conversation, catalogInfo);
       const response = await this.generateResponse(tenantId, formattedHistory, baseSystemInstruction, tools, toolHandlers);
       
       const exactTokens = response.tokens;
@@ -960,14 +844,9 @@ ${pdfText.substring(0, 3000)}`;
         console.warn('RAG search failed for inline suggestion, continuing without context:', err.message);
       }
 
-      const systemInstruction = `You are an AI assistant helping a human sales representative (Vendor) draft a reply to a client or perform actions on their behalf. 
-Use the following context from our knowledge base (if any) and the conversation history to draft an accurate and helpful response.
-Do NOT include [[ESCALATE]] in this context. You must follow the exact instruction provided by the Vendor Prompt.
-If the Vendor Prompt requests you to use a tool (such as updating the cart), YOU MUST EXECUTE THAT TOOL.
-When drafting a reply, draft ONLY the text that the vendor should send to the client. Do not include quotes or commentary.
-
-Context:
-${contextString}`;
+      const promptService = require('./prompt.service');
+      const promptConfig = await promptService.getPromptConfig(tenantId);
+      const systemInstruction = promptService.renderPath(promptConfig, 'inlineAssist', { knowledge_context: contextString || '' });
 
       if (formattedHistory.length > 0 && formattedHistory[formattedHistory.length - 1].role === 'user') {
         formattedHistory.push({ role: 'model', content: '[Esperando asistencia IA...]' });
@@ -978,7 +857,7 @@ ${contextString}`;
         where: { id: conversationId },
         include: { client: true }
       });
-      const { tools, toolHandlers } = this._getAiToolsAndHandlers(tenantId, conversationId, conversation);
+      const { tools, toolHandlers } = await this._getAiToolsAndHandlers(tenantId, conversationId, conversation);
       const response = await this.generateResponse(tenantId, formattedHistory, systemInstruction, tools, toolHandlers);
       
       const exactTokens = response.tokens;

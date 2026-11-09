@@ -6,6 +6,9 @@ const { setTenantStatus } = require('../utils/tenant-cache.util');
 const logger = require('../utils/logger');
 const env = require('../config/env');
 
+// Lazy: catalog.service pulls in utils/encryption, which requires ENCRYPTION_KEY at import time.
+const getCatalogService = () => require('./catalog.service');
+
 /**
  * Retrieves a paginated list of tenants for the Superadmin dashboard.
  *
@@ -65,16 +68,23 @@ async function getTenants({ page = 1, limit = 10, sortBy = 'createdAt', sortOrde
  * @param {string} data.adminName Admin name (first + last name)
  * @param {string} data.adminEmail Admin email
  * @param {string} data.password Admin password
- * @returns {Promise<{ tenant: Object, user: Object }>}
+ * @param {Object} [data.catalogConfig] Optional initial catalog configuration
+ *   (same shape accepted by catalogService.upsertConfig). Applied after the
+ *   tenant is created; failures here do not roll back the tenant.
+ * @returns {Promise<{ tenant: Object, user: Object, catalogConfig?: Object }>}
  */
 async function createTenantWithAdmin(data) {
-  const { name, domain, adminName, adminEmail, password } = data;
+  const { name, domain, adminName, adminEmail, password, catalogConfig } = data;
+
+  // Fail fast on an invalid catalog payload so we never leave a tenant without its requested integration.
+  const hasCatalogConfig = catalogConfig && typeof catalogConfig === 'object';
+  if (hasCatalogConfig) validateCatalogInput(catalogConfig);
 
   const salt = await bcrypt.genSalt(10);
   const passwordHash = await bcrypt.hash(password, salt);
 
   // The transaction MUST use a timeout to prevent hanging connections
-  return prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     const tenant = await tx.tenant.create({
       data: {
         name,
@@ -96,6 +106,76 @@ async function createTenantWithAdmin(data) {
 
     return { tenant, user };
   }, { timeout: 10000 });
+
+  if (hasCatalogConfig) {
+    result.catalogConfig = await getCatalogService().upsertConfig(result.tenant.id, catalogConfig);
+  }
+
+  return result;
+}
+
+/**
+ * Pre-validates the parts of a catalog payload that upsertConfig would reject,
+ * throwing errors with `.status = 400` (unknown provider) or a SchemaError.
+ */
+function validateCatalogInput(input) {
+  if (input.provider !== undefined && !getCatalogService().listProviders().includes(String(input.provider).toLowerCase())) {
+    const error = new Error(`Proveedor de catálogo desconocido: ${input.provider}`);
+    error.status = 400;
+    throw error;
+  }
+  if (input.searchSchema !== undefined && input.searchSchema !== null) {
+    const { normalizeSchema } = require('../catalog/schema');
+    normalizeSchema(input.searchSchema);
+  }
+}
+
+async function assertTenantExists(tenantId) {
+  const tenant = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { id: true } });
+  if (!tenant) {
+    const error = new Error('Tenant not found');
+    error.statusCode = 404;
+    throw error;
+  }
+  return tenant;
+}
+
+/**
+ * Catalog configuration of a tenant (credentials are never returned).
+ *
+ * @param {string} tenantId Tenant ID
+ * @returns {Promise<{ data: Object|null, providers: string[] }>}
+ */
+async function getTenantCatalogConfig(tenantId) {
+  await assertTenantExists(tenantId);
+  const catalogService = getCatalogService();
+  const data = await catalogService.getConfig(tenantId);
+  return { data, providers: catalogService.listProviders() };
+}
+
+/**
+ * Creates or updates the catalog configuration of a tenant.
+ * Validation errors from the catalog module carry `.status = 400` or `.name = 'SchemaError'`.
+ *
+ * @param {string} tenantId Tenant ID
+ * @param {Object} input Partial catalog config (provider, isActive, baseUrl, apiKey, connection, searchSchema, pricing, features, aiRules)
+ * @returns {Promise<Object>} Saved config with `hasApiKey` flag
+ */
+async function updateTenantCatalogConfig(tenantId, input) {
+  await assertTenantExists(tenantId);
+  validateCatalogInput(input);
+  return getCatalogService().upsertConfig(tenantId, input);
+}
+
+/**
+ * Tests the saved catalog connection of a tenant.
+ *
+ * @param {string} tenantId Tenant ID
+ * @returns {Promise<{ ok: boolean, message: string }>}
+ */
+async function testTenantCatalogConnection(tenantId) {
+  await assertTenantExists(tenantId);
+  return getCatalogService().testConnection(tenantId);
 }
 
 /**
@@ -400,4 +480,7 @@ module.exports = {
   updateTenantLicenses,
   sendTenantAdminWelcomeEmail,
   sendTenantAdminPasswordReset,
+  getTenantCatalogConfig,
+  updateTenantCatalogConfig,
+  testTenantCatalogConnection,
 };

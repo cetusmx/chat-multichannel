@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Bell, LogOut, ChevronDown, Sun, Moon, KeyRound } from 'lucide-react';
 import useUIStore from '../../stores/useUIStore.js';
 import useAuthStore from '../../stores/useAuthStore.js';
+import useCatalogStore from '../../stores/useCatalogStore.js';
 import { disconnectSockets } from '../../services/socket.js';
 import { useNavigate, useLocation } from 'react-router-dom';
 import GlobalSearchInput from '../search/GlobalSearchInput.jsx';
@@ -60,6 +61,7 @@ export default function Header() {
     setShowMenu(false);
     clearAuth();
     disconnectSockets();
+    useCatalogStore.getState().reset();
     navigate('/login', { replace: true });
   }
 

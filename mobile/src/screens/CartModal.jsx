@@ -1,45 +1,51 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator, FlatList } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { X, Send, Download, Mail, Edit2, Search, MessageSquare, ShoppingCart as ShoppingCartIcon, Package, Plus, Minus, Trash2, Trash } from 'lucide-react-native';
+import { X, Send, Download, Search, MessageSquare, ShoppingCart as ShoppingCartIcon } from 'lucide-react-native';
 import Toast from 'react-native-toast-message';
-import useAuthStore from '@shared/stores/useAuthStore';
 import useChatStore from '@shared/stores/useChatStore';
-import { get, post, patch, getSealMarketFamilias, searchSealMarketCatalog } from '../services/api';
+import { post, patch, searchCatalog, lookupCustomerByTaxId } from '../services/api';
+import useCatalogStore from '../stores/useCatalogStore';
+import CatalogSearchForm from '../components/CatalogSearchForm';
+import CatalogProductRow from '../components/CatalogProductRow';
+import { initialSearchValues, productToCartItem, productToCardMetadata } from '../utils/catalog';
 
 export default function CartModal({ visible, onClose, chat }) {
   const insets = useSafeAreaInsets();
   const { sendMessage, updateChat } = useChatStore();
-  const token = useAuthStore(s => s.token);
 
   // Tabs state
   const [activeTab, setActiveTab] = useState('current'); // 'current' | 'catalog'
 
-  // Catalog State
-  const [familias, setFamilias] = useState([]);
-  const [searchForm, setSearchForm] = useState({ familia: '', sist_med: 'std', diam_int: '', diam_ext: '', altura: '', seccion: '' });
+  // Catalog State (schema-driven, provider-agnostic)
+  const catalogStatus = useCatalogStore((s) => s.status);
+  const catalogError = useCatalogStore((s) => s.error);
+  const catalogIsConfigured = useCatalogStore((s) => s.isConfigured);
+  const catalogSchema = useCatalogStore((s) => s.schema);
+  const catalogPricing = useCatalogStore((s) => s.pricing);
+  const loadCatalog = useCatalogStore((s) => s.load);
+  const [searchForm, setSearchForm] = useState(() => initialSearchValues(catalogSchema));
   const [isSearchingCatalog, setIsSearchingCatalog] = useState(false);
   const [searchResults, setSearchResults] = useState([]);
+  const [searchError, setSearchError] = useState(null);
 
   useEffect(() => {
-    if (activeTab === 'catalog' && familias.length === 0) {
-      getSealMarketFamilias()
-        .then(data => setFamilias([{ FAMILIA: '' }, ...data])) // Add "Todas" option implicitly later if we want a picker, but for chips we can just use the array. We will just set data directly.
-        .catch(err => console.log('Error familias:', err));
-    }
-  }, [activeTab, familias.length]);
+    if (visible) loadCatalog();
+  }, [visible, loadCatalog]);
 
-  const handleSearchCatalog = async () => {
-    if (!searchForm.familia) {
-      Toast.show({ type: 'error', text1: 'Selecciona una familia', text2: 'Por favor selecciona una familia principal' });
-      return;
-    }
+  useEffect(() => {
+    setSearchForm(initialSearchValues(catalogSchema));
+  }, [catalogSchema]);
+
+  const handleSearchCatalog = async (values) => {
     setIsSearchingCatalog(true);
+    setSearchError(null);
     try {
-      const res = await searchSealMarketCatalog(searchForm);
-      setSearchResults(res.data || []);
+      const products = await searchCatalog(values, { limit: 50 });
+      setSearchResults(products);
     } catch (err) {
-      Toast.show({ type: 'error', text1: 'Error buscando en catálogo' });
+      setSearchError(err.message || 'Error buscando en el catálogo');
+      Toast.show({ type: 'error', text1: 'Error buscando en catálogo', text2: err.message });
     } finally {
       setIsSearchingCatalog(false);
     }
@@ -47,24 +53,20 @@ export default function CartModal({ visible, onClose, chat }) {
 
   const handleInjectProduct = async (product) => {
     const newItems = [...cartItems];
-    const desc = product.DESC_ECOMM || product.DESCR || product.NOMBRE;
-    const existingIdx = newItems.findIndex(i => i.clave === product.CVE_ART);
+    const line = productToCartItem(product, 1);
+    const existingIdx = newItems.findIndex(i => i.clave === line.clave);
     if (existingIdx >= 0) {
       newItems[existingIdx].cantidad = (newItems[existingIdx].cantidad || 1) + 1;
     } else {
-      newItems.push({
-        clave: product.CVE_ART,
-        descripcion: desc,
-        precio: (product.PRECIO || 0) * 1.16,
-        cantidad: 1
-      });
+      newItems.push(line);
     }
-    
+
     // Save to server
     try {
       const newCartData = { ...cartData, items: newItems };
       await patch(`/clients/${chat.client.id}/cart`, { cartData: newCartData });
       updateChat(chat.id, { client: { ...chat.client, cartData: newCartData } });
+      sendMessage(`✅ *Agregado al carrito:*\n1x ${line.clave} - ${line.descripcion}\nPrecio: $${line.precio.toFixed(2)} Neto (IVA Incluido)`, false);
       Toast.show({ type: 'success', text1: 'Artículo añadido al carrito' });
     } catch (e) {
       Toast.show({ type: 'error', text1: 'Error al añadir artículo' });
@@ -72,20 +74,7 @@ export default function CartModal({ visible, onClose, chat }) {
   };
 
   const handleSuggestProduct = (product) => {
-    const desc = product.DESC_ECOMM || product.DESCR || product.NOMBRE;
-    const priceNet = ((product.PRECIO || 0) * 1.16).toFixed(2);
-    const linea = product.LIN_PROD || '';
-    const imageUrl = `https://sistemahidraulico.mx/Perfiles/${linea}.jpg`;
-
-    const metadata = {
-      clave: product.CVE_ART,
-      description: desc,
-      priceNet: priceNet,
-      imageUrl: imageUrl,
-      rawProduct: product
-    };
-
-    sendMessage('', false, 'PRODUCT_CARD', metadata);
+    sendMessage('', false, 'PRODUCT_CARD', productToCardMetadata(product));
     onClose();
   };
 
@@ -110,9 +99,10 @@ export default function CartModal({ visible, onClose, chat }) {
   const clientName = chat?.client?.name || '';
   const clientPhone = chat?.client?.phoneNumber || chat?.client?.phone || '';
 
-  // Calculation
+  // Calculation: prices are stored net (IVA included), so the subtotal is derived from the total.
+  const taxRate = catalogPricing?.taxRate ?? 0.16;
   const total = cartItems.reduce((sum, item) => sum + ((item.precio || 0) * (item.cantidad || 1)), 0);
-  const subtotal = total / 1.16;
+  const subtotal = total / (1 + taxRate);
   const iva = total - subtotal;
 
   const handleSendSummary = () => {
@@ -207,8 +197,9 @@ export default function CartModal({ visible, onClose, chat }) {
   const [tempBilling, setTempBilling] = useState({ razonSocial: '', rfc: '', billingAddress: '' });
   const [isSearchingRfc, setIsSearchingRfc] = useState(false);
 
-  // Update effect to populate default values when opening edit mode
-  React.useEffect(() => {
+  // Populate default values and leave edit mode only when the modal opens;
+  // live cartData changes are synced by the effect below without resetting edit state.
+  useEffect(() => {
     if (visible) {
       setTempAddress(shippingAddress || '');
       setTempBilling({
@@ -219,6 +210,7 @@ export default function CartModal({ visible, onClose, chat }) {
       setIsEditingAddress(false);
       setIsEditingBilling(false);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
   useEffect(() => {
@@ -235,31 +227,24 @@ export default function CartModal({ visible, onClose, chat }) {
     if (!tempBilling.rfc) return;
     setIsSearchingRfc(true);
     try {
-      const res = await get(`/sealmarket/clientes/rfc/${tempBilling.rfc}`);
-      if (!res.ok) throw new Error('RFC no encontrado');
-      const response = await res.json();
-      const cliente = Array.isArray(response.data) ? response.data[0] : response.data;
-      if (cliente) {
-        const calle = cliente.CALLE || '';
-        const num = cliente.NUMEXT || '';
-        const col = cliente.COLONIA ? `Col. ${cliente.COLONIA}` : '';
-        const cp = cliente.CODIGO ? `C.P. ${cliente.CODIGO}` : '';
-        const mun = cliente.MUNICIPIO || '';
-        const est = cliente.ESTADO || '';
-        const direccion = `${calle} ${num}, ${col}, ${cp}, ${mun}, ${est}`.trim().replace(/,\s*,/g, ',');
-
+      const customer = await lookupCustomerByTaxId(tempBilling.rfc);
+      if (customer) {
         setTempBilling(prev => ({
           ...prev,
-          razonSocial: cliente.NOMBRE || prev.razonSocial,
-          billingAddress: direccion || prev.billingAddress,
-          rfc: cliente.RFC || prev.rfc
+          razonSocial: customer.legalName || prev.razonSocial,
+          billingAddress: customer.address || prev.billingAddress,
+          rfc: customer.taxId || prev.rfc,
         }));
-        Toast.show({ type: 'success', text1: 'Datos fiscales encontrados' });
+        if (customer.isActive === false) {
+          Toast.show({ type: 'info', text1: 'Cliente inactivo', text2: 'El RFC existe pero el cliente no está activo en el sistema.' });
+        } else {
+          Toast.show({ type: 'success', text1: 'Datos fiscales encontrados' });
+        }
       } else {
         Toast.show({ type: 'error', text1: 'RFC no encontrado' });
       }
     } catch (err) {
-      Toast.show({ type: 'error', text1: 'Error al buscar RFC' });
+      Toast.show({ type: 'error', text1: 'Error al buscar RFC', text2: err.message });
     } finally {
       setIsSearchingRfc(false);
     }
@@ -430,78 +415,53 @@ export default function CartModal({ visible, onClose, chat }) {
             {cartItems.length > 0 && (
               <View style={styles.totalsSection}>
                 <View style={styles.totalRow}><Text style={styles.totalLabel}>Subtotal:</Text><Text style={styles.totalValue}>${subtotal.toFixed(2)}</Text></View>
-                <View style={styles.totalRow}><Text style={styles.totalLabel}>IVA (16%):</Text><Text style={styles.totalValue}>${iva.toFixed(2)}</Text></View>
+                <View style={styles.totalRow}><Text style={styles.totalLabel}>IVA ({Math.round(taxRate * 100)}%):</Text><Text style={styles.totalValue}>${iva.toFixed(2)}</Text></View>
                 <View style={[styles.totalRow, styles.grandTotalRow]}><Text style={styles.grandTotalLabel}>Total Neto:</Text><Text style={styles.grandTotalValue}>${total.toFixed(2)}</Text></View>
               </View>
             )}
             </ScrollView>
           ) : (
             <View style={styles.catalogContainer}>
-              <View style={[styles.searchSection, {flexDirection: 'column', gap: 8}]}>
-                <View style={{flexDirection: 'row', gap: 8}}>
-                  <TouchableOpacity 
-                    style={[styles.catalogSearchInput, {flex: 1, padding: 8, justifyContent: 'center', alignItems: 'center', backgroundColor: searchForm.sist_med === 'std' ? '#06b6d4' : '#1e293b'}]}
-                    onPress={() => setSearchForm({ ...searchForm, sist_med: 'std' })}
-                  >
-                    <Text style={{color: searchForm.sist_med === 'std' ? '#fff' : '#94a3b8', fontWeight: 'bold', fontSize: 12}}>STD</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity 
-                    style={[styles.catalogSearchInput, {flex: 1, padding: 8, justifyContent: 'center', alignItems: 'center', backgroundColor: searchForm.sist_med === 'mm' ? '#06b6d4' : '#1e293b'}]}
-                    onPress={() => setSearchForm({ ...searchForm, sist_med: 'mm' })}
-                  >
-                    <Text style={{color: searchForm.sist_med === 'mm' ? '#fff' : '#94a3b8', fontWeight: 'bold', fontSize: 12}}>MM</Text>
-                  </TouchableOpacity>
-                </View>
-                <View style={{flexDirection: 'row', gap: 8}}>
-                  <TextInput style={[styles.catalogSearchInput, {flex: 1}]} placeholder="D. Interior" placeholderTextColor="#64748b" value={searchForm.diam_int} onChangeText={(t) => setSearchForm({ ...searchForm, diam_int: t })} />
-                  <TextInput style={[styles.catalogSearchInput, {flex: 1}]} placeholder="D. Exterior" placeholderTextColor="#64748b" value={searchForm.diam_ext} onChangeText={(t) => setSearchForm({ ...searchForm, diam_ext: t })} />
-                </View>
-                <View style={{flexDirection: 'row', gap: 8}}>
-                  <TextInput style={[styles.catalogSearchInput, {flex: 1}]} placeholder="Altura" placeholderTextColor="#64748b" value={searchForm.altura} onChangeText={(t) => setSearchForm({ ...searchForm, altura: t })} />
-                  <TextInput style={[styles.catalogSearchInput, {flex: 1}]} placeholder="Sección" placeholderTextColor="#64748b" value={searchForm.seccion} onChangeText={(t) => setSearchForm({ ...searchForm, seccion: t })} />
-                </View>
-                <TouchableOpacity style={[styles.catalogSearchBtn, {width: '100%', marginTop: 4, flexDirection: 'row', justifyContent: 'center'}]} onPress={handleSearchCatalog}>
-                  <Search size={18} color="#fff" />
-                  <Text style={{color: '#fff', fontWeight: 'bold', marginLeft: 8}}>Buscar</Text>
-                </TouchableOpacity>
-              </View>
-              
-              <View style={styles.chipsContainer}>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                  {familias.map((f, idx) => (
-                    <TouchableOpacity
-                      key={idx}
-                      style={[styles.chip, searchForm.familia === f.FAMILIA && styles.chipActive]}
-                      onPress={() => setSearchForm({ ...searchForm, familia: f.FAMILIA })}
-                    >
-                      <Text style={[styles.chipText, searchForm.familia === f.FAMILIA && styles.chipTextActive]}>
-                        {f.FAMILIA || 'Todas'}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              </View>
-
-              {isSearchingCatalog ? (
+              {catalogStatus === 'loading' || catalogStatus === 'idle' ? (
                 <View style={styles.centerLoad}><ActivityIndicator size="large" color="#3b82f6" /></View>
+              ) : catalogStatus === 'error' ? (
+                <View style={styles.catalogNotice}>
+                  <Text style={styles.catalogNoticeText}>{catalogError || 'No se pudo cargar el catálogo'}</Text>
+                  <TouchableOpacity style={styles.catalogRetryBtn} onPress={() => loadCatalog({ force: true })}>
+                    <Text style={styles.catalogRetryText}>Reintentar</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : !catalogIsConfigured ? (
+                <View style={styles.catalogNotice}>
+                  <Text style={styles.catalogNoticeText}>El catálogo no está configurado para este tenant.</Text>
+                </View>
               ) : (
                 <FlatList
                   data={searchResults}
-                  keyExtractor={(item, index) => `${item.CVE_ART}-${index}`}
+                  keyExtractor={(item, index) => `${item.sku}-${index}`}
+                  keyboardShouldPersistTaps="handled"
                   contentContainerStyle={[styles.catalogList, { paddingBottom: insets.bottom + 20 }]}
-                  ListEmptyComponent={<Text style={styles.emptyText}>No hay resultados</Text>}
-                  renderItem={({ item }) => {
-                    const priceNet = ((item.PRECIO || 0) * 1.16).toFixed(2);
-                    return (
-                      <View style={styles.catalogItem}>
-                        <View style={styles.catalogItemHeader}>
-                          <Package size={16} color="#3b82f6" />
-                          <Text style={styles.catalogItemClave}>{item.CVE_ART}</Text>
-                        </View>
-                        <Text style={styles.catalogItemDesc}>{item.DESC_ECOMM || item.DESCR || item.NOMBRE}</Text>
-                        <Text style={styles.catalogItemPrice}>${priceNet} <Text style={styles.catalogItemTax}>Neto (IVA Inc.)</Text></Text>
-                        
-                        <View style={styles.catalogItemActions}>
+                  ListHeaderComponent={
+                    <View style={styles.searchSection}>
+                      <CatalogSearchForm
+                        values={searchForm}
+                        onChange={setSearchForm}
+                        onSubmit={handleSearchCatalog}
+                        loading={isSearchingCatalog}
+                        error={searchError}
+                      />
+                    </View>
+                  }
+                  ListEmptyComponent={
+                    isSearchingCatalog
+                      ? <View style={styles.centerLoad}><ActivityIndicator size="large" color="#3b82f6" /></View>
+                      : <Text style={styles.emptyText}>No hay resultados</Text>
+                  }
+                  renderItem={({ item }) => (
+                    <CatalogProductRow
+                      product={item}
+                      actions={
+                        <>
                           <TouchableOpacity style={styles.btnSuggest} onPress={() => handleSuggestProduct(item)}>
                             <MessageSquare size={14} color="#94a3b8" />
                             <Text style={styles.btnSuggestText}>Sugerir</Text>
@@ -510,10 +470,10 @@ export default function CartModal({ visible, onClose, chat }) {
                             <ShoppingCartIcon size={14} color="#fff" />
                             <Text style={styles.btnInjectText}>Añadir</Text>
                           </TouchableOpacity>
-                        </View>
-                      </View>
-                    );
-                  }}
+                        </>
+                      }
+                    />
+                  )}
                 />
               )}
             </View>
@@ -782,101 +742,44 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   searchSection: {
-    flexDirection: 'row',
-    padding: 10,
-    gap: 10,
+    paddingBottom: 12,
     backgroundColor: '#0f172a',
-  },
-  catalogSearchInput: {
-    flex: 1,
-    backgroundColor: '#1e293b',
-    color: '#fff',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    height: 40,
-    borderWidth: 1,
-    borderColor: '#334155',
-  },
-  catalogSearchBtn: {
-    backgroundColor: '#3b82f6',
-    width: 44,
-    height: 40,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  chipsContainer: {
-    paddingHorizontal: 10,
-    paddingBottom: 10,
-  },
-  chip: {
-    paddingHorizontal: 15,
-    paddingVertical: 6,
-    borderRadius: 20,
-    backgroundColor: '#1e293b',
-    marginRight: 10,
-    borderWidth: 1,
-    borderColor: '#334155',
-  },
-  chipActive: {
-    backgroundColor: '#3b82f6',
-    borderColor: '#2563eb',
-  },
-  chipText: {
-    color: '#94a3b8',
-    fontSize: 12,
-  },
-  chipTextActive: {
-    color: '#fff',
-    fontWeight: '600',
   },
   centerLoad: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    paddingVertical: 30,
   },
   catalogList: {
     padding: 10,
+    flexGrow: 1,
   },
-  catalogItem: {
+  catalogNotice: {
+    margin: 15,
+    padding: 15,
     backgroundColor: '#1e293b',
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 10,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: '#334155',
-  },
-  catalogItemHeader: {
-    flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    marginBottom: 4,
-  },
-  catalogItemClave: {
-    color: '#3b82f6',
-    fontWeight: 'bold',
-    fontSize: 13,
-  },
-  catalogItemDesc: {
-    color: '#e2e8f0',
-    fontSize: 13,
-    marginBottom: 6,
-  },
-  catalogItemPrice: {
-    color: '#10b981',
-    fontWeight: 'bold',
-    fontSize: 14,
-    marginBottom: 10,
-  },
-  catalogItemTax: {
-    color: '#64748b',
-    fontSize: 10,
-    fontWeight: 'normal',
-  },
-  catalogItemActions: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
     gap: 10,
+  },
+  catalogNoticeText: {
+    color: '#cbd5e1',
+    fontSize: 13,
+    textAlign: 'center',
+  },
+  catalogRetryBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: '#0284c7',
+    borderRadius: 6,
+  },
+  catalogRetryText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
   },
   btnSuggest: {
     flexDirection: 'row',

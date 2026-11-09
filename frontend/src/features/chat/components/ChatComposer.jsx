@@ -23,7 +23,7 @@ const AI_QUICK_PROMPTS = [
       'Extrae la dirección de envío proporcionada por el cliente. PASO 1: Depúrala, estandarízala y dale formato profesional (Calle, Número, Colonia, Código Postal, Ciudad, Estado). PASO 2: Usa la herramienta actualizar_carrito ASEGURÁNDOTE de pasar ESTRICTAMENTE la dirección depurada y formateada en el parámetro shipping_address (NUNCA la dirección cruda). PASO 3: Respóndeme con la dirección que guardaste.',
   },
   { label: 'Extraer CSF', action: 'csf' },
-  { label: 'Redactar oferta', prompt: 'Propón una respuesta cordial y persuasiva ofreciendo nuestros sellos mecánicos u O-rings' },
+  { label: 'Redactar oferta', prompt: 'Propón una respuesta cordial y persuasiva ofreciendo los productos de nuestro catálogo que mejor encajen con lo que pide el cliente' },
 ];
 
 /**

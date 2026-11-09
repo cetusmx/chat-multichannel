@@ -1,165 +1,46 @@
+/**
+ * Legacy compatibility layer for /api/sealmarket/*.
+ *
+ * Older web/mobile builds call these endpoints and expect raw SealMarket
+ * records. They are now served through the tenant's catalog provider and
+ * will be removed once every client uses /api/catalog/*.
+ */
 const express = require('express');
 const router = express.Router();
 const authenticate = require('../middleware/auth');
+const catalogService = require('../services/catalog.service');
 
-const CATALOG_API_URL = process.env.VITE_API_BASE_URL || 'http://75.119.150.222:3010';
-const CATALOG_API_KEY = process.env.VITE_INTERNAL_SECRET || 'sm_ecommerce_x2ve9yFf0aiDxh1HelezpVeyRAcngGwgEg3ZnSZwhGg2SaZrd2gQiysiVo86R3LcUZFFxZDSMADepof1jMLSumIbiqBRcbjyhvA78haaxnLrrbOuU3zqCi0kQXJf1gSc';
-
-/**
- * Parameter names tried, in order, when the UI sends a free-text `q`.
- * The ERP endpoint is documented for parametric search (familia, diam_*);
- * these are the text aliases it is expected to accept. Override with
- * CATALOG_TEXT_PARAMS="clave,descripcion" if the ERP uses other names.
- */
-const TEXT_PARAM_CANDIDATES = (process.env.CATALOG_TEXT_PARAMS || 'clave,q,descripcion,search').split(',').map((s) => s.trim()).filter(Boolean);
-
-async function fetchCatalog(params) {
-  const searchParams = new URLSearchParams(params);
-  searchParams.set('limit', '100');
-  const endpoint = `${CATALOG_API_URL}/api/clavesalternas/filter-v2?${searchParams.toString()}`;
-  console.log('[SEALMARKET] Fetching Catalog API:', endpoint);
-  const fetchRes = await fetch(endpoint, {
-    method: 'GET',
-    headers: { 'Content-Type': 'application/json', 'x-api-key': CATALOG_API_KEY },
-  });
-  if (!fetchRes.ok) {
-    const err = new Error(`El catálogo devolvió un error: ${fetchRes.statusText}`);
-    err.status = fetchRes.status;
-    throw err;
-  }
-  const data = await fetchRes.json();
-  return Array.isArray(data.data) ? data.data : [];
+function legacyError(res, error, fallback) {
+  console.error('[SEALMARKET][legacy]', error.message);
+  return res.status(error.status || 500).json({ error: error.status ? error.message : fallback });
 }
 
-function normalize(s) {
-  return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-}
-
-/** Keeps only records where every token of `q` appears in clave or description. */
-function filterByText(results, q) {
-  const tokens = normalize(q).split(/[\s,;]+/).filter(Boolean);
-  if (tokens.length === 0) return results;
-  return results.filter((item) => {
-    const hay = normalize([item.CVE_ART, item.DESC_ECOMM, item.DESCR, item.NOMBRE, item.LIN_PROD, ...(item.claves_alternas || [])].filter(Boolean).join(' '));
-    return tokens.every((t) => hay.includes(t));
-  });
-}
-
-/** Free-text search: tries each candidate parameter until one yields matches. */
-async function searchByText(q, extraParams = {}) {
-  for (const param of TEXT_PARAM_CANDIDATES) {
-    try {
-      const raw = await fetchCatalog({ ...extraParams, [param]: q });
-      const matched = filterByText(raw, q);
-      if (matched.length > 0) return matched;
-    } catch (err) {
-      if (err.status && err.status !== 400 && err.status !== 404 && err.status !== 422) throw err;
-    }
-  }
-  return [];
-}
-
-router.get('/catalog/search', authenticate, async (req, res, next) => {
+router.get('/catalog/search', authenticate, async (req, res) => {
   try {
-    const { q, ...params } = req.query;
-
-    let results;
-    if (q && String(q).trim().length >= 2) {
-      results = await searchByText(String(q).trim(), params);
-    } else {
-      results = await fetchCatalog(params);
-    }
-    
-    if (Array.isArray(results) && results.length > 0) {
-      // 1. Omitir productos "muertos" (precio 0, sin stock, y sin fecha de última compra)
-      results = results.filter(item => {
-        const totalExt = Object.values(item.existencias || {}).reduce((a, b) => a + (b || 0), 0);
-        const isDead = (!item.PRECIO || item.PRECIO === 0) && totalExt === 0 && !item.FCH_ULTCOM;
-        return !isDead;
-      });
-
-      // 2. Priorizar productos con existencia si hay múltiples opciones
-      if (results.length > 1) {
-        const conExistencia = results.filter(item => {
-          const totalExt = Object.values(item.existencias || {}).reduce((a, b) => a + (b || 0), 0);
-          return totalExt > 0;
-        });
-        
-        if (conExistencia.length > 0) {
-          results = conExistencia;
-        } else {
-          // Si TODOS están agotados, solo mostrar los que tienen fecha de última compra (FCH_ULTCOM != null)
-          results = results.filter(item => item.FCH_ULTCOM);
-        }
-      }
-      
-      // Limitar los resultados a 50 para el vendedor humano (más laxo que la IA)
-      results = results.slice(0, 50);
-    }
-    
-    res.json({ data: results });
+    const { limit, ...params } = req.query;
+    const result = await catalogService.search(req.user.tenantId, params, { limit: Math.min(parseInt(limit, 10) || 50, 100) });
+    res.json({ data: result.products.map((p) => p.raw || p) });
   } catch (error) {
-    console.error('[SEALMARKET] Excepción:', error.message);
-    if (error.status) return res.status(error.status).json({ error: error.message });
-    res.status(500).json({ error: 'Hubo un fallo al leer los parámetros o conectar con el catálogo' });
+    legacyError(res, error, 'Hubo un fallo al leer los parámetros o conectar con el catálogo');
   }
 });
 
-router.get('/clientes/rfc/:rfc', authenticate, async (req, res, next) => {
+router.get('/catalog/familias', authenticate, async (req, res) => {
   try {
-    const rfc = req.params.rfc;
-    const apiUrl = process.env.VITE_API_BASE_URL || 'http://75.119.150.222:3010';
-    const apiKey = process.env.VITE_INTERNAL_SECRET || 'sm_ecommerce_x2ve9yFf0aiDxh1HelezpVeyRAcngGwgEg3ZnSZwhGg2SaZrd2gQiysiVo86R3LcUZFFxZDSMADepof1jMLSumIbiqBRcbjyhvA78haaxnLrrbOuU3zqCi0kQXJf1gSc';
-    
-    const endpoint = `${apiUrl}/api/clientes/rfc/${rfc}`;
-    
-    const fetchRes = await fetch(endpoint, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey
-      }
-    });
-    
-    if (!fetchRes.ok) {
-      if (fetchRes.status === 404) return res.status(404).json({ error: 'RFC no encontrado' });
-      return res.status(fetchRes.status).json({ error: `La API devolvió un error: ${fetchRes.statusText}` });
-    }
-    
-    const data = await fetchRes.json();
-    res.json(data);
+    const options = await catalogService.getOptions(req.user.tenantId, 'familia');
+    res.json(options.map((o) => ({ FAMILIA: o.value })));
   } catch (error) {
-    console.error('[SEALMARKET] Excepción al buscar RFC:', error.message);
-    res.status(500).json({ error: 'Hubo un fallo al obtener los datos del RFC' });
+    legacyError(res, error, 'Hubo un fallo al obtener las familias');
   }
 });
 
-router.get('/catalog/familias', authenticate, async (req, res, next) => {
+router.get('/clientes/rfc/:rfc', authenticate, async (req, res) => {
   try {
-    const apiUrl = process.env.VITE_API_BASE_URL || 'http://75.119.150.222:3010';
-    const apiKey = process.env.VITE_INTERNAL_SECRET || 'sm_ecommerce_x2ve9yFf0aiDxh1HelezpVeyRAcngGwgEg3ZnSZwhGg2SaZrd2gQiysiVo86R3LcUZFFxZDSMADepof1jMLSumIbiqBRcbjyhvA78haaxnLrrbOuU3zqCi0kQXJf1gSc';
-    
-    const endpoint = `${apiUrl}/familias`;
-    console.log('[SEALMARKET] Fetching Familias API:', endpoint);
-    
-    const fetchRes = await fetch(endpoint, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey
-      }
-    });
-    
-    if (!fetchRes.ok) {
-      console.error('[SEALMARKET] API HTTP Error fetching familias:', fetchRes.status);
-      return res.status(fetchRes.status).json({ error: `La API de familias devolvió un error: ${fetchRes.statusText}` });
-    }
-    
-    const data = await fetchRes.json();
-    res.json(data); // Returns the array of families
+    const customer = await catalogService.lookupCustomer(req.user.tenantId, req.params.rfc);
+    if (!customer) return res.status(404).json({ error: 'RFC no encontrado' });
+    res.json({ data: [customer.raw || customer] });
   } catch (error) {
-    console.error('[SEALMARKET] Excepción al obtener familias:', error.message);
-    res.status(500).json({ error: 'Hubo un fallo al obtener las familias' });
+    legacyError(res, error, 'Hubo un fallo al obtener los datos del RFC');
   }
 });
 

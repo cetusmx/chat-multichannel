@@ -128,3 +128,34 @@ export const api = {
     return this.fetch(endpoint, { ...options, method: 'DELETE' });
   },
 };
+
+// ---------------------------------------------------------------------------
+// Tenant catalog configuration (superadmin manages any tenant's catalog)
+// ---------------------------------------------------------------------------
+
+/** @returns {Promise<{ data: Object|null, providers: string[] }>} */
+export async function getTenantCatalogConfig(tenantId) {
+  const res = await api.get(`/api/superadmin/tenants/${tenantId}/catalog-config`);
+  return { data: res?.data ?? null, providers: Array.isArray(res?.providers) ? res.providers : [] };
+}
+
+/** @returns {Promise<Object>} saved config (never includes the API key; exposes `hasApiKey`) */
+export async function updateTenantCatalogConfig(tenantId, payload) {
+  const res = await api.put(`/api/superadmin/tenants/${tenantId}/catalog-config`, payload);
+  return res?.data ?? null;
+}
+
+/**
+ * Tests the saved connection. The backend answers 502 when the provider is unreachable,
+ * which `api.fetch` turns into a generic error, so unwrap it back into `{ ok, message }`.
+ * @returns {Promise<{ ok: boolean, message: string }>}
+ */
+export async function testTenantCatalogConnection(tenantId) {
+  try {
+    const res = await api.post(`/api/superadmin/tenants/${tenantId}/catalog-config/test`, {});
+    return res?.data ?? { ok: false, message: 'Respuesta vacía del servidor' };
+  } catch (err) {
+    if (err.status === 502 && err.data?.data) return { ok: false, ...err.data.data };
+    throw err;
+  }
+}
