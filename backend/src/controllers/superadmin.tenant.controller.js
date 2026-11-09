@@ -15,7 +15,21 @@ const createTenantSchema = z.object({
   email: z.string().trim().email('Invalid email address').max(255),
   password: z.string().min(8, 'Password must be at least 8 characters').max(72, 'Password must be less than 72 characters')
     .regex(/[A-Z]/, 'Must contain at least one uppercase letter').regex(/[0-9]/, 'Must contain at least one number').regex(/[^A-Za-z0-9]/, 'Must contain at least one special character'),
+  // Optional initial catalog integration; deep validation happens in catalog.service.upsertConfig.
+  catalogConfig: z.object({}).passthrough().nullable().optional(),
 });
+
+const catalogConfigSchema = z.object({
+  provider: z.string().trim().min(1).max(50).optional(),
+  isActive: z.boolean().optional(),
+  baseUrl: z.string().trim().max(2048).nullable().optional(),
+  apiKey: z.string().max(4096).optional(),
+  connection: z.record(z.any()).nullable().optional(),
+  searchSchema: z.record(z.any()).nullable().optional(),
+  pricing: z.record(z.any()).nullable().optional(),
+  features: z.record(z.boolean()).nullable().optional(),
+  aiRules: z.string().max(20000).nullable().optional(),
+}).strict();
 
 const updateTenantStatusSchema = z.object({
   status: z.enum(['active', 'suspended']),
@@ -56,12 +70,24 @@ async function createTenant(req, res, next) {
     }
     const validatedData = parsed.data;
 
+    let catalogConfig;
+    if (validatedData.catalogConfig) {
+      const parsedCatalog = catalogConfigSchema.safeParse(validatedData.catalogConfig);
+      if (!parsedCatalog.success) {
+        return res.status(400).json({
+          error: { message: 'Validation failed', details: parsedCatalog.error.errors.map((e) => ({ ...e, path: ['catalogConfig', ...e.path] })) },
+        });
+      }
+      catalogConfig = parsedCatalog.data;
+    }
+
     const result = await superadminTenantService.createTenantWithAdmin({
       name: validatedData.name,
       domain: validatedData.slug,
       adminName: `${validatedData.firstName} ${validatedData.lastName}`,
       adminEmail: validatedData.email,
       password: validatedData.password,
+      ...(catalogConfig ? { catalogConfig } : {}),
     });
 
     if (typeof superadminTenantService.sendTenantAdminWelcomeEmail === 'function') {
@@ -82,10 +108,14 @@ async function createTenant(req, res, next) {
     const safeResult = {
       tenant: result.tenant,
       user: userWithoutPassword,
+      ...(result.catalogConfig ? { catalogConfig: result.catalogConfig } : {}),
     };
 
     success(res, safeResult, 201);
   } catch (err) {
+    if (err.status === 400 || err.name === 'SchemaError') {
+      return res.status(400).json({ error: { message: err.message } });
+    }
     if (err.code === 'P2002' && err.meta?.target) {
       let field = 'unknown';
       if (Array.isArray(err.meta.target)) field = err.meta.target[0];
@@ -237,6 +267,77 @@ async function resetTenantAdminPassword(req, res) {
   }
 }
 
+function parseTenantIdOr400(req, res) {
+  const parsedId = tenantIdSchema.safeParse(req.params.id);
+  if (!parsedId.success) {
+    res.status(400).json({
+      error: { message: 'Invalid tenant ID format', details: parsedId.error.errors },
+    });
+    return null;
+  }
+  return parsedId.data;
+}
+
+async function getTenantCatalogConfig(req, res) {
+  const id = parseTenantIdOr400(req, res);
+  if (!id) return;
+  try {
+    const result = await superadminTenantService.getTenantCatalogConfig(id);
+    // Same shape as GET /api/catalog/config so both portals can share client code.
+    return res.json({ data: result.data, providers: result.providers });
+  } catch (err) {
+    if (err.statusCode === 404) {
+      return res.status(404).json({ error: { message: 'Tenant not found' } });
+    }
+    const logger = require('../utils/logger');
+    logger.error(`Error getting catalog config for tenant ${id}:`, err);
+    return res.status(500).json({ error: { message: 'Internal server error while reading catalog config' } });
+  }
+}
+
+async function updateTenantCatalogConfig(req, res) {
+  const id = parseTenantIdOr400(req, res);
+  if (!id) return;
+
+  const parsedData = catalogConfigSchema.safeParse(req.body || {});
+  if (!parsedData.success) {
+    return res.status(400).json({
+      error: { message: 'Validation failed', details: parsedData.error.errors },
+    });
+  }
+
+  try {
+    const config = await superadminTenantService.updateTenantCatalogConfig(id, parsedData.data);
+    return res.json({ data: config });
+  } catch (err) {
+    if (err.statusCode === 404) {
+      return res.status(404).json({ error: { message: 'Tenant not found' } });
+    }
+    if (err.status === 400 || err.name === 'SchemaError') {
+      return res.status(400).json({ error: { message: err.message } });
+    }
+    const logger = require('../utils/logger');
+    logger.error(`Error updating catalog config for tenant ${id}:`, err);
+    return res.status(500).json({ error: { message: 'Internal server error while saving catalog config' } });
+  }
+}
+
+async function testTenantCatalogConnection(req, res) {
+  const id = parseTenantIdOr400(req, res);
+  if (!id) return;
+  try {
+    const result = await superadminTenantService.testTenantCatalogConnection(id);
+    return res.status(result.ok ? 200 : 502).json({ data: result });
+  } catch (err) {
+    if (err.statusCode === 404) {
+      return res.status(404).json({ error: { message: 'Tenant not found' } });
+    }
+    const logger = require('../utils/logger');
+    logger.error(`Error testing catalog connection for tenant ${id}:`, err);
+    return res.status(500).json({ error: { message: 'Internal server error while testing catalog connection' } });
+  }
+}
+
 module.exports = {
   getTenants,
   createTenant,
@@ -244,4 +345,7 @@ module.exports = {
   getTenantById,
   updateTenantLicenses,
   resetTenantAdminPassword,
+  getTenantCatalogConfig,
+  updateTenantCatalogConfig,
+  testTenantCatalogConnection,
 };

@@ -1,14 +1,21 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ChevronLeft, Save, AlertTriangle, Mail, KeyRound, Loader2 } from 'lucide-react';
+import { ChevronLeft, Save, AlertTriangle, Mail, KeyRound, Loader2, Database, SlidersHorizontal } from 'lucide-react';
 import { api } from '../services/api';
 import { toast } from 'sonner';
 import ConfirmModal from '../components/ui/ConfirmModal';
+import TenantCatalogConfig from '../components/TenantCatalogConfig';
+
+const TABS = [
+  { id: 'general', label: 'Licencias y cuenta', icon: SlidersHorizontal },
+  { id: 'catalog', label: 'Catálogo', icon: Database },
+];
 
 export default function TenantDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
   
+  const [activeTab, setActiveTab] = useState('general');
   const [tenant, setTenant] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -135,10 +142,42 @@ export default function TenantDetails() {
         </button>
         <div>
           <h2 className="text-3xl font-semibold tracking-tight">{tenant.name}</h2>
-          <p className="text-slate-400 mt-1">Configuración de Licencias y Detalles</p>
+          <p className="text-slate-400 mt-1">Licencias, cuenta de administrador y catálogo de productos</p>
         </div>
       </header>
 
+      <div role="tablist" aria-label="Secciones del inquilino" className="flex gap-1 mb-6 border-b border-slate-800">
+        {TABS.map(({ id: tabId, label, icon: Icon }) => {
+          const selected = activeTab === tabId;
+          return (
+            <button
+              key={tabId}
+              type="button"
+              role="tab"
+              id={`tenant-tab-${tabId}`}
+              aria-selected={selected}
+              aria-controls={`tenant-panel-${tabId}`}
+              onClick={() => setActiveTab(tabId)}
+              className={`flex items-center gap-2 px-4 py-2.5 -mb-px text-sm font-medium border-b-2 transition-colors ${
+                selected
+                  ? 'border-blue-500 text-white'
+                  : 'border-transparent text-slate-400 hover:text-slate-200 hover:border-slate-700'
+              }`}
+            >
+              <Icon size={16} />
+              {label}
+            </button>
+          );
+        })}
+      </div>
+
+      {activeTab === 'catalog' && (
+        <div role="tabpanel" id="tenant-panel-catalog" aria-labelledby="tenant-tab-catalog">
+          <TenantCatalogConfig tenantId={id} />
+        </div>
+      )}
+
+      <div role="tabpanel" id="tenant-panel-general" aria-labelledby="tenant-tab-general" hidden={activeTab !== 'general'}>
       <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-sm overflow-hidden flex flex-col p-6">
         <h3 className="text-xl font-medium mb-6 flex items-center gap-2">
           <AlertTriangle className="text-yellow-500" size={20} />
@@ -280,6 +319,7 @@ export default function TenantDetails() {
             {sendingReset ? 'Enviando...' : 'Enviar enlace de contraseña'}
           </button>
         </div>
+      </div>
       </div>
 
       <ConfirmModal
