@@ -289,6 +289,66 @@ export async function updateClientCart(clientId, cartData) {
   return res.json();
 }
 
+// ---------------------------------------------------------------------------
+// Catalog (provider-agnostic). Shapes are documented in backend/src/catalog.
+// ---------------------------------------------------------------------------
+
+async function readJson(res, fallback) {
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err = new Error(json.error || fallback);
+    err.status = res.status;
+    err.code = json.code;
+    throw err;
+  }
+  return json;
+}
+
+/** Schema, capabilities, pricing and required attributes of the tenant catalog. */
+export async function getCatalogSchema() {
+  const json = await readJson(await get('/catalog/schema'), 'No se pudo cargar el esquema del catálogo');
+  return json.data;
+}
+
+/** Options for a select attribute: [{ value, label }]. */
+export async function getCatalogOptions(attributeKey) {
+  const json = await readJson(await get(`/catalog/options/${encodeURIComponent(attributeKey)}`), 'No se pudieron cargar las opciones');
+  return json.data || [];
+}
+
+/** Searches products. `params` = { q?, <attributeKey>: value, ... }. Returns Product[] (DTO). */
+export async function searchCatalog(params = {}, { limit } = {}) {
+  const filtered = Object.fromEntries(Object.entries(params).filter(([, v]) => v !== '' && v !== null && v !== undefined));
+  if (limit) filtered.limit = limit;
+  const query = new URLSearchParams(filtered).toString();
+  const json = await readJson(await get(`/catalog/search${query ? `?${query}` : ''}`), 'Error buscando en el catálogo');
+  return json.data || [];
+}
+
+/** Customer fiscal data by RFC: { taxId, legalName, address, isActive } or null. */
+export async function lookupCustomerByTaxId(taxId) {
+  const res = await get(`/catalog/customer/${encodeURIComponent(taxId)}`);
+  if (res.status === 404) return null;
+  const json = await readJson(res, 'Error al consultar el RFC');
+  return json.data;
+}
+
+export async function getCatalogConfig() {
+  return readJson(await get('/catalog/config'), 'No se pudo cargar la configuración del catálogo');
+}
+
+export async function updateCatalogConfig(data) {
+  const json = await readJson(await put('/catalog/config', data), 'No se pudo guardar la configuración del catálogo');
+  return json.data;
+}
+
+export async function testCatalogConnection() {
+  const res = await post('/catalog/config/test', {});
+  const json = await res.json().catch(() => ({}));
+  return json.data || { ok: false, message: json.error || 'Sin respuesta' };
+}
+
+/** @deprecated use searchCatalog; kept for older callers until removed. */
 export async function searchSealMarketCatalog(params) {
   // Remove empty parameters
   const filteredParams = Object.fromEntries(

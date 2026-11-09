@@ -16,6 +16,7 @@ import ResetPasswordPage from './features/auth/ResetPasswordPage.jsx';
 import SearchPage from './pages/SearchPage.jsx';
 import ClientProfile from './pages/ClientProfile.jsx';
 import useChatStore from './stores/useChatStore.js';
+import useCatalogStore from './stores/useCatalogStore.js';
 import useTabNotification from './hooks/useTabNotification.js';
 import CoordinatorChatView from './features/chat/components/CoordinatorChatView.jsx';
 import { Modal, Button, Toaster } from './components/ui/index.js';
@@ -41,6 +42,7 @@ function AppLayout() {
   useEffect(() => {
     useChatStore.getState().initializeSocket();
     useChatStore.getState().fetchConversations();
+    useCatalogStore.getState().load();
 
     return () => {
       useChatStore.getState().disconnectSocket();

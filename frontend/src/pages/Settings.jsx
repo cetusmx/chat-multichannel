@@ -12,12 +12,14 @@ import AssignmentRulesSection from '../features/settings/AssignmentRulesSection.
 import SlaConfigSection from '../features/settings/SlaConfigSection.jsx';
 import CannedResponsesSection from '../features/settings/CannedResponsesSection.jsx';
 import EmailConfigSection from '../features/settings/EmailConfigSection.jsx';
+import CatalogConfigSection from '../features/settings/CatalogConfigSection.jsx';
 
 const tabs = [
   { id: 'company', label: 'Empresa', roles: ['ADMIN', 'COORDINATOR'] },
   { id: 'branches', label: 'Sucursales', roles: ['ADMIN', 'COORDINATOR'] },
   { id: 'groups', label: 'Grupos', roles: ['ADMIN', 'COORDINATOR'] },
   { id: 'whatsapp', label: 'WhatsApp', roles: ['ADMIN'] },
+  { id: 'catalog', label: 'Catálogo', roles: ['ADMIN'] },
   { id: 'ai', label: 'Asistente IA', roles: ['ADMIN'] },
   { id: 'kb', label: 'Base de conocimiento', roles: ['ADMIN'] },
   { id: 'canned', label: 'Respuestas rápidas', roles: ['ADMIN'] },
@@ -38,6 +40,7 @@ export default function Settings() {
       case 'branches': return <BranchListSection />;
       case 'groups': return <GroupListSection />;
       case 'whatsapp': return <WhatsAppSettingsSection />;
+      case 'catalog': return <CatalogConfigSection />;
       case 'ai': return (
         <div className="space-y-6">
           <AiConfigSection />

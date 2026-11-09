@@ -28,11 +28,11 @@ export function cartTotal(items) {
   return items.reduce((acc, it) => acc + (Number(it.precio) || 0) * (Number(it.cantidad) || 0), 0);
 }
 
-/** Mirrors CartViewer: total is IVA-inclusive, subtotal is derived from it. */
-export function cartTotals(items) {
+/** Total is tax-inclusive (net prices); subtotal is derived using the tenant tax rate. */
+export function cartTotals(items, taxRate = IVA_RATE) {
   const total = cartTotal(items);
-  const subtotal = total / (1 + IVA_RATE);
-  return { subtotal, iva: total - subtotal, total, count: items.length };
+  const subtotal = total / (1 + taxRate);
+  return { subtotal, iva: total - subtotal, total, count: items.length, taxRate };
 }
 
 /**
@@ -53,15 +53,16 @@ export function withAddedItem(raw, item) {
 }
 
 /**
- * Maps a SealMarket catalog record onto a cart line item.
- * Catalog PRECIO is pre-tax; the cart stores net prices (IVA included),
- * mirroring CartViewer.handleInjectProduct.
+ * Maps a catalog Product DTO (see utils/catalog.js) onto a cart line item.
+ * priceNet already includes tax according to the tenant's pricing config.
  */
 export function catalogProductToItem(product, cantidad = 1) {
-  return {
-    clave: product.CVE_ART || product.clave,
-    descripcion: product.DESC_ECOMM || product.DESCR || product.NOMBRE || product.descripcion || '',
-    precio: Number(((Number(product.PRECIO) || 0) * (1 + IVA_RATE)).toFixed(2)),
+  const item = {
+    clave: product.sku,
+    descripcion: product.name || product.description || '',
+    precio: Number(product.priceNet ?? 0),
     cantidad,
   };
+  if (product.attributes && Object.keys(product.attributes).length) item.attributes = product.attributes;
+  return item;
 }

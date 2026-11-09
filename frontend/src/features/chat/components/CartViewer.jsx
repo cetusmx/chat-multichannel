@@ -1,10 +1,14 @@
 import { useState, useEffect } from 'react';
 import { ShoppingCart, Plus, Minus, Trash2, Trash, Search, Database, Send, MessageSquare, X, FileText, Mail, Pencil } from 'lucide-react';
-import { post, updateClientCart, searchSealMarketCatalog, getSealMarketFamilias, getClientByRfc, enviarCotizacionEmail, buildQuotePayload } from '../../../services/api';
+import { post, updateClientCart, searchCatalog, lookupCustomerByTaxId, enviarCotizacionEmail, buildQuotePayload } from '../../../services/api';
+import useCatalogStore from '../../../stores/useCatalogStore.js';
+import CatalogSearchForm from '../../catalog/CatalogSearchForm.jsx';
+import CatalogProductRow from '../../catalog/CatalogProductRow.jsx';
+import { initialSearchValues, productToCartItem, productToCardMetadata } from '../../../utils/catalog.js';
 import useChatStore from '../../../stores/useChatStore';
 import { toast } from '../../../stores/useToastStore.js';
 import ConfirmModal from '../../../components/ConfirmModal.jsx';
-import { Button, IconButton, Eyebrow, Tabs, Badge, Field, Input, Textarea, Select, Spinner, EmptyState, Modal } from '../../../components/ui/index.js';
+import { Button, IconButton, Eyebrow, Tabs, Field, Input, Textarea, Spinner, EmptyState, Modal } from '../../../components/ui/index.js';
 import { formatMoney } from '../../../utils/formatDate.js';
 import { cn } from '../../../utils/cn.js';
 
@@ -26,27 +30,22 @@ export default function CartViewer({ cartData, client, onClose }) {
   const [emailTo, setEmailTo] = useState('');
   const [isSendingEmail, setIsSendingEmail] = useState(false);
 
-  // Catalog state
-  const [familias, setFamilias] = useState([]);
-  const [searchForm, setSearchForm] = useState({
-    familia: '',
-    sist_med: 'std',
-    diam_int: '',
-    diam_ext: '',
-    altura: '',
-    seccion: '',
-  });
+  // Catalog state (schema-driven)
+  const catalogSchema = useCatalogStore((s) => s.schema);
+  const catalogPricing = useCatalogStore((s) => s.pricing);
+  const loadCatalog = useCatalogStore((s) => s.load);
+  const [searchForm, setSearchForm] = useState(() => initialSearchValues(catalogSchema));
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState([]);
   const [searchError, setSearchError] = useState(null);
 
   useEffect(() => {
-    if (activeTab === 'catalog' && familias.length === 0) {
-      getSealMarketFamilias()
-        .then(data => setFamilias(data))
-        .catch(err => console.error('Error al cargar familias:', err));
-    }
-  }, [activeTab, familias.length]);
+    loadCatalog();
+  }, [loadCatalog]);
+
+  useEffect(() => {
+    setSearchForm(initialSearchValues(catalogSchema));
+  }, [catalogSchema]);
 
   let cartItems = [];
   let shippingAddress = null;
@@ -68,7 +67,7 @@ export default function CartViewer({ cartData, client, onClose }) {
 
   // Prices are stored net (IVA included), so the subtotal is derived from the total.
   const total = cartItems.reduce((sum, item) => sum + ((item.precio || 0) * (item.cantidad || 1)), 0);
-  const subtotal = total / 1.16;
+  const subtotal = total / (1 + (catalogPricing?.taxRate ?? 0.16));
   const iva = total - subtotal;
 
   // Define update helper
@@ -146,23 +145,15 @@ export default function CartViewer({ cartData, client, onClose }) {
     if (!tempBilling.rfc) return;
     setIsSearchingRfc(true);
     try {
-      const response = await getClientByRfc(tempBilling.rfc);
-      const cliente = Array.isArray(response.data) ? response.data[0] : response.data;
-      if (cliente) {
-        const calle = cliente.CALLE || '';
-        const num = cliente.NUMEXT || '';
-        const col = cliente.COLONIA ? `Col. ${cliente.COLONIA}` : '';
-        const cp = cliente.CODIGO ? `C.P. ${cliente.CODIGO}` : '';
-        const mun = cliente.MUNICIPIO || '';
-        const est = cliente.ESTADO || '';
-        const direccion = `${calle} ${num}, ${col}, ${cp}, ${mun}, ${est}`.trim().replace(/,\s*,/g, ',');
-
+      const customer = await lookupCustomerByTaxId(tempBilling.rfc);
+      if (customer) {
         setTempBilling(prev => ({
           ...prev,
-          razonSocial: cliente.NOMBRE || prev.razonSocial,
-          billingAddress: direccion || prev.billingAddress,
-          rfc: cliente.RFC || prev.rfc,
+          razonSocial: customer.legalName || prev.razonSocial,
+          billingAddress: customer.address || prev.billingAddress,
+          rfc: customer.taxId || prev.rfc,
         }));
+        if (customer.isActive === false) toast.warning('Cliente inactivo', { description: 'El RFC existe pero el cliente no está activo en el sistema.' });
       } else {
         toast.warning('RFC no encontrado', { description: 'El RFC no fue encontrado en la base de datos.' });
       }
@@ -200,18 +191,12 @@ export default function CartViewer({ cartData, client, onClose }) {
     setConfirmModal({ open: false, type: null, idx: null });
   };
 
-  const handleSearch = async (e) => {
-    e.preventDefault();
-    if (!searchForm.familia) {
-      setSearchError('Por favor selecciona una familia principal.');
-      return;
-    }
-
+  const handleSearch = async (values) => {
     setIsSearching(true);
     setSearchError(null);
     try {
-      const res = await searchSealMarketCatalog(searchForm);
-      setSearchResults(res.data || []);
+      const products = await searchCatalog(values, { limit: 50 });
+      setSearchResults(products);
     } catch (err) {
       setSearchError(err.message || 'Error buscando en el catálogo');
     } finally {
@@ -221,44 +206,24 @@ export default function CartViewer({ cartData, client, onClose }) {
 
   const handleInjectProduct = (product) => {
     const newItems = [...cartItems];
-    const desc = product.DESC_ECOMM || product.DESCR || product.NOMBRE;
-    // Check if already in cart
-    const existingIdx = newItems.findIndex(i => i.clave === product.CVE_ART);
+    const line = productToCartItem(product, 1);
+    const existingIdx = newItems.findIndex(i => i.clave === line.clave);
     if (existingIdx >= 0) {
       newItems[existingIdx].cantidad = (newItems[existingIdx].cantidad || 1) + 1;
     } else {
-      newItems.push({
-        clave: product.CVE_ART,
-        descripcion: desc,
-        precio: (product.PRECIO || 0) * 1.16, // Guardamos el precio Neto
-        cantidad: 1,
-      });
+      newItems.push(line);
     }
     saveCart(newItems);
 
     // Send auto-confirmation message to chat
-    const priceNet = ((product.PRECIO || 0) * 1.16).toFixed(2);
-    sendMessage(`✅ *Agregado al carrito:*\n1x ${product.CVE_ART} - ${desc}\nPrecio: $${priceNet} Neto (IVA Incluido)`, false);
+    sendMessage(`✅ *Agregado al carrito:*\n1x ${line.clave} - ${line.descripcion}\nPrecio: $${line.precio.toFixed(2)} Neto (IVA Incluido)`, false);
 
     // Optional: Auto-switch back to cart to show the added item
     setActiveTab('current');
   };
 
   const handleSuggestProduct = (product) => {
-    const desc = product.DESC_ECOMM || product.DESCR || product.NOMBRE;
-    const priceNet = ((product.PRECIO || 0) * 1.16).toFixed(2);
-    const linea = product.LIN_PROD || '';
-    const imageUrl = `https://sistemahidraulico.mx/Perfiles/${linea}.jpg`;
-
-    const metadata = {
-      clave: product.CVE_ART,
-      description: desc,
-      priceNet: priceNet,
-      imageUrl: imageUrl,
-      rawProduct: product,
-    };
-
-    useChatStore.getState().sendMessage('', false, 'PRODUCT_CARD', metadata);
+    useChatStore.getState().sendMessage('', false, 'PRODUCT_CARD', productToCardMetadata(product));
   };
 
   const handleSendSummary = () => {
@@ -568,45 +533,10 @@ export default function CartViewer({ cartData, client, onClose }) {
           </>
         ) : (
           <>
-            {/* Parametric search */}
-            <form onSubmit={handleSearch} className="grid grid-cols-2 gap-3 border-b border-border px-5 py-4">
-              <Field label="Familia" required className="col-span-2">
-                {(p) => (
-                  <Select {...p} value={searchForm.familia} onChange={(e) => setSearchForm({ ...searchForm, familia: e.target.value })}>
-                    <option value="">Seleccionar familia</option>
-                    {familias.map((f, i) => (
-                      <option key={i} value={f.FAMILIA}>{f.FAMILIA}</option>
-                    ))}
-                  </Select>
-                )}
-              </Field>
-              <Field label="Sistema de medida">
-                {(p) => (
-                  <Select {...p} value={searchForm.sist_med} onChange={(e) => setSearchForm({ ...searchForm, sist_med: e.target.value })}>
-                    <option value="std">Pulgadas (STD)</option>
-                    <option value="mm">Milímetros (mm)</option>
-                  </Select>
-                )}
-              </Field>
-              <Field label="Diámetro interior">
-                {(p) => <Input {...p} mono value={searchForm.diam_int} onChange={(e) => setSearchForm({ ...searchForm, diam_int: e.target.value })} placeholder="1.25" />}
-              </Field>
-              <Field label="Diámetro exterior">
-                {(p) => <Input {...p} mono value={searchForm.diam_ext} onChange={(e) => setSearchForm({ ...searchForm, diam_ext: e.target.value })} placeholder="2.5" />}
-              </Field>
-              <Field label="Altura">
-                {(p) => <Input {...p} mono value={searchForm.altura} onChange={(e) => setSearchForm({ ...searchForm, altura: e.target.value })} placeholder="0.25" />}
-              </Field>
-              <Field label="Sección">
-                {(p) => <Input {...p} mono value={searchForm.seccion} onChange={(e) => setSearchForm({ ...searchForm, seccion: e.target.value })} placeholder="139" />}
-              </Field>
-              <div className="col-span-2 flex flex-col gap-2">
-                <Button type="submit" variant="primary" icon={Search} loading={isSearching} disabled={!searchForm.familia} className="w-full">
-                  Buscar
-                </Button>
-                {searchError && <p className="text-xs text-danger" role="alert">{searchError}</p>}
-              </div>
-            </form>
+            {/* Schema-driven search */}
+            <div className="border-b border-border px-5 py-4">
+              <CatalogSearchForm values={searchForm} onChange={setSearchForm} onSubmit={handleSearch} loading={isSearching} error={searchError} />
+            </div>
 
             {/* Results */}
             {isSearching ? (
@@ -616,60 +546,46 @@ export default function CartViewer({ cartData, client, onClose }) {
                 compact
                 icon={Database}
                 title="Sin resultados"
-                description={searchForm.familia ? 'Ajusta las medidas o la familia y vuelve a buscar.' : 'Selecciona una familia y aplica filtros para ver productos.'}
+                description="Ajusta los criterios de búsqueda para ver productos."
               />
             ) : (
               <ul className="divide-y divide-border/70">
-                {searchResults.map((product, idx) => {
-                  const totalExt = Object.values(product.existencias || {}).reduce((a, b) => a + (b || 0), 0);
-                  const desc = product.DESC_ECOMM || product.DESCR || product.NOMBRE;
-                  return (
-                    <li key={idx} className="flex flex-col gap-2.5 px-5 py-3 hover:bg-surface-2/60">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="truncate font-mono text-[11px] text-fg-subtle">{product.CVE_ART}</div>
-                          <div className="mt-0.5 line-clamp-2 text-sm text-fg" title={desc}>{desc}</div>
-                        </div>
-                        <Badge tone={totalExt > 0 ? 'success' : 'neutral'} className="shrink-0">
-                          {totalExt > 0 ? `${totalExt} en existencia` : 'Sin existencia'}
-                        </Badge>
-                      </div>
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="tnum text-sm">
-                          <span className="font-mono font-semibold text-fg">{formatMoney((product.PRECIO || 0) * 1.16)}</span>
-                          <span className="ml-1.5 text-xs text-fg-subtle">IVA incluido</span>
-                        </div>
-                        <div className="flex shrink-0 items-center gap-1.5">
-                          <Button
-                            type="button"
-                            variant="chip"
-                            size="xs"
-                            icon={MessageSquare}
-                            title="Sugerir en el chat"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              handleSuggestProduct(product);
-                            }}
-                          >
-                            Sugerir al cliente
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="chip-accent"
-                            size="xs"
-                            icon={Plus}
-                            onClick={(e) => {
-                              e.preventDefault();
-                              handleInjectProduct(product);
-                            }}
-                          >
-                            Agregar
-                          </Button>
-                        </div>
-                      </div>
-                    </li>
-                  );
-                })}
+                {searchResults.map((product, idx) => (
+                  <CatalogProductRow
+                    key={`${product.sku}-${idx}`}
+                    product={product}
+                    className="px-5"
+                    actions={
+                      <>
+                        <Button
+                          type="button"
+                          variant="chip"
+                          size="xs"
+                          icon={MessageSquare}
+                          title="Sugerir en el chat"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            handleSuggestProduct(product);
+                          }}
+                        >
+                          Sugerir al cliente
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="chip-accent"
+                          size="xs"
+                          icon={Plus}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            handleInjectProduct(product);
+                          }}
+                        >
+                          Agregar
+                        </Button>
+                      </>
+                    }
+                  />
+                ))}
               </ul>
             )}
           </>
@@ -685,7 +601,7 @@ export default function CartViewer({ cartData, client, onClose }) {
               <span className="tnum font-mono">{formatMoney(subtotal)}</span>
             </div>
             <div className="flex justify-between text-fg-muted">
-              <span>IVA (16%)</span>
+              <span>IVA ({Math.round((catalogPricing?.taxRate ?? 0.16) * 100)}%)</span>
               <span className="tnum font-mono">{formatMoney(iva)}</span>
             </div>
             <div className="flex justify-between border-t border-border pt-2 text-sm font-semibold text-fg">
