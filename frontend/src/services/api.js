@@ -348,6 +348,46 @@ export async function testCatalogConnection() {
   return json.data || { ok: false, message: json.error || 'Sin respuesta' };
 }
 
+// ---------------------------------------------------------------------------
+// Agent prompt configuration (Configuración → Asistente IA → Prompts)
+// ---------------------------------------------------------------------------
+
+export async function getAiPrompts() {
+  const json = await readJson(await get('/tenant/ai-prompts'), 'No se pudo cargar la configuración de prompts');
+  return json.data;
+}
+
+export async function saveAiPrompts(overrides, note) {
+  const res = await put('/tenant/ai-prompts', { overrides, note });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err = new Error(json.error || 'No se pudo guardar');
+    err.details = json.details;
+    throw err;
+  }
+  return json.data;
+}
+
+export async function previewAiPrompts(overrides, scenario) {
+  const json = await readJson(await post('/tenant/ai-prompts/preview', { overrides, scenario }), 'No se pudo generar la vista previa');
+  return json.data;
+}
+
+export async function getAiPromptHistory() {
+  const json = await readJson(await get('/tenant/ai-prompts/history'), 'No se pudo cargar el historial');
+  return json.data || [];
+}
+
+export async function restoreAiPromptVersion(version) {
+  const json = await readJson(await post(`/tenant/ai-prompts/restore/${version}`, {}), 'No se pudo restaurar la versión');
+  return json.data;
+}
+
+export async function resetAiPrompts() {
+  const json = await readJson(await del('/tenant/ai-prompts'), 'No se pudo restablecer');
+  return json.data;
+}
+
 /** @deprecated use searchCatalog; kept for older callers until removed. */
 export async function searchSealMarketCatalog(params) {
   // Remove empty parameters

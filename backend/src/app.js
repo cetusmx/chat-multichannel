@@ -87,6 +87,7 @@ app.use('/api/metrics', metricsRoutes);
 app.use('/api/search', require('./routes/search.routes'));
 app.use('/api/canned-responses', require('./routes/canned_responses.routes'));
 app.use('/api/tenant/ai-rules', authenticate, require('./routes/aiRules.routes'));
+app.use('/api/tenant/ai-prompts', require('./routes/aiPrompt.routes'));
 app.use('/api/catalog', require('./routes/catalog.routes'));
 app.use('/api/sealmarket', require('./routes/sealmarket.routes')); // legacy alias, see catalog.routes
 

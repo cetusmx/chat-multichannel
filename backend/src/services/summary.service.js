@@ -2,6 +2,7 @@ const prisma = require('../config/database');
 const socket = require('../socket');
 const logger = require('../utils/logger');
 const aiService = require('./ai.service');
+const promptService = require('./prompt.service');
 
 const MAX_HISTORY = 40;
 const MAX_SUMMARY_CHARS = 320;
@@ -68,19 +69,16 @@ async function generateConversationSummary(tenantId, conversationId, { reason = 
       .map((m) => `${m.senderType === 'CLIENT' ? 'Cliente' : m.senderType === 'IA' ? 'Asistente' : 'Vendedor'}: ${m.content || '[archivo adjunto]'}`)
       .join('\n');
 
-    const context = `
-Eres un asistente que redacta resúmenes operativos para vendedores B2B de refacciones y sellos industriales.
-Resume la conversación en UNA sola línea de máximo ${MAX_SUMMARY_CHARS} caracteres, en español neutro, sin saludos ni opiniones.
-Formato: fragmentos separados por " · ". Incluye en este orden, solo si aplica: productos y cantidades solicitados, precio o total mencionado,
-estado de datos fiscales (CSF/RFC validados o pendientes), dirección de envío, y la siguiente acción pendiente para el vendedor.
-No inventes datos. No uses markdown ni comillas.
-
-[DATOS DEL SISTEMA]
-- Cliente: ${conversation.client?.name || conversation.client?.phoneNumber || 'desconocido'}
-- Carrito actual: ${cartLine(conversation.client?.cartData)}
-- Datos fiscales/envío: ${fiscalLine(conversation.client?.cartData)}
-- Motivo del resumen: ${reason}
-[FIN]`;
+    const promptConfig = await promptService.getPromptConfig(tenantId);
+    const tenantRow = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true } });
+    const context = promptService.renderPath(promptConfig, 'summary', {
+      company_name: tenantRow?.name || 'la empresa',
+      max_chars: MAX_SUMMARY_CHARS,
+      client_name: conversation.client?.name || conversation.client?.phoneNumber || 'desconocido',
+      cart_summary: cartLine(conversation.client?.cartData),
+      fiscal_summary: fiscalLine(conversation.client?.cartData),
+      reason,
+    });
 
     const messages = [{ role: 'user', content: `Conversación:\n${transcript}\n\nEscribe el resumen.` }];
     const response = await aiService.generateResponse(tenantId, messages, context);

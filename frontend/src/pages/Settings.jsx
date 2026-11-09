@@ -13,6 +13,7 @@ import SlaConfigSection from '../features/settings/SlaConfigSection.jsx';
 import CannedResponsesSection from '../features/settings/CannedResponsesSection.jsx';
 import EmailConfigSection from '../features/settings/EmailConfigSection.jsx';
 import CatalogConfigSection from '../features/settings/CatalogConfigSection.jsx';
+import AiPromptSection from '../features/settings/AiPromptSection.jsx';
 
 const tabs = [
   { id: 'company', label: 'Empresa', roles: ['ADMIN', 'COORDINATOR'] },
@@ -45,6 +46,7 @@ export default function Settings() {
         <div className="space-y-6">
           <AiConfigSection />
           <AiRulesSection />
+          <AiPromptSection />
         </div>
       );
       case 'kb': return <KnowledgeBaseSection />;

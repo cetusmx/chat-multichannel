@@ -9,6 +9,7 @@ const assignmentService = require('./assignment.service');
 const { attachSender } = require('./messageEnricher.service');
 const timelineService = require('./timeline.service');
 const summaryService = require('./summary.service');
+const promptService = require('./prompt.service');
 const prisma = new PrismaClient();
 
 const incomingLocks = new Map();
@@ -665,7 +666,8 @@ const whatsappService = {
 
                       if (!fallbackResult.vendor) {
                         try {
-                          await this.sendMessage(conversation.id, 'Nuestro asistente virtual no está disponible en este momento. Un humano te atenderá a la brevedad.', null, 'SYSTEM');
+                          const cfg = await promptService.getPromptConfig(tenantId);
+                          await this.sendMessage(conversation.id, promptService.renderPath(cfg, 'customerMessages.aiUnavailable'), null, 'SYSTEM');
                         } catch (msgErr) {
                           logger.error('Error sending fallback message:', msgErr);
                         }
@@ -691,7 +693,7 @@ const whatsappService = {
                       requiresEscalation = true;
                       responseText = responseText.replace(/\[\[ESCALATE\]\]/gi, '').trim();
                       if (responseText === '') {
-                        responseText = 'Entiendo. Un representante se pondrá en contacto contigo en breve para ayudarte.';
+                        responseText = promptService.renderPath(await promptService.getPromptConfig(tenantId), 'customerMessages.escalationFallback');
                       }
                     }
 

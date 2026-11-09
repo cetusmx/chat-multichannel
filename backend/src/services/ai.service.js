@@ -70,22 +70,26 @@ class AIService {
    */
   async _getAiToolsAndHandlers(tenantId, conversationId, conversation, catalogInfo = null) {
     const catalogService = require('./catalog.service');
+    const promptService = require('./prompt.service');
     const catalog = catalogInfo || await catalogService.describeForAi(tenantId);
     const caps = catalog.capabilities || {};
+    const promptConfig = await promptService.getPromptConfig(tenantId);
+    const toolText = (name) => promptService.renderPath(promptConfig, `tools.${name}`);
+    const noteText = (name, vars) => promptService.renderPath(promptConfig, `catalogNotes.${name}`, vars);
 
     const functionDeclarations = [];
 
     if (catalog.isConfigured && (caps.textSearch || caps.attributeSearch)) {
       functionDeclarations.push({
         name: "consultar_catalogo",
-        description: "Busca productos en el catálogo del negocio. Pasa cada criterio como parámetro independiente. Antes de buscar, asegúrate de tener TODOS los parámetros marcados como OBLIGATORIOS; si falta alguno, pregúntaselo al cliente en lugar de adivinar. Nunca inventes valores que no estén en la lista de valores válidos del contexto.",
+        description: toolText('consultar_catalogo'),
         parameters: catalog.toolParameters
       });
     }
 
     functionDeclarations.push({
       name: "actualizar_carrito",
-      description: "Actualiza el estado persistente del carrito de compras del cliente. Úsala CADA VEZ que el cliente confirme que quiere agregar un producto o modificar cantidades, o cuando confirme su dirección de envío o envíe sus datos fiscales.",
+      description: toolText('actualizar_carrito'),
       parameters: {
         type: "OBJECT",
         properties: {
@@ -108,7 +112,7 @@ class AIService {
     if (caps.customerLookup) {
       functionDeclarations.push({
         name: "consultar_cliente_rfc",
-        description: "Busca los datos fiscales y comerciales de un cliente a partir de su RFC. Úsala cuando el cliente te proporcione su RFC para una cotización.",
+        description: toolText('consultar_cliente_rfc'),
         parameters: {
           type: "OBJECT",
           properties: { rfc: { type: "STRING", description: "El RFC proporcionado por el cliente. Ejemplo: 'XAXX010101000'" } },
@@ -119,7 +123,7 @@ class AIService {
 
     functionDeclarations.push({
       name: "generar_cotizacion_pdf",
-      description: "Genera un PDF con la cotización formal de los artículos en el carrito y lo envía al cliente. Úsala SOLAMENTE cuando el cliente te pida explícitamente generar o enviarle la cotización formal en PDF.",
+      description: toolText('generar_cotizacion_pdf'),
       parameters: {
         type: "OBJECT",
         properties: {
@@ -134,7 +138,7 @@ class AIService {
     if (caps.csfExtraction) {
       functionDeclarations.push({
         name: "extraer_constancia_fiscal",
-        description: "Lee y extrae RFC, Razón Social y Código Postal del último archivo PDF adjunto enviado por el cliente (Constancia de Situación Fiscal o similar). Úsala cuando el cliente haya enviado un archivo adjunto para sus datos fiscales de facturación.",
+        description: toolText('extraer_constancia_fiscal'),
         parameters: {
           type: "OBJECT",
           properties: { confirmar: { type: "BOOLEAN", description: "Siempre envía true" } }
@@ -144,7 +148,7 @@ class AIService {
 
     functionDeclarations.push({
       name: "enviar_cotizacion_email",
-      description: "Envía la cotización actual por correo electrónico al cliente. Úsala cuando el cliente solicite que se le envíe la cotización a un email específico.",
+      description: toolText('enviar_cotizacion_email'),
       parameters: {
         type: "OBJECT",
         properties: { email: { type: "STRING", description: "Correo electrónico del cliente" } },
@@ -172,12 +176,12 @@ class AIService {
           const { products, params } = await catalogService.search(tenantId, searchArgs, { limit: 50 });
 
           if (!products || products.length === 0) {
-            return { resultados: [], total_encontrados: 0, criterios: params, nota: 'Sin resultados. Pide al cliente que verifique los datos o pruebe con otros criterios.' };
+            return { resultados: [], total_encontrados: 0, criterios: params, nota: noteText('empty') };
           }
 
           // Keep the model's context small; the full list stays server side.
           const finalResults = products.slice(0, 5);
-          let notaAdicional = 'Se muestran máximo 5 resultados. Si hay más, pide al cliente que sea más específico.';
+          let notaAdicional = noteText('limit');
 
           // One or two matches: push interactive cards to the customer and tell the model not to repeat them.
           if (finalResults.length <= 2) {
@@ -208,9 +212,7 @@ class AIService {
               }
             }
 
-            notaAdicional = sentAny
-              ? "IMPORTANTE: Ya se le enviaron automáticamente las TARJETAS INTERACTIVAS de estos productos al cliente por WhatsApp. En tu respuesta de texto, NO vuelvas a listar los productos ni des precios. Simplemente dile: 'Te he enviado las opciones aquí arriba en formato de tarjeta. ¿Te interesa alguna para agregarla a tu pedido?' o algo similar, pero muy breve."
-              : 'Nota: El cliente ya tiene las tarjetas de estos productos visibles en el chat. Procede a responderle de forma natural (ej. preguntando cuántas piezas necesita o resolviendo su duda).';
+            notaAdicional = sentAny ? noteText('cardsSent') : noteText('cardsAlreadyVisible');
           }
 
           const showLocations = !!(catalog.capabilities && catalog.capabilities.stockByLocation);
@@ -229,7 +231,7 @@ class AIService {
             })),
             total_encontrados: products.length,
             criterios: params,
-            nota: `${notaAdicional} Los precios en 'precio_neto' YA incluyen IVA: muéstralos tal cual como "Precio Neto (IVA incluido)".`
+            nota: `${notaAdicional} ${noteText('pricesAreNet')}`
           };
         } catch (e) {
           console.error('[AI TOOL] Excepción:', e.message);
@@ -705,7 +707,7 @@ ${pdfText.substring(0, 3000)}`;
       // Fetch tenant to get timezone
       const tenant = await prisma.tenant.findUnique({
         where: { id: tenantId },
-        select: { businessHours: true }
+        select: { businessHours: true, name: true }
       });
       const tz = tenant?.businessHours?.timezone || 'America/Mexico_City';
       const currentTimeStr = new Date().toLocaleString('es-MX', { 
@@ -730,74 +732,36 @@ ${pdfText.substring(0, 3000)}`;
       const aiRulesList = await prisma.aiRule.findMany({
         where: { tenantId, isActive: true }
       });
-      let customRulesString = '';
-      if (aiRulesList.length > 0) {
-        customRulesString = '\n[REGLAS Y DICCIONARIO PERSONALIZADO]\n' + aiRulesList.map(r => `- "${r.term}": ${r.definition}`).join('\n');
-      }
 
-      const dynamicContext = `
-[DATOS EN TIEMPO REAL DEL SISTEMA]
-- Fecha y hora actual en la ubicación del negocio: ${currentTimeStr}
-- ¿Fuera de horario laboral?: ${isOffHours ? 'SÍ (Estamos cerrados)' : 'NO (Estamos abiertos)'}
-- Equipo de vendedores: ${vendorNames}
-- CARRITO DE COMPRAS DEL CLIENTE: ${JSON.stringify(clientCart)}
-- Instrucción de Carrito: Este es el estado persistente del carrito. Usa la herramienta 'actualizar_carrito' para modificarlo si el cliente pide agregar o quitar algo.
-- Instrucción dinámica: Si el cliente pregunta por un vendedor específico que esté en el equipo, indícale si estamos dentro o fuera de horario e incluye [[ESCALATE]] para asignarle el chat a esa persona.${customRulesString}
-[FIN DE DATOS]
-`;
-
-      // Catalog knowledge comes from the tenant's CatalogConfig: search attributes,
-      // allowed values and domain rules. Nothing product-specific lives in code.
+      // Prompt text lives in the tenant's prompt configuration (defaults in
+      // src/prompts/default.es.json); catalog knowledge in CatalogConfig.
+      // This block only gathers variables and lets prompt.service compose.
       const catalogService = require('./catalog.service');
-      const catalogInfo = await catalogService.describeForAi(tenantId);
-      let catalogBlock = '';
-      if (catalogInfo.isConfigured) {
-        catalogBlock = `
-[CATÁLOGO DE PRODUCTOS]
-Criterios de búsqueda disponibles en la herramienta 'consultar_catalogo':
-${catalogInfo.promptDescription}
-Reglas del catálogo:
-- Antes de buscar, reúne TODOS los criterios marcados como OBLIGATORIOS preguntándoselos al cliente; nunca los inventes.
-- Usa ÚNICAMENTE valores que aparezcan en las listas de valores válidos. Si el cliente usa un término que no está ahí, pídele que precise o muéstrale las opciones válidas.
-- Si el cliente indica una unidad para una medida y luego omite la unidad en otras, asume la misma unidad.
-- La herramienta devuelve 'precio_neto' con IVA incluido (tasa ${Math.round(catalogInfo.pricing.taxRate * 100)}%): muéstralo tal cual como "Precio Neto (IVA incluido)" y usa esos mismos precios para sumar cotizaciones. Nunca recalcules impuestos.
-${catalogInfo.aiRules ? `Reglas específicas del negocio:\n${catalogInfo.aiRules}` : ''}
-[FIN CATÁLOGO]`;
-      } else {
-        catalogBlock = `
-[CATÁLOGO DE PRODUCTOS]
-Este negocio no tiene catálogo conectado. No inventes productos, precios ni existencias; responde con la base de conocimientos y, si el cliente pide precios o disponibilidad, incluye [[ESCALATE]] para que un asesor lo atienda.
-[FIN CATÁLOGO]`;
-      }
+      const promptService = require('./prompt.service');
+      const [catalogInfo, promptConfig] = await Promise.all([
+        catalogService.describeForAi(tenantId),
+        promptService.getPromptConfig(tenantId),
+      ]);
 
-      const fiscalRules = catalogInfo.capabilities?.customerLookup || catalogInfo.capabilities?.csfExtraction
-        ? `3. COTIZACIONES Y RFC: Si el cliente solicita explícitamente una cotización formal, primero pregúntale su RFC. Si responde que no tiene, asume que es un cliente genérico (Mostrador).${catalogInfo.capabilities.csfExtraction ? " Si en lugar de escribir el RFC, el cliente envía un archivo adjunto (como un PDF), ASUME INMEDIATAMENTE que se trata de su Constancia de Situación Fiscal (CSF) y llama a la herramienta 'extraer_constancia_fiscal' SIN pedirle confirmación." : ''}${catalogInfo.capabilities.customerLookup ? " Si el cliente escribe su RFC manualmente, usa la herramienta 'consultar_cliente_rfc'." : ''} Si alguna de las herramientas devuelve 'success', CONFÍRMALE AL CLIENTE que encontraste sus datos (menciónale su Razón Social) y dile que con esos datos se elaborará la cotización. MUY IMPORTANTE: Guarda celosamente la "razon_social" y la "direccion" exactas que te devuelvan. Cuando llames a 'generar_cotizacion_pdf', pásale esa "razon_social" exacta en los argumentos (NUNCA pases el nombre de pila o nombre de WhatsApp del cliente). NOTA: El PDF generado YA CONTIENE automáticamente los datos bancarios y las instrucciones de pago de la empresa; NO le digas al cliente que se los enviarás después, indícale que los datos bancarios vienen dentro del documento PDF adjunto.`
-        : `3. COTIZACIONES: Si el cliente solicita una cotización formal, pídele su RFC o nombre/razón social para el documento. Cuando llames a 'generar_cotizacion_pdf', pasa exactamente el nombre o razón social que te indique. El PDF ya incluye los datos bancarios de la empresa.`;
+      const promptVars = {
+        company_name: tenant?.name || 'esta empresa',
+        now: currentTimeStr,
+        is_off_hours: !!isOffHours,
+        vendors: vendorNames,
+        cart_json: JSON.stringify(clientCart),
+        custom_rules: aiRulesList.length > 0 ? aiRulesList.map(r => `- "${r.term}": ${r.definition}`).join('\n') : '',
+        knowledge_context: contextString || '',
+        has_knowledge_context: !!contextString,
+        has_catalog: !!catalogInfo.isConfigured,
+        catalog_description: catalogInfo.promptDescription || '',
+        catalog_rules: catalogInfo.aiRules || '',
+        tax_rate_pct: Math.round(((catalogInfo.pricing && catalogInfo.pricing.taxRate) || 0) * 100),
+        has_fiscal_tools: !!(catalogInfo.capabilities && (catalogInfo.capabilities.customerLookup || catalogInfo.capabilities.csfExtraction)),
+        can_lookup_customer: !!(catalogInfo.capabilities && catalogInfo.capabilities.customerLookup),
+        can_extract_csf: !!(catalogInfo.capabilities && catalogInfo.capabilities.csfExtraction),
+      };
 
-      const aiRules = `
-[REGLAS ESTRICTAS DE COMPORTAMIENTO]
-1. PEDIDOS Y CARRITO: Tu rol incluye TOMAR EL PEDIDO. Ve recordando internamente qué productos y cantidades confirma el cliente. SIEMPRE usa la herramienta 'actualizar_carrito' para guardar este estado.
-2. FORMATO DE RESULTADOS: Cuando muestres productos, NO satures el chat. Muestra ÚNICAMENTE la clave, el nombre o descripción breve, el precio neto y la existencia total.
-${fiscalRules}
-4. DATOS DE ENVÍO Y ESCALAMIENTO: Cuando el cliente confirme el pedido, te solicite datos bancarios y llegue el momento de coordinar el envío, ANTES de transferirlo a un humano, solicítale su Código Postal y Dirección de Envío completa. Si el cliente te da una dirección pero omite el Código Postal, DEBES pedirle específicamente el Código Postal antes de avanzar. Si previamente obtuviste sus datos fiscales, PREGÚNTALE si la dirección de envío es la misma que su dirección fiscal, MOSTRÁNDOSELA explícitamente. Una vez que tengas la dirección de envío completa (incluyendo Código Postal), DEBES corregir cualquier falta de ortografía y capitalizar correctamente los nombres propios de la dirección. Luego, DEBES invocar OBLIGATORIAMENTE la herramienta 'actualizar_carrito' para inyectar y guardar esa dirección corregida. Después de guardar la dirección, APLICA LA REGLA 6.
-5. RECOLECCIÓN EN SUCURSAL: Si el cliente indica que desea pasar a recoger los productos a una sucursal, ACÉPTALO de inmediato (no te muestres renuente). Ofrécele generarle la cotización y, MUY IMPORTANTE, APLICA LA REGLA 6.
-6. REGLA DE ORO ANTES DE ESCALAR (CUALQUIER FLUJO): IMPORTANTE: Sin importar cuál haya sido la última petición o respuesta del cliente, NUNCA ASUMAS QUE LA INTERACCIÓN HA TERMINADO. Siempre debes preguntarle al cliente si requiere consultar algún otro producto o necesita ayuda con algo más. **ESTÁ ESTRICTAMENTE PROHIBIDO COLOCAR LA ETIQUETA [[ESCALATE]] EN EL MISMO MENSAJE DONDE LE PREGUNTAS SI REQUIERE ALGO MÁS.** Primero haz la pregunta y espera a que el cliente responda. SÓLO si el cliente responde que ya no necesita nada más, entonces procedes a despedirte y AHORA SÍ colocas la etiqueta [[ESCALATE]]. Si el cliente dice que sí quiere agregar otro producto, ayúdalo con eso y no escales el chat todavía.
-${catalogBlock}
-`;
-
-      let baseSystemInstruction = '';
-      if (!contextString && !catalogInfo.isConfigured) {
-        baseSystemInstruction = `Eres un asistente de ventas de esta empresa. No tienes información de la base de conocimientos ni catálogo para esta consulta. Sé amable, responde de forma general y DEBES incluir la cadena exacta [[ESCALATE]] en cualquier parte de tu respuesta para que un humano tome el chat.\n${dynamicContext}`;
-      } else if (!contextString) {
-        // Catalog is available even though no knowledge-base chunk matched this message.
-        baseSystemInstruction = `Eres un asistente de ventas de esta empresa. Para esta consulta no hay fragmentos relevantes de la base de conocimientos; apóyate en el catálogo y en las reglas siguientes. Si el cliente pregunta por políticas, pagos, envíos o garantías que no conoces, o pide hablar con un humano, DEBES incluir la cadena exacta [[ESCALATE]] en cualquier parte de tu respuesta.\n${aiRules}\n${dynamicContext}`;
-      } else {
-        baseSystemInstruction = `Eres un asistente de ventas de esta empresa. Usa ÚNICAMENTE el siguiente contexto de la base de conocimientos para responder sobre políticas y datos del negocio, y la herramienta de catálogo para productos. Si el cliente pide explícitamente hablar con un humano, pregunta por un vendedor específico, o si no sabes la respuesta basada en el contexto, DEBES incluir la cadena exacta [[ESCALATE]] en cualquier parte de tu respuesta.\n${aiRules}\n\nContexto:\n${contextString}\n${dynamicContext}`;
-      }
-
-      if (isOffHours) {
-        baseSystemInstruction += `\nAl estar fuera de horario laboral, preséntate brevemente como Inteligencia Artificial e infórmale al cliente que estamos cerrados. Usa el dato de 'Fecha y hora actual' EXCLUSIVAMENTE de forma interna para contextualizar tu respuesta de forma natural, pero TIENES ESTRICTAMENTE PROHIBIDO mencionar la hora o el día literal en tu mensaje (NUNCA digas cosas como "son las 11:23 p.m." ni "hoy es martes"). Úsalo solo para saber si debes decir "en unas horas más" (madrugada), "mañana a primera hora" (noche), o "el lunes" (sábado/domingo), y despídete acorde a la hora (ej. "buenas noches", "excelente fin de semana"). ESTÁ ESTRICTAMENTE PROHIBIDO hacerle preguntas al cliente (como "¿En qué te puedo ayudar?") o invitarlo a seguir conversando. Termina el mensaje despidiéndote e incluye siempre la etiqueta [[ESCALATE]].`;
-      }
+      const baseSystemInstruction = promptService.composeAgentInstruction(promptConfig, promptVars);
 
       // ----------------------------------------------------
       // DEFINICIÓN DE HERRAMIENTAS GENÉRICAS (AGNOSTICAS)
@@ -880,14 +844,9 @@ ${catalogBlock}
         console.warn('RAG search failed for inline suggestion, continuing without context:', err.message);
       }
 
-      const systemInstruction = `You are an AI assistant helping a human sales representative (Vendor) draft a reply to a client or perform actions on their behalf. 
-Use the following context from our knowledge base (if any) and the conversation history to draft an accurate and helpful response.
-Do NOT include [[ESCALATE]] in this context. You must follow the exact instruction provided by the Vendor Prompt.
-If the Vendor Prompt requests you to use a tool (such as updating the cart), YOU MUST EXECUTE THAT TOOL.
-When drafting a reply, draft ONLY the text that the vendor should send to the client. Do not include quotes or commentary.
-
-Context:
-${contextString}`;
+      const promptService = require('./prompt.service');
+      const promptConfig = await promptService.getPromptConfig(tenantId);
+      const systemInstruction = promptService.renderPath(promptConfig, 'inlineAssist', { knowledge_context: contextString || '' });
 
       if (formattedHistory.length > 0 && formattedHistory[formattedHistory.length - 1].role === 'user') {
         formattedHistory.push({ role: 'model', content: '[Esperando asistencia IA...]' });
