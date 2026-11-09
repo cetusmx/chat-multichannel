@@ -158,7 +158,18 @@ class AIService {
       consultar_catalogo: async (args) => {
         try {
           console.log('[AI TOOL] consultar_catalogo invocado con args:', args);
-          const { products, params } = await catalogService.search(tenantId, args || {}, { limit: 50 });
+          // Backward compatibility: older knowledge-base documents describe the
+          // previous contract ({ query_params: '<json>' }). Accept and merge it.
+          let searchArgs = { ...(args || {}) };
+          if (typeof searchArgs.query_params === 'string') {
+            try {
+              searchArgs = { ...JSON.parse(searchArgs.query_params), ...searchArgs };
+            } catch {
+              return { error: 'query_params no es JSON válido; envía cada criterio como parámetro independiente.' };
+            }
+            delete searchArgs.query_params;
+          }
+          const { products, params } = await catalogService.search(tenantId, searchArgs, { limit: 50 });
 
           if (!products || products.length === 0) {
             return { resultados: [], total_encontrados: 0, criterios: params, nota: 'Sin resultados. Pide al cliente que verifique los datos o pruebe con otros criterios.' };
@@ -775,10 +786,13 @@ ${catalogBlock}
 `;
 
       let baseSystemInstruction = '';
-      if (!contextString) {
-        baseSystemInstruction = `Eres un asistente de ventas de esta empresa. Actualmente no tienes documentos en tu base de conocimientos. Sé amable, responde de forma general y DEBES incluir la cadena exacta [[ESCALATE]] en cualquier parte de tu respuesta para que un humano tome el chat.\n${dynamicContext}`;
+      if (!contextString && !catalogInfo.isConfigured) {
+        baseSystemInstruction = `Eres un asistente de ventas de esta empresa. No tienes información de la base de conocimientos ni catálogo para esta consulta. Sé amable, responde de forma general y DEBES incluir la cadena exacta [[ESCALATE]] en cualquier parte de tu respuesta para que un humano tome el chat.\n${dynamicContext}`;
+      } else if (!contextString) {
+        // Catalog is available even though no knowledge-base chunk matched this message.
+        baseSystemInstruction = `Eres un asistente de ventas de esta empresa. Para esta consulta no hay fragmentos relevantes de la base de conocimientos; apóyate en el catálogo y en las reglas siguientes. Si el cliente pregunta por políticas, pagos, envíos o garantías que no conoces, o pide hablar con un humano, DEBES incluir la cadena exacta [[ESCALATE]] en cualquier parte de tu respuesta.\n${aiRules}\n${dynamicContext}`;
       } else {
-        baseSystemInstruction = `Eres un asistente de ventas de esta empresa. Usa ÚNICAMENTE el siguiente contexto de la base de conocimientos para responder. Si el cliente pide explícitamente hablar con un humano, pregunta por un vendedor específico, o si no sabes la respuesta basada en el contexto, DEBES incluir la cadena exacta [[ESCALATE]] en cualquier parte de tu respuesta.\n${aiRules}\n\nContexto:\n${contextString}\n${dynamicContext}`;
+        baseSystemInstruction = `Eres un asistente de ventas de esta empresa. Usa ÚNICAMENTE el siguiente contexto de la base de conocimientos para responder sobre políticas y datos del negocio, y la herramienta de catálogo para productos. Si el cliente pide explícitamente hablar con un humano, pregunta por un vendedor específico, o si no sabes la respuesta basada en el contexto, DEBES incluir la cadena exacta [[ESCALATE]] en cualquier parte de tu respuesta.\n${aiRules}\n\nContexto:\n${contextString}\n${dynamicContext}`;
       }
 
       if (isOffHours) {

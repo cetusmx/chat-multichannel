@@ -146,8 +146,10 @@ SealMarketProvider.defaultSchema = {
     { key: 'sist_med', label: 'Sistema de medida', type: 'select', options: [{ value: 'std', label: 'Pulgadas (STD)' }, { value: 'mm', label: 'Milímetros (mm)' }], defaultValue: 'std', aiHint: 'Si el cliente da fracciones (ej. 1 5/16) es std; si dice mm, usa mm para todas las medidas' },
     { key: 'diam_int', label: 'Diámetro interior', type: 'number', aiHint: 'Convierte fracciones a decimal en milésimas (1 5/16 → 1.312)' },
     { key: 'diam_ext', label: 'Diámetro exterior', type: 'number' },
-    { key: 'altura', label: 'Altura', type: 'number' },
-    { key: 'seccion', label: 'Sección', type: 'number' },
+    { key: 'altura', label: 'Altura', type: 'number', aiHint: 'No aplica a ORINGS ni RESPALDOS' },
+    { key: 'seccion', label: 'Sección', type: 'number', aiHint: 'Espesor; aplica p. ej. a SELLOS DE PISTON y LIMPIADORES (ej. 0.250)' },
+    { key: 'perfil', label: 'Perfil', type: 'text', aiHint: 'Código de perfil del sello si el cliente lo conoce (ej. PTB, K501)' },
+    { key: 'lista_precios', label: 'Lista de precios', type: 'text', aiHint: 'NO lo envíes salvo que el cliente especifique una lista de precios particular' },
   ],
   display: { title: '{{name}}', subtitle: '{{sku}} · {{attributes.familia}}', badges: [] },
 };
