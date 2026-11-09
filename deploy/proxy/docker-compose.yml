@@ -1,0 +1,40 @@
+# Edge reverse proxy shared by every client stack on this host.
+# Routes <client>.<domain> to the right stack and issues TLS certificates.
+#
+#   cp .env.example .env && edit ACME_EMAIL
+#   docker network create edge
+#   docker compose up -d
+
+services:
+  traefik:
+    image: traefik:v3.1
+    container_name: edge-proxy
+    restart: unless-stopped
+    command:
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --providers.docker.network=edge
+      - --entrypoints.web.address=:80
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      - --entrypoints.websecure.address=:443
+      - --certificatesresolvers.le.acme.email=${ACME_EMAIL}
+      - --certificatesresolvers.le.acme.storage=/letsencrypt/acme.json
+      - --certificatesresolvers.le.acme.httpchallenge.entrypoint=web
+      - --log.level=${TRAEFIK_LOG_LEVEL:-INFO}
+      - --accesslog=true
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - letsencrypt:/letsencrypt
+    networks:
+      - edge
+
+networks:
+  edge:
+    external: true
+
+volumes:
+  letsencrypt:
