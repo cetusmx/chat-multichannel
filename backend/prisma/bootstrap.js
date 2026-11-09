@@ -88,9 +88,56 @@ async function ensureTenant() {
   if (Object.keys(extras).length) await prisma.tenant.update({ where: { id: result.tenant.id }, data: extras });
 }
 
+/**
+ * One-time migration for deployments created before CatalogConfig existed:
+ * the ERP connection used to come from the environment. If CATALOG_API_KEY is
+ * present, seed a `sealmarket` row for the legacy tenant (CATALOG_LEGACY_TENANT_DOMAIN,
+ * or the only tenant in the database) when it has none. After this runs the
+ * variables can be removed from .env; the key lives encrypted in the row.
+ */
+async function ensureLegacyCatalog() {
+  const { getCatalogConfig } = require('../src/config/catalog');
+  const env = getCatalogConfig();
+  if (!env.isConfigured) return;
+
+  let tenant = null;
+  const domain = (process.env.CATALOG_LEGACY_TENANT_DOMAIN || '').trim().toLowerCase();
+  if (domain) {
+    tenant = await prisma.tenant.findUnique({ where: { domain } });
+    if (!tenant) warn(`CATALOG_LEGACY_TENANT_DOMAIN="${domain}" no existe; no se siembra el catálogo.`);
+  } else {
+    const tenants = await prisma.tenant.findMany({ select: { id: true, name: true, domain: true }, take: 2 });
+    if (tenants.length === 1) tenant = tenants[0];
+    else if (tenants.length > 1) warn('Hay varios tenants y CATALOG_API_KEY está definida: indica CATALOG_LEGACY_TENANT_DOMAIN para sembrar el catálogo del tenant correcto. No se asigna a ninguno.');
+  }
+  if (!tenant) return;
+
+  const existing = await prisma.catalogConfig.findUnique({ where: { tenantId: tenant.id } });
+  if (existing) {
+    log(`Catálogo de "${tenant.domain}" ya configurado (${existing.provider}); CATALOG_API_KEY ya no es necesaria en el entorno.`);
+    return;
+  }
+
+  const catalogService = require('../src/services/catalog.service');
+  const { SealMarketProvider } = require('../src/catalog/providers');
+  await catalogService.upsertConfig(tenant.id, {
+    provider: 'sealmarket',
+    isActive: true,
+    baseUrl: env.baseUrl,
+    apiKey: env.apiKey,
+    connection: process.env.CATALOG_TEXT_PARAMS ? { textParams: process.env.CATALOG_TEXT_PARAMS } : {},
+    searchSchema: SealMarketProvider.defaultSchema,
+    pricing: { taxRate: 0.16, pricesIncludeTax: false, currency: 'MXN' },
+    features: { customerLookup: true, csfExtraction: true, stockByLocation: true, productImages: true },
+    aiRules: SealMarketProvider.defaultAiRules,
+  });
+  log(`Catálogo SealMarket sembrado para "${tenant.domain}" desde el entorno. Puedes eliminar CATALOG_API_URL/CATALOG_API_KEY del .env.`);
+}
+
 async function main() {
   await ensureSuperadmin();
   await ensureTenant();
+  await ensureLegacyCatalog();
   if (process.env.SEED_DEMO === 'true') {
     log('SEED_DEMO=true: ejecutando datos de demostración (solo desarrollo).');
     await prisma.$disconnect();

@@ -37,17 +37,14 @@ describe('catalog.service', () => {
     expect(ai.toolParameters).toBeNull();
   });
 
-  it('falls back to the legacy SealMarket env connection when no row exists', async () => {
+  it('never shares a catalog across tenants: no row means none, even with a legacy env key', async () => {
     process.env.CATALOG_API_KEY = 'env-key';
     prisma.catalogConfig.findUnique.mockResolvedValue(null);
     const r = await service.resolve('t1');
-    expect(r.providerName).toBe('sealmarket');
-    expect(r.legacy).toBe(true);
-    expect(r.provider.apiKey).toBe('env-key');
-    expect(r.schema.attributes.map((a) => a.key)).toContain('familia');
-    expect(r.aiRules).toMatch(/EXISTENCIAS/);
+    expect(r.providerName).toBe('none');
+    expect(r.isConfigured).toBe(false);
+    expect(r.provider.apiKey).toBeNull();
   });
-
   it('builds a generic_rest provider from a stored row with an encrypted key', async () => {
     prisma.catalogConfig.findUnique.mockResolvedValue({
       tenantId: 't2', provider: 'generic_rest', isActive: true, baseUrl: 'https://x.test/',

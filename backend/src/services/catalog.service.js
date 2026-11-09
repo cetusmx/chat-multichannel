@@ -4,7 +4,6 @@ const logger = require('../utils/logger');
 const { getProviderClass, listProviders } = require('../catalog/providers');
 const { normalizeSchema, coerceParams, toToolParameters, toPromptDescription, requiredAttributes } = require('../catalog/schema');
 const { normalizePricing } = require('../catalog/product');
-const { getCatalogConfig: getEnvCatalogConfig } = require('../config/catalog');
 
 const CACHE_TTL_MS = 60 * 1000;
 const cache = new Map(); // tenantId -> { expiresAt, resolved }
@@ -13,9 +12,10 @@ const DEFAULT_FEATURES = { customerLookup: true, csfExtraction: true, stockByLoc
 
 /**
  * Resolves the catalog integration of a tenant: config row -> normalized
- * schema/pricing/features -> provider instance. Falls back to the legacy
- * environment-based SealMarket connection when the tenant has no row yet, so
- * existing deployments keep working until the superadmin saves a config.
+ * schema/pricing/features -> provider instance. A tenant without a row has
+ * no catalog (`none`); nothing is ever shared across tenants. The legacy
+ * environment connection is only used once, by prisma/bootstrap.js, to seed
+ * the row of the pre-existing tenant.
  */
 async function resolve(tenantId, { force = false } = {}) {
   if (!tenantId) throw new Error('tenantId requerido');
@@ -29,33 +29,18 @@ async function resolve(tenantId, { force = false } = {}) {
 }
 
 function buildResolved(tenantId, row) {
-  let providerName = row?.provider || 'none';
-  let baseUrl = row?.baseUrl || null;
+  const providerName = row?.provider || 'none';
+  const baseUrl = row?.baseUrl || null;
   let apiKey = null;
-  let connection = row?.connection || {};
+  const connection = row?.connection || {};
   let schemaRaw = row?.searchSchema;
   let aiRules = row?.aiRules || null;
-  let legacy = false;
 
   if (row?.apiKey) {
     try {
       apiKey = decrypt(row.apiKey);
     } catch (e) {
       logger.error(`[CATALOG] No se pudo descifrar la API key del tenant ${tenantId}:`, e.message);
-    }
-  }
-
-  // Transitional fallback: no row (or inactive 'none') but the environment still carries the SealMarket key.
-  if (!row) {
-    const env = getEnvCatalogConfig();
-    if (env.isConfigured) {
-      const { SealMarketProvider } = require('../catalog/providers');
-      providerName = 'sealmarket';
-      baseUrl = env.baseUrl;
-      apiKey = env.apiKey;
-      schemaRaw = SealMarketProvider.defaultSchema;
-      aiRules = SealMarketProvider.defaultAiRules;
-      legacy = true;
     }
   }
 
@@ -68,7 +53,7 @@ function buildResolved(tenantId, row) {
   const features = { ...DEFAULT_FEATURES, ...(row?.features || {}) };
   const provider = new ProviderClass({ tenantId, baseUrl, apiKey, connection, schema, pricing, features });
 
-  return { tenantId, providerName: ProviderClass.name, provider, schema, pricing, features, aiRules, legacy, isConfigured: ProviderClass.name !== 'none' };
+  return { tenantId, providerName: ProviderClass.name, provider, schema, pricing, features, aiRules, isConfigured: ProviderClass.name !== 'none' };
 }
 
 function invalidate(tenantId) {
@@ -124,7 +109,6 @@ async function describe(tenantId) {
   return {
     provider: r.providerName,
     isConfigured: r.isConfigured,
-    legacy: r.legacy,
     schema: r.schema,
     pricing: r.pricing,
     capabilities: r.provider.capabilities,
