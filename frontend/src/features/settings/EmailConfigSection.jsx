@@ -27,15 +27,17 @@ export default function EmailConfigSection() {
       setLoading(true);
       setError('');
       const res = await get('/tenant/email-config');
-      if (res.data?.isConfigured) {
+      if (!res.ok) throw new Error('El servidor no devolvió la configuración');
+      const { data } = await res.json();
+      if (data?.isConfigured) {
         setConfig({
-          host: res.data.host || '',
-          port: res.data.port || 465,
-          secure: res.data.secure !== false,
-          user: res.data.user || '',
-          password: res.data.password || '',
-          fromName: res.data.fromName || '',
-          fromEmail: res.data.fromEmail || '',
+          host: data.host || '',
+          port: data.port || 465,
+          secure: data.secure !== false,
+          user: data.user || '',
+          password: data.password || '',
+          fromName: data.fromName || '',
+          fromEmail: data.fromEmail || '',
         });
         setIsConfigured(true);
       }
@@ -52,11 +54,15 @@ export default function EmailConfigSection() {
     try {
       setSaving(true);
       setError('');
-      await put('/tenant/email-config', config);
+      const res = await put('/tenant/email-config', config);
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error?.message || body.error || 'Error al guardar configuración');
+      }
       toast.success('Configuración de correo guardada');
       setIsConfigured(true);
     } catch (err) {
-      setError(err.response?.data?.message || err.message || 'Error al guardar configuración');
+      setError(err.message || 'Error al guardar configuración');
     } finally {
       setSaving(false);
     }
@@ -81,7 +87,7 @@ export default function EmailConfigSection() {
           : <Badge tone="warning" dot>Sin configurar</Badge>
       }
     >
-      <form onSubmit={handleSubmit} className="space-y-5">
+      <form onSubmit={handleSubmit} className="space-y-5" autoComplete="off">
         {error && (
           <div role="alert" className="rounded-md border border-danger/40 bg-danger/10 px-3 py-2.5 text-sm text-danger">
             {error}
@@ -120,6 +126,8 @@ export default function EmailConfigSection() {
                 {...p}
                 type="text"
                 required
+                autoComplete="off"
+                name="smtp-user"
                 value={config.user}
                 onChange={e => setConfig({ ...config, user: e.target.value })}
               />
@@ -132,6 +140,8 @@ export default function EmailConfigSection() {
                 type="password"
                 mono
                 required
+                autoComplete="new-password"
+                name="smtp-password"
                 value={config.password}
                 onChange={e => setConfig({ ...config, password: e.target.value })}
               />
